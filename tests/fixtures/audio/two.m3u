@@ -1,0 +1,5 @@
+#EXTM3U
+#EXTINF:2,Test - Ogg tone
+tone.ogg
+#EXTINF:2,Test - FLAC tone
+tone.flac

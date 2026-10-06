@@ -1,0 +1,77 @@
+# VLC plugins shipped with WreckBox: audio playback, internet radio, equalizer and normalizer only.
+# Full VLC carries ~140 MB of plugins (video, Blu-ray, DVD, encoders, GUIs); this subset is ~32 MB.
+# One path per line, relative to VLC's plugins/ folder. Lines starting with # are ignored.
+
+# Where the bytes come from
+access/libfilesystem_plugin.dll
+access/libhttp_plugin.dll
+access/libhttps_plugin.dll
+access/libidummy_plugin.dll
+misc/libgnutls_plugin.dll
+misc/libxml_plugin.dll
+misc/liblogger_plugin.dll
+stream_filter/libprefetch_plugin.dll
+stream_filter/libcache_read_plugin.dll
+stream_filter/libcache_block_plugin.dll
+stream_filter/libinflate_plugin.dll
+stream_filter/libskiptags_plugin.dll
+
+# Containers / file formats
+demux/libes_plugin.dll
+demux/libmp4_plugin.dll
+demux/libogg_plugin.dll
+demux/libmkv_plugin.dll
+demux/libwav_plugin.dll
+demux/libaiff_plugin.dll
+demux/libau_plugin.dll
+demux/libcaf_plugin.dll
+demux/libflacsys_plugin.dll
+demux/libmpc_plugin.dll
+demux/libtta_plugin.dll
+demux/libvoc_plugin.dll
+demux/libxa_plugin.dll
+demux/libasf_plugin.dll
+demux/libreal_plugin.dll
+demux/libmod_plugin.dll
+demux/libgme_plugin.dll
+demux/libsid_plugin.dll
+demux/libplaylist_plugin.dll
+demux/libadaptive_plugin.dll
+demux/libts_plugin.dll
+
+# Decoders
+codec/libavcodec_plugin.dll
+codec/libmpg123_plugin.dll
+codec/libflac_plugin.dll
+codec/libfaad_plugin.dll
+codec/libvorbis_plugin.dll
+codec/libopus_plugin.dll
+codec/libaraw_plugin.dll
+codec/liblpcm_plugin.dll
+codec/libadpcm_plugin.dll
+codec/libg711_plugin.dll
+codec/libspeex_plugin.dll
+
+# Turning a stream into decodable frames
+packetizer/libpacketizer_mpegaudio_plugin.dll
+packetizer/libpacketizer_mpeg4audio_plugin.dll
+packetizer/libpacketizer_flac_plugin.dll
+packetizer/libpacketizer_a52_plugin.dll
+packetizer/libpacketizer_dts_plugin.dll
+packetizer/libpacketizer_mlp_plugin.dll
+packetizer/libpacketizer_copy_plugin.dll
+
+# Audio processing (equalizer, normalizer, format conversion, resampling, downmixing)
+audio_filter/libequalizer_plugin.dll
+audio_filter/libnormvol_plugin.dll
+audio_filter/libaudio_format_plugin.dll
+audio_filter/libspeex_resampler_plugin.dll
+audio_filter/libugly_resampler_plugin.dll
+audio_filter/libtrivial_channel_mixer_plugin.dll
+audio_filter/libsimple_channel_mixer_plugin.dll
+audio_filter/libremap_plugin.dll
+audio_mixer/libfloat_mixer_plugin.dll
+audio_mixer/libinteger_mixer_plugin.dll
+
+# Output: VLC hands decoded samples to WreckBox (which plays them and feeds the visualizer)
+audio_output/libamem_plugin.dll

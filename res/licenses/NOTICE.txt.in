@@ -1,0 +1,63 @@
+WreckBox for Windows — third-party software
+===========================================
+
+Playback: VLC's engine
+----------------------
+WreckBox plays music with libVLC @VLC_VERSION@ (VideoLAN, https://www.videolan.org/), loaded from the separate files
+libvlc.dll, libvlccore.dll and plugins\ next to wreckbox.exe. They are unmodified binaries from the official
+VideoLAN release:
+
+    https://download.videolan.org/pub/videolan/vlc/@VLC_VERSION@/win64/vlc-@VLC_VERSION@-win64.7z
+
+Their source code (the corresponding source for this exact version) is at:
+
+    https://download.videolan.org/pub/videolan/vlc/@VLC_VERSION@/vlc-@VLC_VERSION@.tar.xz
+
+libVLC and libVLCcore are licensed under the GNU Lesser General Public License, version 2.1 or later
+(LGPL-2.1.txt). Some VLC plugins, and the FFmpeg and other libraries built into them, are licensed under the GNU
+General Public License, version 2 or later (GPL-2.0.txt). You may replace these files with your own build of the same
+VLC version.
+
+Built into wreckbox.exe
+-----------------------
+- TagLib (tag reading and writing) — GNU LGPL 2.1 or Mozilla Public License 1.1, https://taglib.org/
+- zlib — zlib licence
+- nlohmann/json — MIT licence
+- dr_libs (WAV / MP3 / FLAC decoding for analysis) — public domain (Unlicense) or MIT-0
+- miniaudio (sound output) — public domain (Unlicense) or MIT-0
+- utfcpp — Boost Software License 1.0
+- cpp-httplib (the phone-sync server) — MIT licence, https://github.com/yhirose/cpp-httplib
+- QR Code generator library (the pairing code) — MIT licence, Project Nayuki, https://www.nayuki.io/page/qr-code-generator-library
+
+Downloaded on request
+---------------------
+If you turn on "Use from anywhere" (Sync to phone), WreckBox downloads cloudflared, Cloudflare's tunnel tool
+(https://github.com/cloudflare/cloudflared, Apache License 2.0), into its settings folder and runs it so your phone can
+reach this computer. Nothing is downloaded or run until you do.
+
+MilkDrop visualizer: projectM
+-----------------------------
+The full-screen visualizer plays MilkDrop presets with projectM 4.1.7 (https://github.com/projectM-visualizer/projectm),
+licensed under the GNU Lesser General Public License, version 2.1 (LGPL-2.1.txt). projectM is linked statically into
+wreckbox.exe. Its source is at the address above, and this project's CMake files (CMakeLists.txt, cmake/milkdrop.cmake,
+vcpkg.json with its pinned baseline) rebuild wreckbox.exe against projectM, so you can relink the program against your
+own modified build of projectM.
+
+Built into wreckbox.exe with it:
+- projectm-eval (MilkDrop expression engine) — MIT licence, The projectM Team
+- GLEW (OpenGL loader) — Modified BSD licence / MIT licence
+- GLM (OpenGL Mathematics) — MIT licence
+- SOIL2 (texture loading, inside projectM) — MIT-0, Apache-2.0 and MIT code
+
+Presets and textures (milkdrop\presets, milkdrop	extures)
+-----------------------------------------------------------
+- projectM's "Cream of the Crop" pack, https://github.com/projectM-visualizer/presets-cream-of-the-crop: MilkDrop
+  presets by many authors, treated as public domain by the pack's LICENSE.md. Authors can ask for a preset to be removed.
+- projectM's MilkDrop texture pack, https://github.com/projectM-visualizer/presets-milkdrop-texture-pack: textures by
+  various authors, shipped as projectM recommends for these presets.
+- You can add your own .milk files in %APPDATA%\local.wreckbox\wreckbox\milkdrop\presets.
+
+Fonts
+-----
+- Urbanist and Doto — SIL Open Font License 1.1 (Urbanist-OFL.txt, Doto-OFL.txt)
+- Icons: Segoe MDL2 Assets, part of Windows

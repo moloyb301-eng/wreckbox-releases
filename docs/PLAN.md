@@ -1,0 +1,511 @@
+# WreckBox for Windows — implementation plan
+
+Read [DESIGN.md](DESIGN.md) first. Each phase ends with something you can run and check. A phase is done only when
+its **Done when** list is checked off with real output, not just written code.
+
+Porting rule: for every module, the matching file in `reference/wreckbox/` is the spec. Port its behaviour (including
+messages and log event names), not just its idea.
+
+---
+
+## Phase 0 — Skeleton ✅
+
+- [x] `CMakeLists.txt`: C++20, MSVC static runtime, `/W4`, targets `wbengine` (static lib), `wbcore`, `engine_tests`
+- [x] `vcpkg.json` manifest (`x64-windows-static` triplet)
+- [x] `scripts/build.ps1`: finds VS Build Tools via `vswhere`, sets `VCPKG_ROOT`, configures, builds, runs `ctest`
+- [x] `.gitignore` (`build/`, `reference/`)
+
+**Done when:** `.\scripts\build.ps1` builds from a clean checkout and `ctest` passes. ✅
+
+## Phase 1 — Engine ✅
+
+Port of `core/src/*.rs`.
+
+- [x] `engine/fft.h`: real-input FFT (half-size complex radix-2 + unpack), magnitude spectrum
+- [x] `engine/decode.*`: dr_wav (WAV/AIFF), dr_mp3, dr_flac, and Media Foundation (AAC/M4A/ALAC) → mono → the same
+      averaging resampler to 22,050 Hz
+- [x] `engine/analysis.*`: tempo (spectral flux, autocorrelation, candidates, beat-grid contrast, prior), `fold_bpm`,
+      key (HPCP-style profile, EDMA/bgate/Temperley, agreement), camelot, energy, loudness — frame by frame (no
+      spectrogram kept in memory). The Rust `WB_*` tuning environment variables are ported too.
+- [x] `engine/tags.*`: TagLib read/write with the field mapping from DESIGN §4, atomic copy-and-swap, ID3v2.3,
+      `short_key`
+- [x] `tools/wbcore.cpp`: `analyze`, `tags`, `write-tags` with the same JSON output
+- [x] `tests/engine_tests.cpp`: Camelot, folding, click-track tempo, A-minor chord, short key, tag round trip on a
+      generated WAV
+- [x] `scripts/parity.py`
+- [x] `wbcore bench FILE`: decode / tempo / key timings per file
+
+**Done when:** tests pass, and `parity.py` on a folder of real tracks shows WAV/AIFF identical and compressed formats
+with the same key and BPM (within ±0.1) on almost every track, with the differences explained.
+
+**Result (2026-10-06):** done, on this PC's files.
+
+- Test set: 6 synthetic tracks (90–174 BPM, 6 keys) as WAV, M4A (AAC) and FLAC; 2 real MP3s; and 18 odd-format
+  scipy test WAVs.
+- **Every file both engines could read was identical** (BPM within 0.1, same key, energy within 0.01).
+- The C++ engine also reads several WAV variants Symphonia rejects (big-endian, µ-law, RF64).
+- Speed:
+
+  | Files | Rust | C++ |
+  |---|---|---|
+  | 6 WAVs | 0.77 s | 0.82 s |
+  | 12.7-minute MP3 | 2.41 s | 2.17 s |
+  | 6 M4As | 0.9 s | 1.7 s |
+
+  M4A is slower because Media Foundation is slower (see DESIGN §9).
+- Tags written by C++ read back correctly in **both** engines on MP3, FLAC, M4A and WAV, after the M4A BPM fix
+  (DESIGN §4).
+- **Still to do by the user:** `python scripts/parity.py <your real Tracks folder>`. The synthetic set can't stand in
+  for a real library.
+
+## Phase 2 — Model and Store
+
+Port of `models.dart`, `paths.dart`, `settings.dart`, `store.dart`, `matcher.dart`, and the organiser part of
+`services.dart`.
+
+- [x] `model/`: `LibraryTrack`, `LibraryPlaylist`, `Library`, `TrackState`, `LogEntry`, `AppState`, `FileAnalysis`,
+      `Settings`. JSON read/write keeps unknown fields (DESIGN §4). Add `isoSeconds`, `normalized`, `safeFileName`.
+      Tested in `tests/model_tests.cpp`.
+- [x] `model/paths.*`: every path in DESIGN §4; `writeAtomic`
+- [x] `net/http_client.*`: WinHTTP with timeouts, headers, gzip, the system proxy and readable errors. Checked live
+      against the Deezer API (`WRECKBOX_NET_TESTS=1`).
+- [x] `library/matcher.*`: port of `TrackMatcher`, `compatibleKeys` and `camelotOrder`
+- [x] `library/store.*`:
+  - load/save (never overwrite an unreadable state file)
+  - `row_ids` and rows with filters and search
+  - `mixes_with`
+  - `set_status`
+  - artwork cache
+  - `analyze_file` with cache check (size + mtime)
+  - Deezer BPM reconcile
+  - `rescan` (parallel), `organise`, `write_tags`
+- [x] `library/downloads_watcher.*`: port of `DownloadsOrganiser`, including `organiser_seen.json` (keys stay
+      compatible with the Flutter build) and the "still being written" check
+- [x] Tests:
+  - `normalized` / `safe_file_name` cases
+  - JSON round trips keeping unknown fields
+  - matcher cases
+  - a full organise → tag → file → rescan → watcher flow on a throwaway library (`tests/library_tests.cpp`)
+- [ ] **Needs your library:** load + save round trip on a copy of a real `Music\WreckBox`
+      (`WRECKBOX_TEST_LIBRARY=<copy> build\Release\model_tests.exe`), then open the re-saved copy in the Flutter app.
+- Moved to phase 3: the "run on a worker, post the result to the window" helper. It belongs with the window.
+
+**Done when:** a real `Music\WreckBox` folder (copied) loads, re-saves with the same JSON meaning, and the Flutter app
+opens the re-saved copy without complaint. Loading 5,000 tracks takes under 400 ms.
+
+**Result so far (2026-10-06):** the code is done and tested. Measured on a synthetic 5,000-track library
+(`WRECKBOX_BENCH=1 build\Release\library_tests.exe`):
+
+| Operation | Time | Budget |
+|---|---|---|
+| Load (three files parsed in parallel) | 189 ms | 400 ms |
+| Search keystroke | 0.8 ms | 16 ms |
+| Save state | 43 ms | |
+
+Only the real-library round trip is left.
+
+## Phase 3 — UI shell ✅ (pending a weak-PC check)
+
+Port of the layout in `ui/desktop.dart`, `ui/tracks.dart` and `ui/theme.dart`.
+
+- [x] `ui/main.cpp`:
+  - Win32 window, per-monitor DPI v2 (manifest + `WM_DPICHANGED`), dark title bar
+  - message loop; `WM_APP_DONE` / `WM_APP_CHANGED` dispatch
+  - window position saved in settings
+  - `--root`, `--background`
+- [x] `ui/gfx.*`:
+  - Direct2D/DirectWrite with device-lost handling
+  - Urbanist and Doto embedded as resources (variable fonts; named weights work)
+  - caches for text layouts, gradients, bitmap brushes, stroke styles and pre-rendered bitmaps
+  - software fallback (`WRECKBOX_SOFTWARE=1`)
+- [x] `ui/theme.h`: tokens, Camelot colours and tints from `theme.dart`; Segoe MDL2 glyphs for the icons
+- [x] `ui/ui.*` (immediate-mode layer):
+  - click and scroll regions, hover
+  - draggable scrollbars, wheel
+  - widgets: glass, pill, chip, dot label, key badge, BPM readout, energy meter, status dot, artwork, logo, progress
+- [x] Search: a native `EDIT` over a drawn pill (IME, clipboard, undo for free), styled through `WM_CTLCOLOREDIT`
+- [x] `ui/jobs.*`: worker pool with a FIFO lane and a newest-first lane, results posted back to the window
+- [x] `ui/artwork.*`: covers loaded on workers via WIC at draw size, with an LRU of Direct2D bitmaps
+- [x] Pages (`ui/view.cpp`, `ui/view_tracks.cpp`):
+  - sidebar with counts and playlists
+  - Home: stats, recently added, playlist cards
+  - track lists: search, BPM presets, key filter + "compatible", sort by title / BPM / key / energy
+  - virtualised rows
+  - inspector: readouts, playlists, "Mixes with", actions; overlay below 1320 DIPs wide
+  - welcome screen and placeholders for the Tools pages
+- [x] Keyboard: ↑/↓ move the focus, Esc closes the inspector, Ctrl+F searches, F5 rescans
+- [x] Right-click menu on rows: write tags, show in folder, ignore / un-ignore
+- [x] Busy text and a disabled "Rescan" while the store works; the list refreshes at most every 750 ms during long
+      jobs
+- [x] Startup timing in `wreckbox.log`; `WRECKBOX_PERF=1` logs paint times and repaint causes
+- Moved to the phase that needs them: toggle and slider (phases 5 and 7), tabs (phase 8), dialog and toast (phase 7)
+- Dropped:
+  - multi-select: the Flutter app has none either
+  - activity-log view: the Flutter desktop doesn't show one; the log is in `state.json` and in bug reports
+
+**Done when:** browsing a 5,000-track library meets the DESIGN §5 budget on a weak machine (or a VM limited to 2
+cores and 4 GB), and the app has 0 % idle CPU.
+
+**Result on this PC (2026-10-06):** 5,000-track demo library, 1440×900 window.
+
+| | Measured | Budget |
+|---|---|---|
+| First paint after process start | 105–147 ms | 300 ms |
+| Library load (background, window already up) | 209–254 ms | 400 ms |
+| Paint while scrolling, GPU | avg 4.9 ms, worst 6.7 ms | 16 ms |
+| Paint while scrolling, software | avg 7.2 ms, worst 12.5 ms | 16 ms |
+| Idle CPU | 0.00 ms over 10 s, every thread | 0 % |
+| Memory at rest | 38 MB private / 53 MB working set | 60 MB |
+| Memory after heavy scrolling (plateau, no leak) | 69 MB private (GPU) / 55 MB (software) | 60 MB |
+| `wreckbox.exe` | 2.72 MB | |
+
+The first scroll test averaged 49 ms. The fixes that brought it down are in DESIGN §3 (Rendering).
+
+**Still to check:**
+- a real weak PC (run with `WRECKBOX_PERF=1`, then read `wreckbox.log`)
+- display scaling other than 100 %
+- the right-click menu by hand (it's a native menu, which the automated checks can't drive)
+
+## Phase 4 — Imports and sources ✅ (pending a live Spotify / YouTube sign-in with your keys)
+
+Port of `csv_import.dart`, `sources.dart`, `youtube.dart` and `spotify.dart`, plus the import parts of
+`ui/settings_page.dart`.
+
+- [x] `sources/sources.*`:
+  - each importer saves `_sources/<kind>.json`, and `library.json` is rebuilt from all of them
+  - merge keys: ISRC → Spotify id → YouTube id → artist + title (+ duration)
+  - different ISRCs never merge
+  - a pre-sources `library.json` is kept as `library-legacy.json`
+  - Spotify's data wins when a song is in several sources
+- [x] `sources/csv_import.*`:
+  - RFC 4180 parser; Exportify, TuneMyMusic, Takeout and generic columns, matched loosely
+  - YouTube oEmbed for Takeout video ids
+  - a re-imported playlist replaces its old version
+- [x] Catalogue lookups:
+  - MusicBrainz (ISRC, one request per second, with the same match and length rules), then Deezer by ISRC (cover,
+    album, length), then the Cover Art Archive as fallback
+  - cached in `_cache/catalogue_lookup.json`
+  - offline or rate-limited lookups aren't cached, so they're retried next import
+- [x] `sources/youtube.*`: title clean-up into artist + title, ISO durations, Google sign-in (loopback on any port +
+      PKCE + client secret), playlists + liked music (category Music only), Spotify matching when connected
+- [x] `sources/spotify.*`:
+  - PKCE sign-in via `127.0.0.1:8888/callback`, the same redirect the Flutter build uses
+  - refresh token in settings
+  - `Retry-After`-aware rate-limit retries
+  - Liked Songs + own / collaborative playlists
+  - search for YouTube matching
+- [x] `net/oauth.*`:
+  - PKCE with CNG SHA-256 and `BCryptGenRandom`
+  - loopback HTTP listener on Winsock
+  - opens the browser with `ShellExecuteW`
+  - form encoding
+- [x] `net/http_client`: response headers (for `Retry-After`)
+- [x] Settings page (`ui/view_settings.cpp`):
+  - Import playlists: steps, links, `IFileOpenDialog` multi-select, live progress
+  - Spotify direct and YouTube direct: guides, Copy buttons for the redirect URIs, client ID / secret fields
+  - bug-report name and contact
+  - About
+  - Save settings with a confirmation
+- [x] Text boxes generalised: any number of native `EDIT`s over drawn fields. Each box has its own background so it
+      blends with its field; Tab / Shift+Tab move between fields, Esc leaves.
+- [x] Tests (`tests/sources_tests.cpp`, using the Dart fixtures copied to `tests/fixtures`):
+  - the Dart `csv_test` and merge / legacy tests
+  - PKCE against FIPS SHA-256 vectors
+  - the loopback redirect (a simulated browser hits it; 404 for other paths; a busy port gives a readable error)
+  - Spotify track parsing
+  - `WRECKBOX_NET_TESTS=1`: a live import against MusicBrainz, Deezer and YouTube. It passed: ISRCs from the right
+    labels, covers found, no length trusted without an ISRC, about 3 s for 3 tracks.
+- Not on Windows: Dropbox. It's phone-only in the Flutter app too. The Soulseek login comes with phase 8, the update
+  check with phase 7.
+
+**Done when:** the same CSV files give the same `library.json` content as the Flutter app (compare playlists, track
+ids and order).
+
+**Status (2026-10-06):**
+- **Done:** the parsing and merge rules are ported line by line, and the Dart tests pass with the same expectations.
+  A CSV import, opened in the app, shows its playlists and covers; settings save correctly.
+- **Still to do by you:**
+  - import the same CSVs in both builds and compare `library.json`
+  - a real Spotify and YouTube sign-in. It needs your client IDs, which this PC doesn't have; the parts that don't
+    need keys are tested.
+
+### Added after phase 4: Playlist Sync
+
+Every playlist page has a **Sync** button that fetches the playlist again from where it came from and **mirrors**
+it: songs added at the source are added, songs removed at the source drop out of the playlist. Files, analysis and
+track states are never touched.
+
+- [x] `sources/sync.*`:
+  - `sync::playlist` refetches by the playlist's source: Spotify (by id, or Liked Songs), YouTube (by id, `LL` =
+    liked videos) or the CSV file it was imported from (`csv::reread`)
+  - replaces that playlist in its `_sources/<kind>.json` and rebuilds `library.json`
+  - `sync::unavailable` says why a playlist can't sync (signed out, CSV moved, imported before sources existed)
+- [x] UI: a Sync pill in the playlist header. It's disabled with the reason while unavailable; the result line reads
+      "+3 added · 1 removed" (lilac) or the error (peach). A playlist renamed at the source follows its new name.
+- [x] Tests (`tests/sources_tests.cpp`, offline): a CSV-sourced playlist mirrored through `sources::replace` gains
+      the added song and loses the removed one; another playlist sharing a song keeps it; `state.json` is byte-for-byte
+      unchanged; the playlist keeps its file for the next Sync; `unavailable` gives the right reason for a playlist in
+      no source, a CSV imported before Sync, and Spotify without a client ID.
+- [ ] Live: Sync a real Spotify / YouTube playlist (needs your keys) and a re-exported CSV.
+
+## Phase 5 — Player ✅ (pending your listening check)
+
+Port of `player.dart` and `ui/player_bar.dart`, **on VLC's engine** (libVLC) rather than the planned Media
+Foundation, so that it plays anything VLC plays. It adds VLC's equalizer, the volume normalizer, internet radio,
+files outside the library, and a Winamp-style visualizer. How it fits together: DESIGN.md §3 "Player".
+
+- [x] **libVLC 3.0.24** (`cmake/vlc.cmake`):
+  - downloaded once from VideoLAN and checked against its SHA-256
+  - an **audio-only subset of 62 plugins** (`cmake/vlc_plugins.txt`, 34 MB of VLC's ~150 MB) deployed next to the
+    exe, and VLC's plugin cache regenerated so startup stays fast
+  - **delay-loaded**: a native import library is generated from `libvlc.dll`'s exports (the SDK's is MinGW-made, and
+    MSVC can't delay-load through it), so libVLC loads on first play, not at startup
+- [x] `player/vlc_engine.*`: one libVLC instance and player; `amem` callbacks into our output; VLC's equalizer (10
+      bands, preamp, 18 presets); `normvol` per media; events posted to the UI thread; `WRECKBOX_VLC_LOG=1` prints
+      VLC's log
+- [x] `player/audio_output.*`: a 0.25 s ring buffer → **miniaudio** on WASAPI (follows the default device), volume
+      (cubed) and mute, and a 4,096-sample tap of what's audible for the visualizer. The device runs only while
+      playing.
+- [x] `player/player.*`: the port of `player.dart`:
+  - queue = the playable tracks of the list on screen; previous restarts after 3 s; ended → next; unplayable → skip
+  - files, folders (searched recursively) and URLs; `.m3u` / `.m3u8` / `.pls` / `.xspf` / `.asx` expanded by
+    `player/playlist.*`, including radio playlists over HTTP; HLS streams go to VLC as they are
+  - volume, mute, equalizer and normalizer saved in `settings.json` under `"player"`
+- [x] `player/visualizer.*` (maths) and `ui/view_visualizer.cpp` (drawing): see "Visualizer" below
+- [x] Player bar (`ui/view_player.cpp`): cover, title / artist (or the radio's now-playing title), error line, BPM
+      and key, previous / play / next, seek slider with times ("LIVE" for streams), volume + mute, EQ, visualizer,
+      Open. Repaints 4 times a second only while playing.
+- [x] Equalizer pop-over: on/off, VLC's presets, Reset, normalizer toggle, preamp + 10 vertical band sliders
+      (−20…+20 dB, live while dragging, saved on release)
+- [x] New widgets: `Ui::slider` (horizontal / vertical, through the same hit list as clicks, so pop-overs on top
+      win), `Ui::icon_button`
+- [x] Ways to play:
+  - click a row's cover (the playing row shows ‖ / ▶ and a lilac title)
+  - Enter on the focused row; the inspector's Play / Pause; "Play" in the row's right-click menu
+  - Open files… (Ctrl+O), Open folder…, Open URL… (Ctrl+U), drag & drop onto the window, or
+    `wreckbox.exe <files / folders / URLs>` (Explorer's "Open with")
+- [x] Keys: Space play / pause, F11 visualizer. Media keys via `WM_APPCOMMAND`, and **Windows' media controls**
+      (`ui/media_controls.*`, SMTC): media keys work while WreckBox is in the background, and the volume flyout
+      shows title, artist and cover
+- [x] Licences: `res/licenses/` (LGPL-2.1, GPL-2.0, NOTICE with VLC's source link) copied next to the exe;
+      Settings → About names libVLC and opens the folder
+- [x] Tests (`tests/player_tests.cpp`, through the shipped plugin subset, into a capturing sink, so nothing is
+      audible):
+  - **18 formats** play in full with real audio (finite, within ±1, not silent) and the right length: WAV, 24-bit
+    WAV, ADPCM WAV, AIFF, FLAC, ALAC, AAC, MP3, MPEG layer 2, Ogg Vorbis, Opus, WMA, WavPack, TTA, AC-3, E-AC-3,
+    DTS, ProTracker MOD
+  - seeking; equalizer (bass boost + treble cut moves the balance ~40×); a flat equalizer and VLC's "Flat" preset
+    leave the level unchanged (±0.5 dB); normalizer loads
+  - playlists: `.m3u` with relative paths, PLS, XSPF, ASX, `file://` URIs, relative URLs
+  - queue rules; visualizer maths (band placement at 100 Hz / 1 kHz / 5 kHz, levels, silence, bar fall, peak hang
+    and fall, scope trigger, options round trip)
+  - **pacing** through the real sound device, muted: 2 s of wall clock ≈ 2 s of track; the shown time matches
+    what the device played; a whole track reaches the device with nothing lost
+
+**Found and fixed on the way** (each is now covered by a test):
+- VLC 3's `amem` output only delivers 16-bit audio, whatever format is asked for; it was being read as float
+  (garbage samples, then a crash). Converted in the callback now.
+- VLC's equalizer preamp has 12 as unity gain, so "on, all flat" was 12 dB quieter. Default preamp is now 12; the
+  UI shows real gain.
+- VLC ranks its "ugly" (nearest-sample) resampler first; `--audio-resampler=speex_resampler` picks a proper one.
+- VLC's time already is the heard position; subtracting our buffer made the clock 1.3 s late.
+- VLC runs ~1.3 s ahead if it can, which made EQ changes audible 1.3 s late; the 0.25 s buffer brings that down.
+
+**Visualizer** (Winamp 2's, full screen): spectrum (normal / fire / line bars, peak caps that hang then fall,
+5 falloff speeds each), oscilloscope (dots / lines / solid), both, or off. Classic Winamp colours or WreckBox pastel.
+Click cycles the mode, right-click has every option, V switches the look, Space / ← / → control playback, Esc / F11 /
+double-click leave. A track card fades out 3 s after the mouse stops, the cursor hides with it. Options are saved
+under `"visualizer"`. 2,048-point FFT, log bands 20 Hz–16 kHz, +3 dB/octave tilt so the highs show. 60 fps while
+playing (30 fps if frames run slow), nothing while paused.
+
+**Measured (dev PC, 2026-10-06):** CPU 1.4 % of one core playing with the bar, 3.3 % with the full-screen
+visualizer, 0.0 % paused. First paint 112–131 ms (libVLC isn't loaded until the first play). Release zip 18.9 MB
+(exe 3.5 MB, libVLC 3.1 MB, plugins 34.2 MB unzipped; FFmpeg's plugin is 18 MB of that).
+
+**Not supported:**
+- DSD (`.dsf` / `.dff`): VLC 3 has no DSD decoder (VLC 4 adds one). *Upgrade path: our own DSD → PCM decimation
+  fed to libVLC through `libvlc_media_new_callbacks`.*
+- APE: should play through VLC's FFmpeg demuxer (it opened DSF fine), but no APE encoder exists on this PC to make a
+  test file.
+- TTA and ADPCM WAV play in full, but VLC estimates their length wrongly (the seek bar's end is off).
+- Out of scope, as planned: audio CDs, gapless / crossfade, video. (MilkDrop came later: phase 5b.)
+
+**Still to do by you:** listen. Check the sound is clean, that unplugging headphones moves playback to the speakers,
+and try your own odd files and radio stations.
+
+## Phase 5b — MilkDrop visualizer + player panel ✅ (pending your look with real music)
+
+The full-screen visualizer felt empty, so it now plays **MilkDrop presets** (the swirling ones on webamp.org) with
+projectM, under a glass player panel. Design and decisions: `docs/MILKDROP-PLAN.md`.
+
+- [x] **A: projectM builds and links.** vcpkg `projectm` 4.1.7 (+ glew, glm, projectm-eval), statically. `cmake/milkdrop.cmake`
+  downloads projectM's "cream of the crop" pack (9,795 presets) and the MilkDrop texture pack from GitHub archives of
+  **pinned commits** (SHA-256 checked) and copies them to `milkdrop\presets` and `milkdrop\textures` next to the exe
+  (copied only when missing, so incremental builds stay fast). Licences in `NOTICE.txt`.
+- [x] **B: `player::MilkDrop`** (`player/milkdrop.*`, no UI): projectM rendered off-screen into a WGL pbuffer
+  (3.3 core context), pixels read back through two PBOs one frame behind. Presets come from `milkdrop\presets` and
+  from `%APPDATA%\local.wreckbox\wreckbox\milkdrop\presets` (your own `.milk` files). Shuffled playlist (projectM's
+  playlist library) with our own history for "previous"; a preset that won't compile is skipped (retried up to 10×).
+  Any failure → `ok() == false` + `error()`; `WRECKBOX_NO_MILKDROP=1` forces it.
+- [x] **C: counted audio tap.** `AudioOutput::take_tap(cursor, out, max)`: every audible sample once, in order; after a
+  long pause only the newest 4,096. Tested without a sound device (`AudioOutput(false)`).
+- [x] **D: on the full-screen screen.** MilkDrop is the default mode (`"mode": "milkdrop"`, `"quality"` 540 / 720 / 1080,
+  `"autoAdvance"` seconds). The engine is built on a worker thread when full screen opens (about a second: it reads
+  ~10,000 files) and freed when it closes; the picture is a streamed Direct2D bitmap. Without OpenGL 3.3 the Winamp bars
+  show with "MilkDrop needs OpenGL 3.3". Keys: **N / P** next / previous, **R** random, **L** lock, **M** MilkDrop ↔ bars;
+  click = next preset; right-click menu: MilkDrop, quality, auto-advance, lock, open presets folder. Paused: the picture
+  calms for 4 s, then holds with no timer.
+- [x] **E: the player panel** (replaces the small track card): cover, big title / artist, BPM · key, transport, seek,
+  volume (the same `transport` / `seek_bar` / `volume` code as the player bar — the bar is pixel-identical), preset
+  ◀ name ▶ with random and lock, MilkDrop / Bars chips, the equalizer pop-over; and an **Up next** card (next 5 queue
+  items, click to play: `Player::jump`). It fades as one layer 4 s after the mouse stops (always while paused or while
+  the equalizer is open).
+- [x] **F: measured** (below) and documented.
+
+**Measured (dev PC, muted, full screen at 1920×1080, 2026-10-06):**
+
+| | |
+|---|---|
+| Render + read back, MilkDrop alone (unit test) | 1.1 ms at 320×180, 5.1 ms at 1280×720 |
+| 720p (default): frame build / with present | 7.5–8.7 ms / 10.5–11.8 ms, 60 fps, **26–30 % of one core** |
+| 1080p | 16–20 ms: past the 14 ms limit, so it steps down to 720p by itself after ~1.5 s (logged under `WRECKBOX_PERF`) |
+| Paused after the 4 s settle | **0 %** (0.00–0.03 s of CPU in 10 s) |
+| First paint (visualizer never opened) | 106–125 ms; the old build 121–147 ms: no change, GL starts only in full screen |
+| MilkDrop start (worker thread, UI keeps drawing) | 0.9–1.2 s |
+| RAM while it runs | 166–237 MB working set (125–182 MB private); freed on leaving full screen |
+| exe | 4.6 MB (was 3.5 MB) |
+| release zip (exe, VLC, `milkdrop\`, `licenses\`) | **53.1 MB** (was 18.9 MB): the presets are 34 MB of it |
+
+**Known limits:**
+- It needs OpenGL 3.3 and WGL pbuffers (old Intel drivers, Remote Desktop may not have them): the bars show then.
+- On a weak GPU, 720p is already heavy: it drops to 540p, and the next step would be a 30 fps cap (not built yet).
+  The reference weak PC hasn't run it.
+- Hard cuts on beats are off (presets change by the timer only); there's no per-preset rating or favourites list.
+- Some presets don't compile in projectM's HLSL → GLSL step; they're skipped (count: `MilkDrop::failed_presets()`).
+- projectM is **statically** linked (LGPL-2.1): `NOTICE.txt` says how to relink. Building it as a DLL instead is the
+  alternative if that is not enough.
+- The presets' LICENSE treats them as public domain, and authors can ask for removal.
+- In a 1080p window at 31 ms ticks the loop is paced by WM_TIMER (15.6 ms steps), so "30 fps" is 30 at best.
+
+**Still to do by you:** look at it with real music, on the weak PC, and say whether 720p / 30 s per preset feel right.
+
+## Phase 6 — Phone sync, account, tunnel ✅ (pending the Android app on a real phone)
+
+Port of `phone_sync.dart` (server side), `account.dart` and `tunnel.dart`.
+
+- [x] `net/sync_server.*`: cpp-httplib on a worker thread; the token check runs first, for every route (header
+      `x-wreckbox-token` or `?t=`, compared without early exit); endpoints and Range handling as in DESIGN §4. Port 47390,
+      `WRECKBOX_SYNC_PORT` overrides. Started by "Start sharing" (or by the tunnel); nothing listens before that.
+- [x] Pairing screen (`ui/view_phone.cpp`): QR code (Nayuki qrcodegen → Direct2D, cached), the pairing link with Copy,
+      "Unpair all phones" (a new token, saved)
+- [x] Windows firewall: nothing to do; the system "allow private networks" prompt appears the first time it listens
+- [x] `net/account.*`: PBKDF2-HMAC-SHA256 through CNG (checked against the published vectors), sign up, sign in, sign out,
+      change password, upload library + crate summary (debounced 2 minutes after the last change), device registration
+- [x] `net/tunnel.*`: downloads cloudflared once, `CreateProcessW` with a pipe, finds the address in its log, registers it,
+      5-minute heartbeat, brings it back 10 seconds after it drops; the process is in a job object, so it dies with WreckBox
+- [x] Account UI and "Use from anywhere" on the Sync to phone page; the tunnel starts again at launch if it was on
+
+**Tests** (`tests/sync_tests.cpp`, 23 s, no real service touched):
+- the server over real HTTP on 127.0.0.1: no / wrong token on every route → 403; `/info`, `/library.json`, `/crate` (size,
+  analysis); a whole file; `Range` (`a-b`, `a-`, `-n`, an end past the file → 206 with the right `Content-Range`; a start past
+  the end → 416); track ids with `:` `/` and spaces sent URL-encoded; unknown / not-downloaded → 404; unpairing (old token
+  dead at once, new one saved); stop and start again
+- the account against a small fake of the service: signs up, signs in (the email is trimmed and lower-cased before the key is
+  derived; the password never appears in a request), wrong password, changes the password, signs out (also offline), a 401
+  ends the session, the library and a crate summary with no file paths are uploaded, a burst of changes makes one upload
+- the tunnel with a stand-in for cloudflared (a script): finds the address (not `api.trycloudflare.com`, which is
+  cloudflared's own error text), registers, heartbeats, `stop()` returns at once and the process is really killed, the
+  account is told, a quitting process is brought back, no address → "Couldn't connect…", signed out → "Sign in…"
+
+**Checked by hand on the dev PC:** the page in the real window (QR, link, sign-up form); the server answered a `curl` over
+the PC's real Wi-Fi address (403 without the token, `/info` and `/crate` with it); sign-up and "Use from anywhere" against a
+local fake of the account service: the real cloudflared was downloaded, started, and registered an address with it. I did
+**not** call the public tunnel address from outside, and never touched the real account service.
+
+**Differences from the Flutter build (on purpose):**
+- A wrong "current password" in `change_password` no longer signs you out (Flutter treats every 401 but login's as an
+  ended session).
+- `find_tunnel_url` ignores `api.trycloudflare.com`, which Flutter's regex would take for the tunnel on a failed start.
+- The library is also uploaded 2 minutes after changes settle while signed in (Flutter has the function but never calls it).
+- Stopping the tunnel never waits for the network: the account is told from the worker thread.
+
+**Known limits:**
+- The cloudflared download (55 MB) has no progress bar; on this PC's connection it took ~15 minutes. The message says
+  "Downloading Cloudflare tunnel tool…" meanwhile.
+- If a computer has several private addresses (Wi-Fi, a virtual switch), the QR code lists them all, as before.
+
+**Still to do by you:** the Android app, unchanged, on a real phone: pair by QR, list the crate, download with analysis,
+stream with seeking, and use it away from home through the tunnel with your real account.
+
+## Phase 7 — Extras
+
+Port of the update check and bug-report parts of `services.dart`, plus `ui/bug_report.dart`, `ui/settings_page.dart`
+and `ui/account_ui.dart`.
+
+- [ ] Update check and the "WreckBox x.y.z is available → Download" banner
+- [ ] Bug report:
+  - automatic app screenshot (`PrintWindow` → WIC PNG)
+  - up to 3 images
+  - reporter name and contact from settings
+  - last 40 log entries
+  - sent to the relay
+- [ ] Settings page:
+  - scan folders and extra scan folders
+  - organise Downloads toggle
+  - Spotify client ID
+  - reporter fields
+  - share remotely
+- [ ] First-run onboarding (the `onboarded` flag)
+
+**Done when:** a bug report shows up as an issue in the bugs repo with its screenshot, and the update banner appears
+when a newer release exists.
+
+## Phase 8 — Soulseek (sidecar bridge)
+
+Port of `soulseek.dart`. Run `slsk_sync.py` with the bundled embedded Python, as the Flutter app does.
+
+- [ ] Bundle `soulseek\python\` (3.11 embeddable + `aioslsk`) and `slsk_sync.py` next to the exe. Same steps as the
+      original CI.
+- [ ] Bridge: start it with the same arguments, read its output, map it to queue, progress and results
+- [ ] UI: credentials, download queue and priority (`downloadPriority`, `priorityOnly`), sync results with retry
+- [ ] Downloads finish through `Store::organise`, the same as today
+
+**Done when:** a sync on a small playlist downloads, tags and files tracks, with the same results as the Flutter app
+on the same queue.
+
+## Phase 9 — Packaging and CI
+
+- [ ] `.github/workflows/build.yml`, Windows job:
+  - build and `ctest`
+  - bundle the Soulseek sidecar
+  - smoke test (generated click track, analyse, write tags, read them back)
+  - zip
+- [ ] App icon and version resource; version from one place (`CMakeLists.txt` `project(VERSION)`)
+- [ ] Release asset naming: `WreckBox-<v>-win-native-x64.zip` until cut-over, then take over `windows-x64`
+      (DESIGN §9)
+- [ ] Update the README, and a FRIENDS-style install note
+
+**Done when:** pushing a tag produces a zip that runs on a clean Windows 10 VM with nothing else installed.
+
+## Phase 10 — Native Soulseek client
+
+Replace the sidecar with C++ that covers what `slsk_sync.py` uses from `aioslsk`:
+
+- server login
+- search
+- peer connections, including the firewall-piercing indirect connect
+- the transfer queue and file download
+
+Remove bundled Python.
+
+**Done when:** the same sync runs without Python, with equal or better results than the sidecar over a week of real
+use.
+
+---
+
+## Cross-cutting
+
+- Before calling a phase done, compare its visible behaviour with the Flutter app side by side on the same library
+  copy.
+- Every deliberate shortcut gets a `ponytail:` comment naming its limit and how to upgrade it.
+- Never test against the real `Music\WreckBox`. Use a copy (`WRECKBOX_TEST_LIBRARY`).
