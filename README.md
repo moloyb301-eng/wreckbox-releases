@@ -58,6 +58,9 @@ The latest build of this branch — includes the file-type column and the "My fo
 
 > Windows 10 or 11, 64-bit. Uses the same `Music\WreckBox` library as the original app.
 
+> **Known:** the account, bug reports and update check still use the original WreckBox services, and the version
+> still reads 0.1.0. See [CHANGELOG.md](CHANGELOG.md).
+
 <br>
 
 ## ✨ Features
@@ -172,24 +175,32 @@ library choices, performance budget, testing.
 
 ```
 wreckbox-win/
-  CMakeLists.txt        build definition (one exe + wbcore + tests)
+  CMakeLists.txt        build definition (one exe + wbcore + tests); the version lives here only
+  CHANGELOG.md          versions, what landed in each, how to make a release
   vcpkg.json            third-party libs, pinned with builtin-baseline
-  cmake/                vlc.cmake (download + verify + deploy libVLC), vlc_plugins.txt
+  cmake/                vlc.cmake (download + verify + deploy libVLC), vlc_plugins.txt, milkdrop.cmake
+  .github/workflows/    CI: build, test, smoke-test and zip on Windows; publish on v* tags
   scripts/
     build.ps1           find VS Build Tools, configure, build, test
+    package.ps1         the release zip in dist\
+    smoke.ps1           smoke test of a finished folder (engine, app window, Soulseek sidecar)
+    bundle_soulseek.ps1 embedded Python + aioslsk for the Soulseek sidecar
     parity.py           C++ engine vs Rust engine on real files
+  sidecar/              slsk_sync.py, the Soulseek helper (until the native client replaces it)
+  downloads/            the latest release zip (this branch only)
   src/
     engine/             decoding, analysis, tags — no UI, no globals
     model/              library / state / analysis / settings JSON, paths
     library/            store (scan, analyse, organise, tag), matcher, Downloads watcher
     sources/            playlist importers + catalogue lookups; merge into library.json; Playlist Sync
     player/             libVLC engine, miniaudio output, queue, playlist files, visualizer maths, MilkDrop
-    net/                WinHTTP client, OAuth (PKCE + loopback sign-in)
+    net/                WinHTTP client, OAuth (PKCE + loopback sign-in), phone sync, account, Soulseek (slsk/)
     ui/                 window (main.cpp), gfx, widgets, screens, cover cache, media controls, jobs, theme
     tools/wbcore.cpp    command-line front end to the engine
   res/                  icon, embedded fonts (Urbanist, Doto — OFL), manifest, version info, licenses/
-  tests/                engine / model / library / sources / player tests — plain asserts, no framework
-  docs/                 DESIGN.md (architecture) · PLAN.md (phased plan)
+  tests/                11 suites (engine, model, library, sources, player, sync, extras, Soulseek ×4) — plain
+                        asserts, no framework; audio fixtures in tests/fixtures
+  docs/                 DESIGN.md · PLAN.md · INSTALL.md · MILKDROP-PLAN.md
   reference/wreckbox/   the original repo, for porting (git-ignored, not built)
 ```
 
@@ -197,9 +208,9 @@ wreckbox-win/
 
 | Branch | Where | Meaning |
 |---|---|---|
-| `main` | this repo | Day-to-day work. The live / default branch. |
-| `feature/<name>` | this repo | Bigger features, merged back when the tests pass. |
-| `windows-native` | [wreckbox-releases](https://github.com/moloyb301-eng/wreckbox-releases/tree/windows-native) | Public mirror that carries the downloadable zip. |
+| `main` | the developer's PC | Day-to-day work; every commit is pushed to `windows-native`. |
+| `feature/<name>` | the developer's PC | Bigger features, merged into `main` when the tests pass. |
+| `windows-native` | [wreckbox-releases](https://github.com/moloyb301-eng/wreckbox-releases/tree/windows-native) | The public copy of `main`, with the downloadable zip. The repo's own `main`, tags and releases belong to the original app and aren't touched. |
 
 <br>
 
@@ -232,8 +243,8 @@ Output lands in `build\Release\` (or `build\Debug\`):
   '[{"path":"t.wav","title":"T","bpm":120,"key":"A minor"}]' | build\Release\wbcore.exe write-tags
   ```
   Also `wbcore bench FILE…` — where the time goes (decode / tempo / key, in ms).
-- Unit tests: `engine_tests.exe`, `model_tests.exe`, `library_tests.exe`, `sources_tests.exe`, `player_tests.exe`
-  (also run by `ctest`; player tests play muted). Optional extras:
+- Tests: 11 suites (`engine_tests.exe`, `library_tests.exe`, `player_tests.exe`, `slsk_tests.exe`…), all run by
+  `build.ps1` through `ctest`; the player tests play muted. Optional extras:
   - `WRECKBOX_TEST_LIBRARY=<a COPY of Music\WreckBox>` — round-trip a real library
   - `WRECKBOX_NET_TESTS=1` — call the real Deezer / MusicBrainz / YouTube services
   - `WRECKBOX_BENCH=1` — time load & search on 5,000 tracks
@@ -269,6 +280,21 @@ python scripts/parity.py "C:\Users\you\Music\WreckBox\Tracks"
 files/folders on the window, or use **+** in the player bar: Open files (Ctrl+O), Open folder, Open URL (Ctrl+U, for
 radio and `.m3u` / `.pls`). **Space** plays / pauses; media keys work even in the background. The sliders button opens
 VLC's **equalizer** (presets, 10 bands, preamp) and the **volume normalizer**.
+
+</details>
+
+<details>
+<summary><b>File type & My folders</b></summary>
+<br>
+
+Every track list has a **Type** column (FLAC stands out in purple) and **FLAC / Not FLAC** filters: *Not FLAC* shows
+the songs you have in another format, the ones worth replacing.
+
+**My folders** (sidebar, under Library) lists the songs that were already on your PC — not the ones WreckBox
+downloaded (its own `Music\WreckBox` folder is always left out). It looks in your `Downloads` and `Music` folders and
+any folder you add with **Add folder…**; the header names them. A song that matches your library shows the library's
+names and cover; the details panel shows the type and size and says "Not in your library" when it isn't. *Write tags*
+is hidden there, so your own files keep their tags. A file WreckBox can't analyse doesn't appear.
 
 </details>
 
@@ -310,6 +336,8 @@ Cloudflare's `cloudflared` the first time, ~55 MB). `WRECKBOX_SYNC_PORT` changes
 - [docs/DESIGN.md](docs/DESIGN.md) — goals, architecture, threading, the file & protocol formats we stay compatible
   with, library choices, performance budget, testing.
 - [docs/PLAN.md](docs/PLAN.md) — what gets built in which order, and how each phase is verified.
+- [docs/INSTALL.md](docs/INSTALL.md) — getting started · [docs/MILKDROP-PLAN.md](docs/MILKDROP-PLAN.md) — the
+  visualizer's design.
 - [CHANGELOG.md](CHANGELOG.md) — versions and what landed in each.
 
 <br>
