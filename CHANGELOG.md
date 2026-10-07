@@ -3,7 +3,8 @@
 Versions follow [semantic versioning](https://semver.org): MAJOR.MINOR.PATCH.
 
 **Making a release**
-1. Set the version in `CMakeLists.txt` (`project(wreckbox VERSION x.y.z)`); it's the only place it lives.
+1. Set the version in `CMakeLists.txt` (`project(wreckbox VERSION x.y.z)`); the exe's version resource and the zip's
+   name follow it. Also `res/app.manifest`, `vcpkg.json` and the README's download links (badge and one-line command).
 2. Add a section for it below.
 3. Commit, then tag the commit: `git tag -a vx.y.z -m "WreckBox x.y.z"`.
 4. Pushing the tag runs CI, which builds and tests the zip and refuses a tag that doesn't match `CMakeLists.txt`.
@@ -11,6 +12,8 @@ Versions follow [semantic versioning](https://semver.org): MAJOR.MINOR.PATCH.
 Day-to-day work goes on `main`; bigger features on a branch (`feature/<name>`), merged when the tests pass.
 
 ## Unreleased
+
+## 0.2.0 — 2026-10-08
 
 - **App icon**: the WreckBox logo from the README, instead of Flutter's default "F" (window, taskbar, Explorer)
 - **Full-screen player bar**: one bar across the bottom of the screen, with "Up next" inside it, and a button (or **H**)

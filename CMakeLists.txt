@@ -4,7 +4,7 @@ cmake_minimum_required(VERSION 3.21)
 set(VCPKG_TARGET_TRIPLET x64-windows-static CACHE STRING "")
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
-project(wreckbox VERSION 0.1.0 LANGUAGES CXX)
+project(wreckbox VERSION 0.2.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

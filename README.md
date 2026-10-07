@@ -45,7 +45,7 @@ build and this one freely.
 
 <div align="center">
 
-[![Download zip](https://img.shields.io/badge/WreckBox%200.1.0-win--native--x64.zip%20%C2%B7%2071%20MB-EFAF86?style=for-the-badge&logo=windows&logoColor=08080A&labelColor=08080A)](downloads/WreckBox-0.1.0-win-native-x64.zip?raw=1)
+[![Download zip](https://img.shields.io/badge/WreckBox%200.2.0-win--native--x64.zip%20%C2%B7%2071%20MB-EFAF86?style=for-the-badge&logo=windows&logoColor=08080A&labelColor=08080A)](downloads/WreckBox-0.2.0-win-native-x64.zip?raw=1)
 
 </div>
 
@@ -57,7 +57,7 @@ Press **Win + R**, type `cmd`, press Enter, then paste this (the copy button is 
 Enter. It downloads WreckBox, unzips it into `%LOCALAPPDATA%\Programs\WreckBox` and starts it. Run it again to update.
 
 ```cmd
-curl -fL -o "%TEMP%\WreckBox.zip" https://github.com/moloyb301-eng/wreckbox-releases/raw/windows-native/downloads/WreckBox-0.1.0-win-native-x64.zip && (if not exist "%LOCALAPPDATA%\Programs\WreckBox" mkdir "%LOCALAPPDATA%\Programs\WreckBox") && tar -xf "%TEMP%\WreckBox.zip" -C "%LOCALAPPDATA%\Programs\WreckBox" && del "%TEMP%\WreckBox.zip" && start "" "%LOCALAPPDATA%\Programs\WreckBox\wreckbox.exe"
+curl -fL -o "%TEMP%\WreckBox.zip" https://github.com/moloyb301-eng/wreckbox-releases/raw/windows-native/downloads/WreckBox-0.2.0-win-native-x64.zip && (if not exist "%LOCALAPPDATA%\Programs\WreckBox" mkdir "%LOCALAPPDATA%\Programs\WreckBox") && tar -xf "%TEMP%\WreckBox.zip" -C "%LOCALAPPDATA%\Programs\WreckBox" && del "%TEMP%\WreckBox.zip" && start "" "%LOCALAPPDATA%\Programs\WreckBox\wreckbox.exe"
 ```
 
 Close WreckBox before updating. It uses `curl` and `tar`, which come with Windows 10 and 11.
@@ -71,8 +71,7 @@ Close WreckBox before updating. It uses `curl` and `tar`, which come with Window
 
 > Windows 10 or 11, 64-bit. Uses the same `Music\WreckBox` library as the original app.
 
-> **Known:** the account and bug reports still use the original WreckBox services, and the version still reads
-> 0.1.0. The update check only announces releases of this build (not the original app's). See [CHANGELOG.md](CHANGELOG.md).
+> **Known:** the account and bug reports still use the original WreckBox services. The update check only announces releases of this build (not the original app's). See [CHANGELOG.md](CHANGELOG.md).
 
 <br>
 
