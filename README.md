@@ -19,6 +19,18 @@ It is a **drop-in replacement**: it reads and writes the same `Music\WreckBox` f
 the same phone-sync protocol, so the existing Android app and existing libraries keep working. You can switch
 between the Flutter build and this one.
 
+## Download
+
+**[WreckBox-0.1.0-win-native-x64.zip](downloads/WreckBox-0.1.0-win-native-x64.zip?raw=1)** (71 MB): the latest build of
+this branch, including the file type column and the "On this PC" list.
+
+1. Unzip it into a folder of its own (e.g. `C:\WreckBox`). The app needs the files next to it, so don't move
+   `wreckbox.exe` out on its own.
+2. Run **`wreckbox.exe`**. Windows SmartScreen may warn that the app is unrecognised (it isn't signed): choose
+   *More info* → *Run anyway*.
+
+Windows 10 or 11, 64-bit. It uses the same `Music\WreckBox` library as the original app.
+
 ## Status
 
 Work happens in phases — see [docs/PLAN.md](docs/PLAN.md) for the full list with checkboxes.
