@@ -433,6 +433,19 @@ void LibraryStore::set_track_state(const std::string& id, TrackState s) {
     state_.tracks[id] = std::move(s);
 }
 
+void LibraryStore::set_download_priority(std::vector<std::string> priorities, std::optional<bool> priority_only) {
+    {
+        std::lock_guard lock(m_);
+        state_.download_priority = std::move(priorities);
+        if (priority_only) state_.priority_only = *priority_only;
+        std::string detail;
+        for (const auto& k : state_.download_priority) detail += (detail.empty() ? "" : " → ") + k.substr(k.find(':') + 1);
+        log_locked("queue", detail.empty() ? "priorities cleared" : "priorities: " + detail);
+    }
+    save();
+    changed();
+}
+
 std::vector<std::string> LibraryStore::scan_folders() const {
     std::lock_guard lock(m_);
     return state_.scan_folders;

@@ -24,6 +24,7 @@ public:
         bool operator==(const State&) const = default;
     };
     void update(const State& s);  // cheap when nothing changed
+    void shutdown();              // before the window is destroyed
 
 private:
     struct Impl;

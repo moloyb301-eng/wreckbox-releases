@@ -87,6 +87,8 @@ public:
     void add_scan_folder(const std::string& folder);
     void remove_scan_folder(const std::string& folder);
     void reset_scan_folders();
+    // The Soulseek download order (keys "playlist:<name>" / "genre:<name>") and whether only those are downloaded.
+    void set_download_priority(std::vector<std::string> priorities, std::optional<bool> priority_only = std::nullopt);
 
     // MARK: Artwork
     std::filesystem::path artwork_file(const LibraryTrack& t) const;

@@ -22,6 +22,7 @@
 #include "model/settings.h"
 #include "net/account.h"
 #include "net/sync_server.h"
+#include "net/soulseek.h"
 #include "net/tunnel.h"
 #include "net/updates.h"
 #include "player/player.h"
@@ -57,6 +58,7 @@ struct App {
     Jobs jobs;
     sync::Server phone_server{store};  // phone sync + "use from anywhere": idle (a thread asleep) until started
     sync::Tunnel tunnel{phone_server};
+    soulseek::Sync soulseek{store};            // the sidecar: nothing runs until "Start sync"
     std::unique_ptr<DownloadsWatcher> watcher;  // files new downloads into the library; after the store it works on
     std::unique_ptr<player::Player> player;  // before the view, which holds a reference to it
     Gfx gfx;
@@ -87,6 +89,8 @@ struct App {
         player->on_changed = [this] { repaint(); };
         view = std::make_unique<View>(h, store, jobs, *ui, *player);
         view->attach_phone(phone_server, tunnel);
+        view->attach_soulseek(soulseek);
+        soulseek.on_changed = [this] { InvalidateRect(hwnd, nullptr, FALSE); };
         tunnel.on_changed = [this] { InvalidateRect(hwnd, nullptr, FALSE); };  // from the tunnel's thread
         DragAcceptFiles(h, TRUE);
         if (!media.init(h)) app_log("Windows media controls unavailable; media keys work only while WreckBox is focused");
@@ -109,6 +113,7 @@ struct App {
                          watcher = std::make_unique<DownloadsWatcher>(store, *paths::downloads());
                          watcher->start();
                      }
+                     soulseek.start_watching();  // reads results every 15 s and files what the sidecar finished
                      check_for_update();
                  });
     }
@@ -320,7 +325,9 @@ struct App {
                 return 0;
             case WM_DESTROY:
                 player->stop();
+                media.shutdown();
                 tunnel.stop();
+                soulseek.stop_process();
                 watcher.reset();
                 account::shutdown();
                 jobs.stop();
@@ -364,7 +371,8 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
     paths::init(root);
     Settings::load();
 
-    App app;
+    auto app_owner = std::make_unique<App>();  // destroyed before COM goes away (its Direct2D / WIC objects need it)
+    App& app = *app_owner;
     g_app = &app;
     WNDCLASSEXW wc{sizeof wc};
     wc.style = CS_DBLCLKS;  // double-click leaves the full-screen visualizer
@@ -402,6 +410,8 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
         TranslateMessage(&msg);
         DispatchMessageW(&msg);
     }
+    g_app = nullptr;
+    app_owner.reset();
     CoUninitialize();
     return 0;
 }

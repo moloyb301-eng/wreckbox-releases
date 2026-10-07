@@ -24,9 +24,17 @@ struct MediaControls::Impl {
 
 MediaControls::MediaControls() = default;
 
-MediaControls::~MediaControls() {
-    if (impl_ && impl_->smtc) impl_->smtc->remove_ButtonPressed(impl_->token);
+MediaControls::~MediaControls() { shutdown(); }
+
+// Must run while the window still exists: removing the handler from a transport-controls object whose window is gone
+// crashed the app on exit.
+void MediaControls::shutdown() {
+    if (impl_ && impl_->smtc) {
+        impl_->smtc->put_IsEnabled(false);
+        impl_->smtc->remove_ButtonPressed(impl_->token);
+    }
     delete impl_;
+    impl_ = nullptr;
 }
 
 bool MediaControls::init(HWND hwnd) {

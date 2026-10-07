@@ -9,6 +9,7 @@
 #include "model/settings.h"
 #include "net/account.h"
 #include "net/oauth.h"
+#include "net/soulseek.h"
 #include "net/tunnel.h"
 #include "sources/csv_import.h"
 #include "sources/spotify.h"
@@ -21,7 +22,7 @@ using namespace theme;
 
 namespace {
 
-enum Field : int { kSpotifyId = 101, kGoogleId, kGoogleSecret, kReporterName, kReporterContact };
+enum Field : int { kSpotifyId = 101, kGoogleId, kGoogleSecret, kReporterName, kReporterContact, kSlskUser, kSlskPass };
 
 std::string trim(std::string s) {
     s.erase(0, s.find_first_not_of(" \t\r\n"));
@@ -250,6 +251,37 @@ void View::settings_page(const Rect& r) {
                   }}});
     });
 
+    if (slsk_)
+        section(L"Soulseek", false, [&] {
+            para(slsk_->configured() ? L"Logged in as " + widen(slsk_->username()) + L". Enter a new login to change it."
+                                     : L"A Soulseek account is free — the first login with a new username creates it. If the name is taken, pick another.",
+                 12.5f);
+            {
+                const bool native = soulseek::Sync::use_native(), forced = !soulseek::Sync::sidecar_present();
+                para(native ? (forced ? L"Sync runs with WreckBox's built-in Soulseek client (the Python component isn't installed). It downloads; it doesn't share your files yet."
+                                      : L"Sync runs with WreckBox's built-in Soulseek client (beta). It downloads; it doesn't share your files yet.")
+                            : L"Sync runs with the bundled Python component, which also shares your Tracks folder. The built-in client (beta) is the same sync without Python.",
+                     12, text3);
+                if (!forced)
+                    buttons({{native ? L"Use the Python component" : L"Use the built-in client (beta)", icon::sync, Ui::Pill::glass,
+                              [this, native] { soulseek::Sync::set_use_native(!native); }}});
+            }
+            field(kSlskUser, L"Soulseek username", slsk_->username());
+            field(kSlskPass, L"Soulseek password", "", true);
+            buttons({{L"Save Soulseek login", icon::check, Ui::Pill::primary, [this] {
+                          const std::string user = trim(edit_text(kSlskUser)), pass = edit_text(kSlskPass);
+                          if (user.empty() || pass.empty()) return set_status("Enter both the Soulseek username and password.");
+                          try {
+                              slsk_->save_login(user, pass);
+                              if (const auto it = edits_.find(kSlskPass); it != edits_.end()) SetWindowTextW(it->second.hwnd, L"");
+                              set_status("Soulseek login saved.");
+                          } catch (const std::exception& e) {
+                              set_status(std::string("Couldn't save the login: ") + e.what());
+                          }
+                      }}});
+            status_line();
+        });
+
     // Where WreckBox looks for your songs, and the Downloads organiser.
     const auto folders = store_.scan_folders();
     section(L"Library folders", false, [&] {
@@ -274,7 +306,7 @@ void View::settings_page(const Rect& r) {
                  {L"Reset to defaults", icon::undo, Ui::Pill::glass, [this] { store_.reset_scan_folders(); }},
                  {L"Scan now", icon::scan, Ui::Pill::glass, [this] { jobs_.run([this] { store_.rescan(); }); }}});
         const bool organise = s.organise_downloads;
-        const std::wstring downloads = paths::downloads() ? paths::downloads()->wstring() : L"(not used with a test library)";
+        const std::wstring downloads = paths::downloads() ? paths::downloads()->wstring() : L"not used with a test library";
         para(std::wstring(L"Organise new downloads automatically: ") + (organise ? L"on" : L"off") +
                  L". New audio files in your Downloads folder (" + downloads +
                  L") that belong to your library are tagged, renamed and moved into Tracks. Others are left alone.",

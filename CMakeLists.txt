@@ -14,6 +14,7 @@ add_compile_definitions(UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN _CRT_SECUR
 find_package(TagLib CONFIG REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
 find_package(httplib CONFIG REQUIRED)
+find_package(ZLIB REQUIRED)
 find_package(unofficial-nayuki-qr-code-generator CONFIG REQUIRED)
 find_package(GLEW REQUIRED)
 find_package(projectM4 CONFIG REQUIRED COMPONENTS Playlist)
@@ -45,6 +46,11 @@ add_library(wblibrary STATIC
   src/net/bug_report.cpp
   src/net/http_client.cpp
   src/net/oauth.cpp
+  src/net/slsk/client.cpp
+  src/net/slsk/match.cpp
+  src/net/slsk/protocol.cpp
+  src/net/slsk/sync.cpp
+  src/net/soulseek.cpp
   src/net/sync_server.cpp
   src/net/tunnel.cpp
   src/net/updates.cpp
@@ -53,7 +59,7 @@ add_library(wblibrary STATIC
   src/sources/spotify.cpp
   src/sources/youtube.cpp
   src/sources/sync.cpp)
-target_link_libraries(wblibrary PUBLIC wbengine wbmodel PRIVATE winhttp ws2_32 bcrypt shell32 iphlpapi httplib::httplib)
+target_link_libraries(wblibrary PUBLIC wbengine wbmodel PRIVATE winhttp ws2_32 bcrypt shell32 iphlpapi normaliz httplib::httplib ZLIB::ZLIB)
 
 # Player: VLC's engine (libVLC, downloaded by cmake/vlc.cmake) → miniaudio output, with a tap for the visualizer.
 include(cmake/vlc.cmake)
@@ -81,6 +87,7 @@ add_executable(wreckbox WIN32
   src/ui/view_settings.cpp
   src/ui/view_phone.cpp
   src/ui/view_extras.cpp
+  src/ui/view_soulseek.cpp
   src/ui/screenshot.cpp
   src/ui/view_player.cpp
   src/ui/view_visualizer.cpp
@@ -122,6 +129,19 @@ add_test(NAME sources_tests COMMAND sources_tests)
 add_executable(extras_tests tests/extras_tests.cpp)
 target_link_libraries(extras_tests PRIVATE wblibrary httplib::httplib)
 add_test(NAME extras_tests COMMAND extras_tests)
+add_executable(slsk_tests tests/slsk_tests.cpp)
+target_link_libraries(slsk_tests PRIVATE wblibrary httplib::httplib)
+target_compile_definitions(slsk_tests PRIVATE WB_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures")
+add_test(NAME slsk_tests COMMAND slsk_tests)
+add_executable(slsk_net_tests tests/slsk_net_tests.cpp)
+target_link_libraries(slsk_net_tests PRIVATE wblibrary)
+add_test(NAME slsk_net_tests COMMAND slsk_net_tests)
+add_executable(slsk_sync_tests tests/slsk_sync_tests.cpp)
+target_link_libraries(slsk_sync_tests PRIVATE wblibrary)
+add_test(NAME slsk_sync_tests COMMAND slsk_sync_tests)
+add_executable(soulseek_tests tests/soulseek_tests.cpp)
+target_link_libraries(soulseek_tests PRIVATE wblibrary)
+add_test(NAME soulseek_tests COMMAND soulseek_tests)
 add_executable(sync_tests tests/sync_tests.cpp)
 target_link_libraries(sync_tests PRIVATE wblibrary httplib::httplib)
 add_test(NAME sync_tests COMMAND sync_tests)

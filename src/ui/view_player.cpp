@@ -356,6 +356,11 @@ bool View::app_command(int cmd) {
 
 bool View::player_key(WPARAM vk) {
     const bool ctrl = GetKeyState(VK_CONTROL) & 0x8000;
+    if (slsk_query_open_) {
+        if (vk == VK_RETURN) slsk_query_submit();
+        if (vk == VK_ESCAPE) close_slsk_query();
+        return vk == VK_RETURN || vk == VK_ESCAPE;
+    }
     if (bug_open_) {  // the dialog's text boxes take Esc themselves; this is for a click on the page first
         if (vk == VK_ESCAPE) close_bug_report();
         return vk == VK_ESCAPE;

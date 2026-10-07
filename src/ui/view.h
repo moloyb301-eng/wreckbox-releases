@@ -27,6 +27,9 @@ namespace wb::sync {
 class Server;
 class Tunnel;
 }  // namespace wb::sync
+namespace wb::soulseek {
+class Sync;
+}
 
 namespace wb::ui {
 
@@ -34,6 +37,7 @@ inline constexpr UINT WM_APP_TAB = WM_APP + 3;  // wParam: text box id, lParam: 
 inline constexpr int kSearchBox = 1;           // control id of the search box; settings fields use 100+
 inline constexpr int kUrlBox = 201;            // Open URL…
 inline constexpr int kBugTitle = 401, kBugBody = 402;  // Report a bug
+inline constexpr int kSlskQuery = 403;                  // Soulseek: custom search words
 inline constexpr UINT_PTR kRefreshTimer = 1, kPlayerTimer = 2, kTooltipTimer = 3;
 
 class View {
@@ -50,6 +54,7 @@ public:
     void set_fullscreen(bool on);
     bool fullscreen() const { return fullscreen_; }
     void set_update(std::optional<updates::Info> info);  // the startup check found a newer release (or nothing)
+    void attach_soulseek(soulseek::Sync& sl);
     void attach_phone(sync::Server& server, sync::Tunnel& tunnel);  // the phone-sync services (owned by the app)
     void play_paths(std::vector<std::string> paths);  // files, folders, playlists or URLs (Open, drop, command line)
 
@@ -158,6 +163,19 @@ private:
     bool bug_open_ = false, bug_sending_ = false, bug_include_shot_ = true, bug_focused_ = false;
     std::string bug_shot_;  // PNG of the app, taken when the dialog opened
     std::vector<bugs::Screenshot> bug_extra_;
+
+    // Soulseek sync and the download queue (view_soulseek.cpp)
+    void soulseek_page(const Rect& r);
+    void queue_page(const Rect& r);
+    void slsk_query_dialog();
+    void slsk_query_submit();
+    void close_slsk_query();
+    void slsk_message(std::string s);
+    soulseek::Sync* slsk_ = nullptr;
+    std::string slsk_tab_ = "not_found", slsk_msg_;  // slsk_msg_ guarded by status_m_
+    float slsk_scroll_ = 0, queue_scroll_ = 0;
+    bool slsk_query_open_ = false, slsk_query_focused_ = false;
+    std::string slsk_query_for_, slsk_query_default_;
 
     // Sync to phone (view_phone.cpp)
     sync::Server* sync_ = nullptr;

@@ -18,7 +18,7 @@ namespace {
 // ↑/↓ move through the list and F5 rescans.
 LRESULT CALLBACK edit_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR, DWORD_PTR) {
     const int id = GetDlgCtrlID(h);
-    const bool in_bug_report = id == kBugTitle || id == kBugBody;
+    const bool in_bug_report = id == kBugTitle || id == kBugBody || id == kSlskQuery;  // dialogs that Esc closes
     if (msg == WM_KEYDOWN) {
         if (wp == VK_TAB) {
             PostMessageW(GetParent(h), WM_APP_TAB, WPARAM(id), (GetKeyState(VK_SHIFT) & 0x8000) ? 1 : 0);
@@ -29,7 +29,7 @@ LRESULT CALLBACK edit_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR, DWO
             if (id == kUrlBox || in_bug_report) SendMessageW(GetParent(h), WM_KEYDOWN, wp, lp);  // closes the dialog too
             return 0;
         }
-        if (id == kUrlBox && wp == VK_RETURN) {
+        if ((id == kUrlBox || id == kSlskQuery) && wp == VK_RETURN) {
             SendMessageW(GetParent(h), WM_KEYDOWN, wp, lp);
             return 0;
         }
@@ -86,7 +86,7 @@ HWND View::edit(int id, const Rect& r, bool password, const wchar_t* cue, const 
     Edit& e = edits_[id];
     e.bg = fill;
     if (!e.hwnd) {
-        e.hwnd = CreateWindowExW(0, L"EDIT", widen(initial).c_str(), WS_CHILD | (multiline ? ES_MULTILINE | ES_AUTOVSCROLL | ES_WANTRETURN | WS_VSCROLL : ES_AUTOHSCROLL) | (password ? ES_PASSWORD : 0), 0, 0, 10, 10, hwnd_,
+        e.hwnd = CreateWindowExW(0, L"EDIT", widen(initial).c_str(), WS_CHILD | (multiline ? ES_MULTILINE | ES_AUTOVSCROLL | ES_WANTRETURN : ES_AUTOHSCROLL) | (password ? ES_PASSWORD : 0), 0, 0, 10, 10, hwnd_,
                                  reinterpret_cast<HMENU>(INT_PTR(id)), nullptr, nullptr);
         SendMessageW(e.hwnd, WM_SETFONT, reinterpret_cast<WPARAM>(edit_font_), FALSE);
         SendMessageW(e.hwnd, EM_SETCUEBANNER, TRUE, reinterpret_cast<LPARAM>(cue));
@@ -191,13 +191,14 @@ void View::paint() {
     page(Rect{252 + 22, banner ? 56.f : 0.f, column_r - 22, H - 10 - bar_h - 10});
     player_bar(Rect{252 + 22, H - 10 - bar_h, column_r - 10, H - 10});
     if (inspect) inspector(Rect{W - 340, 10, W - 10, H - 10}, overlay);
-    if (eq_open_ || url_open_ || bug_open_) {
+    if (eq_open_ || url_open_ || bug_open_ || slsk_query_open_) {
         // Native text boxes would sit on top of a pop-over: hide them while one is open (the dialogs' own boxes excepted).
         for (auto& [id, e] : edits_)
-            if (id != kUrlBox && id != kBugTitle && id != kBugBody) e.used = false;
+            if (id != kUrlBox && id != kBugTitle && id != kBugBody && id != kSlskQuery) e.used = false;
         if (eq_open_) eq_panel();
         if (url_open_) url_dialog();
         if (bug_open_) bug_dialog();
+        if (slsk_query_open_) slsk_query_dialog();
     }
     if (const UINT due = ui_.draw_tooltip()) SetTimer(hwnd_, kTooltipTimer, due + 10, nullptr);
     hide_unused_edits();
@@ -327,9 +328,9 @@ void View::page(const Rect& r) {
     switch (page_) {
         case Page::home: return home(r);
         case Page::settings: return settings_page(r);
-        case Page::soulseek: return placeholder(r, L"Soulseek sync", L"Download queue, retries and sync results", L"phase 8");
+        case Page::soulseek: return soulseek_page(r);
         case Page::phone: return phone_page(r);
-        case Page::queue: return placeholder(r, L"Download queue", L"Soulseek downloads missing tracks in this order", L"phase 8");
+        case Page::queue: return queue_page(r);
         default: return track_page(r);
     }
 }

@@ -1,0 +1,4048 @@
+{
+ "clean": [
+  [
+   "Selecta (feat. BEAM)",
+   "Selecta"
+  ],
+  [
+   "Song ft. Someone",
+   "Song"
+  ],
+  [
+   "Track (Original Mix)",
+   "Track"
+  ],
+  [
+   "Track - Original Mix",
+   "Track"
+  ],
+  [
+   "Hit - Remastered 2011",
+   "Hit"
+  ],
+  [
+   "Tune (Official Video)",
+   "Tune (Official Video)"
+  ],
+  [
+   "Tune [Free Download]",
+   "Tune [Free Download]"
+  ],
+  [
+   "Tune (Extended Mix)",
+   "Tune (Extended Mix)"
+  ],
+  [
+   "Title [feat. A & B] - Radio Edit",
+   "Title"
+  ],
+  [
+   "Plain",
+   "Plain"
+  ],
+  [
+   "(With You)",
+   ""
+  ],
+  [
+   "Love Me - Mono Version",
+   "Love Me"
+  ],
+  [
+   "Song (Remastered 2009)",
+   "Song"
+  ],
+  [
+   "Song [remaster]",
+   "Song"
+  ],
+  [
+   "A feat. B",
+   "A"
+  ],
+  [
+   "A FT. B (Live)",
+   "A"
+  ],
+  [
+   "Day Tripper - Stereo",
+   "Day Tripper"
+  ],
+  [
+   "  padded  ",
+   "padded"
+  ],
+  [
+   "Name (feat. X) (Original Mix)",
+   "Name"
+  ]
+ ],
+ "matches": [
+  {
+   "duration": 190,
+   "path": "Skrillex\\Selecta (feat. BEAM)\\01 Skrillex - Selecta.mp3",
+   "result": true,
+   "tol": 5,
+   "track": {
+    "artists": [
+     "Skrillex",
+     "BEAM"
+    ],
+    "durationMs": 190000,
+    "id": "t1",
+    "title": "Selecta"
+   }
+  },
+  {
+   "duration": 210,
+   "path": "music\\Selecta.flac",
+   "result": false,
+   "tol": 5,
+   "track": {
+    "artists": [
+     "Skrillex",
+     "BEAM"
+    ],
+    "durationMs": 190000,
+    "id": "t1",
+    "title": "Selecta"
+   }
+  },
+  {
+   "duration": 190,
+   "path": "a\\b\\c\\Selecta (Skrillex Remix).mp3",
+   "result": false,
+   "tol": 5,
+   "track": {
+    "artists": [
+     "Skrillex",
+     "BEAM"
+    ],
+    "durationMs": 190000,
+    "id": "t1",
+    "title": "Selecta"
+   }
+  },
+  {
+   "duration": null,
+   "path": "Skrillex - Selecta (Live).mp3",
+   "result": false,
+   "tol": 5,
+   "track": {
+    "artists": [
+     "Skrillex",
+     "BEAM"
+    ],
+    "durationMs": 190000,
+    "id": "t1",
+    "title": "Selecta"
+   }
+  },
+  {
+   "duration": 189,
+   "path": "Various\\Hits\\Selecta.wav",
+   "result": false,
+   "tol": 5,
+   "track": {
+    "artists": [
+     "Skrillex",
+     "BEAM"
+    ],
+    "durationMs": 190000,
+    "id": "t1",
+    "title": "Selecta"
+   }
+  },
+  {
+   "duration": 190,
+   "path": "x\\Skrillex - Selecta - karaoke version.mp3",
+   "result": false,
+   "tol": 5,
+   "track": {
+    "artists": [
+     "Skrillex",
+     "BEAM"
+    ],
+    "durationMs": 190000,
+    "id": "t1",
+    "title": "Selecta"
+   }
+  },
+  {
+   "duration": 241,
+   "path": "Fred again..\\Actual Life\\Danielle (smile on my face).flac",
+   "result": false,
+   "tol": 5,
+   "track": {
+    "artists": [
+     "Skrillex",
+     "BEAM"
+    ],
+    "durationMs": 190000,
+    "id": "t1",
+    "title": "Selecta"
+   }
+  },
+  {
+   "duration": 250,
+   "path": "Fred_again\\danielle smile on my face.mp3",
+   "result": false,
+   "tol": 5,
+   "track": {
+    "artists": [
+     "Skrillex",
+     "BEAM"
+    ],
+    "durationMs": 190000,
+    "id": "t1",
+    "title": "Selecta"
+   }
+  },
+  {
+   "duration": 578,
+   "path": "RUFUS DU SOL\\Innerbloom.m4a",
+   "result": false,
+   "tol": 5,
+   "track": {
+    "artists": [
+     "Skrillex",
+     "BEAM"
+    ],
+    "durationMs": 190000,
+    "id": "t1",
+    "title": "Selecta"
+   }
+  },
+  {
+   "duration": 700,
+   "path": "Rüfüs du Sol - Innerbloom (Extended Mix).mp3",
+   "result": false,
+   "tol": 5,
+   "track": {
+    "artists": [
+     "Skrillex",
+     "BEAM"
+    ],
+    "durationMs": 190000,
+    "id": "t1",
+    "title": "Selecta"
+   }
+  },
+  {
+   "duration": 190,
+   "path": "Other Artist\\Selecta.mp3",
+   "result": false,
+   "tol": 5,
+   "track": {
+    "artists": [
+     "Skrillex",
+     "BEAM"
+    ],
+    "durationMs": 190000,
+    "id": "t1",
+    "title": "Selecta"
+   }
+  },
+  {
+   "duration": null,
+   "path": "Selecta",
+   "result": false,
+   "tol": 5,
+   "track": {
+    "artists": [
+     "Skrillex",
+     "BEAM"
+    ],
+    "durationMs": 190000,
+    "id": "t1",
+    "title": "Selecta"
+   }
+  },
+  {
+   "duration": 1,
+   "path": "no\\title\\here.mp3",
+   "result": false,
+   "tol": 5,
+   "track": {
+    "artists": [
+     "Skrillex",
+     "BEAM"
+    ],
+    "durationMs": 190000,
+    "id": "t1",
+    "title": "Selecta"
+   }
+  },
+  {
+   "duration": 190,
+   "path": "Skrillex\\Selecta (feat. BEAM)\\01 Skrillex - Selecta.mp3",
+   "result": false,
+   "tol": 5,
+   "track": {
+    "artists": [
+     "Fred again.."
+    ],
+    "durationMs": 240000,
+    "id": "t2",
+    "title": "Danielle (smile on my face)"
+   }
+  },
+  {
+   "duration": 210,
+   "path": "music\\Selecta.flac",
+   "result": false,
+   "tol": 5,
+   "track": {
+    "artists": [
+     "Fred again.."
+    ],
+    "durationMs": 240000,
+    "id": "t2",
+    "title": "Danielle (smile on my face)"
+   }
+  },
+  {
+   "duration": 190,
+   "path": "a\\b\\c\\Selecta (Skrillex Remix).mp3",
+   "result": false,
+   "tol": 5,
+   "track": {
+    "artists": [
+     "Fred again.."
+    ],
+    "durationMs": 240000,
+    "id": "t2",
+    "title": "Danielle (smile on my face)"
+   }
+  },
+  {
+   "duration": null,
+   "path": "Skrillex - Selecta (Live).mp3",
+   "result": false,
+   "tol": 5,
+   "track": {
+    "artists": [
+     "Fred again.."
+    ],
+    "durationMs": 240000,
+    "id": "t2",
+    "title": "Danielle (smile on my face)"
+   }
+  },
+  {
+   "duration": 189,
+   "path": "Various\\Hits\\Selecta.wav",
+   "result": false,
+   "tol": 5,
+   "track": {
+    "artists": [
+     "Fred again.."
+    ],
+    "durationMs": 240000,
+    "id": "t2",
+    "title": "Danielle (smile on my face)"
+   }
+  },
+  {
+   "duration": 190,
+   "path": "x\\Skrillex - Selecta - karaoke version.mp3",
+   "result": false,
+   "tol": 5,
+   "track": {
+    "artists": [
+     "Fred again.."
+    ],
+    "durationMs": 240000,
+    "id": "t2",
+    "title": "Danielle (smile on my face)"
+   }
+  },
+  {
+   "duration": 241,
+   "path": "Fred again..\\Actual Life\\Danielle (smile on my face).flac",
+   "result": true,
+   "tol": 5,
+   "track": {
+    "artists": [
+     "Fred again.."
+    ],
+    "durationMs": 240000,
+    "id": "t2",
+    "title": "Danielle (smile on my face)"
+   }
+  },
+  {
+   "duration": 250,
+   "path": "Fred_again\\danielle smile on my face.mp3",
+   "result": false,
+   "tol": 5,
+   "track": {
+    "artists": [
+     "Fred again.."
+    ],
+    "durationMs": 240000,
+    "id": "t2",
+    "title": "Danielle (smile on my face)"
+   }
+  },
+  {
+   "duration": 578,
+   "path": "RUFUS DU SOL\\Innerbloom.m4a",
+   "result": false,
+   "tol": 5,
+   "track": {
+    "artists": [
+     "Fred again.."
+    ],
+    "durationMs": 240000,
+    "id": "t2",
+    "title": "Danielle (smile on my face)"
+   }
+  },
+  {
+   "duration": 700,
+   "path": "Rüfüs du Sol - Innerbloom (Extended Mix).mp3",
+   "result": false,
+   "tol": 5,
+   "track": {
+    "artists": [
+     "Fred again.."
+    ],
+    "durationMs": 240000,
+    "id": "t2",
+    "title": "Danielle (smile on my face)"
+   }
+  },
+  {
+   "duration": 190,
+   "path": "Other Artist\\Selecta.mp3",
+   "result": false,
+   "tol": 5,
+   "track": {
+    "artists": [
+     "Fred again.."
+    ],
+    "durationMs": 240000,
+    "id": "t2",
+    "title": "Danielle (smile on my face)"
+   }
+  },
+  {
+   "duration": null,
+   "path": "Selecta",
+   "result": false,
+   "tol": 5,
+   "track": {
+    "artists": [
+     "Fred again.."
+    ],
+    "durationMs": 240000,
+    "id": "t2",
+    "title": "Danielle (smile on my face)"
+   }
+  },
+  {
+   "duration": 1,
+   "path": "no\\title\\here.mp3",
+   "result": false,
+   "tol": 5,
+   "track": {
+    "artists": [
+     "Fred again.."
+    ],
+    "durationMs": 240000,
+    "id": "t2",
+    "title": "Danielle (smile on my face)"
+   }
+  },
+  {
+   "duration": 190,
+   "path": "Skrillex\\Selecta (feat. BEAM)\\01 Skrillex - Selecta.mp3",
+   "result": false,
+   "tol": 5,
+   "track": {
+    "artists": [
+     "RÜFÜS DU SOL"
+    ],
+    "durationMs": 577000,
+    "id": "t3",
+    "title": "Innerbloom - Original Mix"
+   }
+  },
+  {
+   "duration": 210,
+   "path": "music\\Selecta.flac",
+   "result": false,
+   "tol": 5,
+   "track": {
+    "artists": [
+     "RÜFÜS DU SOL"
+    ],
+    "durationMs": 577000,
+    "id": "t3",
+    "title": "Innerbloom - Original Mix"
+   }
+  },
+  {
+   "duration": 190,
+   "path": "a\\b\\c\\Selecta (Skrillex Remix).mp3",
+   "result": false,
+   "tol": 5,
+   "track": {
+    "artists": [
+     "RÜFÜS DU SOL"
+    ],
+    "durationMs": 577000,
+    "id": "t3",
+    "title": "Innerbloom - Original Mix"
+   }
+  },
+  {
+   "duration": null,
+   "path": "Skrillex - Selecta (Live).mp3",
+   "result": false,
+   "tol": 5,
+   "track": {
+    "artists": [
+     "RÜFÜS DU SOL"
+    ],
+    "durationMs": 577000,
+    "id": "t3",
+    "title": "Innerbloom - Original Mix"
+   }
+  },
+  {
+   "duration": 189,
+   "path": "Various\\Hits\\Selecta.wav",
+   "result": false,
+   "tol": 5,
+   "track": {
+    "artists": [
+     "RÜFÜS DU SOL"
+    ],
+    "durationMs": 577000,
+    "id": "t3",
+    "title": "Innerbloom - Original Mix"
+   }
+  },
+  {
+   "duration": 190,
+   "path": "x\\Skrillex - Selecta - karaoke version.mp3",
+   "result": false,
+   "tol": 5,
+   "track": {
+    "artists": [
+     "RÜFÜS DU SOL"
+    ],
+    "durationMs": 577000,
+    "id": "t3",
+    "title": "Innerbloom - Original Mix"
+   }
+  },
+  {
+   "duration": 241,
+   "path": "Fred again..\\Actual Life\\Danielle (smile on my face).flac",
+   "result": false,
+   "tol": 5,
+   "track": {
+    "artists": [
+     "RÜFÜS DU SOL"
+    ],
+    "durationMs": 577000,
+    "id": "t3",
+    "title": "Innerbloom - Original Mix"
+   }
+  },
+  {
+   "duration": 250,
+   "path": "Fred_again\\danielle smile on my face.mp3",
+   "result": false,
+   "tol": 5,
+   "track": {
+    "artists": [
+     "RÜFÜS DU SOL"
+    ],
+    "durationMs": 577000,
+    "id": "t3",
+    "title": "Innerbloom - Original Mix"
+   }
+  },
+  {
+   "duration": 578,
+   "path": "RUFUS DU SOL\\Innerbloom.m4a",
+   "result": true,
+   "tol": 5,
+   "track": {
+    "artists": [
+     "RÜFÜS DU SOL"
+    ],
+    "durationMs": 577000,
+    "id": "t3",
+    "title": "Innerbloom - Original Mix"
+   }
+  },
+  {
+   "duration": 700,
+   "path": "Rüfüs du Sol - Innerbloom (Extended Mix).mp3",
+   "result": false,
+   "tol": 5,
+   "track": {
+    "artists": [
+     "RÜFÜS DU SOL"
+    ],
+    "durationMs": 577000,
+    "id": "t3",
+    "title": "Innerbloom - Original Mix"
+   }
+  },
+  {
+   "duration": 190,
+   "path": "Other Artist\\Selecta.mp3",
+   "result": false,
+   "tol": 5,
+   "track": {
+    "artists": [
+     "RÜFÜS DU SOL"
+    ],
+    "durationMs": 577000,
+    "id": "t3",
+    "title": "Innerbloom - Original Mix"
+   }
+  },
+  {
+   "duration": null,
+   "path": "Selecta",
+   "result": false,
+   "tol": 5,
+   "track": {
+    "artists": [
+     "RÜFÜS DU SOL"
+    ],
+    "durationMs": 577000,
+    "id": "t3",
+    "title": "Innerbloom - Original Mix"
+   }
+  },
+  {
+   "duration": 1,
+   "path": "no\\title\\here.mp3",
+   "result": false,
+   "tol": 5,
+   "track": {
+    "artists": [
+     "RÜFÜS DU SOL"
+    ],
+    "durationMs": 577000,
+    "id": "t3",
+    "title": "Innerbloom - Original Mix"
+   }
+  },
+  {
+   "duration": 190,
+   "path": "Skrillex\\Selecta (feat. BEAM)\\01 Skrillex - Selecta.mp3",
+   "result": false,
+   "tol": 5,
+   "track": {
+    "artists": [],
+    "durationMs": null,
+    "id": "t4",
+    "title": "No Artist Song"
+   }
+  },
+  {
+   "duration": 210,
+   "path": "music\\Selecta.flac",
+   "result": false,
+   "tol": 5,
+   "track": {
+    "artists": [],
+    "durationMs": null,
+    "id": "t4",
+    "title": "No Artist Song"
+   }
+  },
+  {
+   "duration": 190,
+   "path": "a\\b\\c\\Selecta (Skrillex Remix).mp3",
+   "result": false,
+   "tol": 5,
+   "track": {
+    "artists": [],
+    "durationMs": null,
+    "id": "t4",
+    "title": "No Artist Song"
+   }
+  },
+  {
+   "duration": null,
+   "path": "Skrillex - Selecta (Live).mp3",
+   "result": false,
+   "tol": 5,
+   "track": {
+    "artists": [],
+    "durationMs": null,
+    "id": "t4",
+    "title": "No Artist Song"
+   }
+  },
+  {
+   "duration": 189,
+   "path": "Various\\Hits\\Selecta.wav",
+   "result": false,
+   "tol": 5,
+   "track": {
+    "artists": [],
+    "durationMs": null,
+    "id": "t4",
+    "title": "No Artist Song"
+   }
+  },
+  {
+   "duration": 190,
+   "path": "x\\Skrillex - Selecta - karaoke version.mp3",
+   "result": false,
+   "tol": 5,
+   "track": {
+    "artists": [],
+    "durationMs": null,
+    "id": "t4",
+    "title": "No Artist Song"
+   }
+  },
+  {
+   "duration": 241,
+   "path": "Fred again..\\Actual Life\\Danielle (smile on my face).flac",
+   "result": false,
+   "tol": 5,
+   "track": {
+    "artists": [],
+    "durationMs": null,
+    "id": "t4",
+    "title": "No Artist Song"
+   }
+  },
+  {
+   "duration": 250,
+   "path": "Fred_again\\danielle smile on my face.mp3",
+   "result": false,
+   "tol": 5,
+   "track": {
+    "artists": [],
+    "durationMs": null,
+    "id": "t4",
+    "title": "No Artist Song"
+   }
+  },
+  {
+   "duration": 578,
+   "path": "RUFUS DU SOL\\Innerbloom.m4a",
+   "result": false,
+   "tol": 5,
+   "track": {
+    "artists": [],
+    "durationMs": null,
+    "id": "t4",
+    "title": "No Artist Song"
+   }
+  },
+  {
+   "duration": 700,
+   "path": "Rüfüs du Sol - Innerbloom (Extended Mix).mp3",
+   "result": false,
+   "tol": 5,
+   "track": {
+    "artists": [],
+    "durationMs": null,
+    "id": "t4",
+    "title": "No Artist Song"
+   }
+  },
+  {
+   "duration": 190,
+   "path": "Other Artist\\Selecta.mp3",
+   "result": false,
+   "tol": 5,
+   "track": {
+    "artists": [],
+    "durationMs": null,
+    "id": "t4",
+    "title": "No Artist Song"
+   }
+  },
+  {
+   "duration": null,
+   "path": "Selecta",
+   "result": false,
+   "tol": 5,
+   "track": {
+    "artists": [],
+    "durationMs": null,
+    "id": "t4",
+    "title": "No Artist Song"
+   }
+  },
+  {
+   "duration": 1,
+   "path": "no\\title\\here.mp3",
+   "result": false,
+   "tol": 5,
+   "track": {
+    "artists": [],
+    "durationMs": null,
+    "id": "t4",
+    "title": "No Artist Song"
+   }
+  },
+  {
+   "duration": 190,
+   "path": "Skrillex\\Selecta (feat. BEAM)\\01 Skrillex - Selecta.mp3",
+   "result": false,
+   "tol": 5,
+   "track": {
+    "artists": [
+     "Daft Punk"
+    ],
+    "durationMs": 320000,
+    "id": "t5",
+    "title": "One More Time (feat. Romanthony) - Remastered"
+   }
+  },
+  {
+   "duration": 210,
+   "path": "music\\Selecta.flac",
+   "result": false,
+   "tol": 5,
+   "track": {
+    "artists": [
+     "Daft Punk"
+    ],
+    "durationMs": 320000,
+    "id": "t5",
+    "title": "One More Time (feat. Romanthony) - Remastered"
+   }
+  },
+  {
+   "duration": 190,
+   "path": "a\\b\\c\\Selecta (Skrillex Remix).mp3",
+   "result": false,
+   "tol": 5,
+   "track": {
+    "artists": [
+     "Daft Punk"
+    ],
+    "durationMs": 320000,
+    "id": "t5",
+    "title": "One More Time (feat. Romanthony) - Remastered"
+   }
+  },
+  {
+   "duration": null,
+   "path": "Skrillex - Selecta (Live).mp3",
+   "result": false,
+   "tol": 5,
+   "track": {
+    "artists": [
+     "Daft Punk"
+    ],
+    "durationMs": 320000,
+    "id": "t5",
+    "title": "One More Time (feat. Romanthony) - Remastered"
+   }
+  },
+  {
+   "duration": 189,
+   "path": "Various\\Hits\\Selecta.wav",
+   "result": false,
+   "tol": 5,
+   "track": {
+    "artists": [
+     "Daft Punk"
+    ],
+    "durationMs": 320000,
+    "id": "t5",
+    "title": "One More Time (feat. Romanthony) - Remastered"
+   }
+  },
+  {
+   "duration": 190,
+   "path": "x\\Skrillex - Selecta - karaoke version.mp3",
+   "result": false,
+   "tol": 5,
+   "track": {
+    "artists": [
+     "Daft Punk"
+    ],
+    "durationMs": 320000,
+    "id": "t5",
+    "title": "One More Time (feat. Romanthony) - Remastered"
+   }
+  },
+  {
+   "duration": 241,
+   "path": "Fred again..\\Actual Life\\Danielle (smile on my face).flac",
+   "result": false,
+   "tol": 5,
+   "track": {
+    "artists": [
+     "Daft Punk"
+    ],
+    "durationMs": 320000,
+    "id": "t5",
+    "title": "One More Time (feat. Romanthony) - Remastered"
+   }
+  },
+  {
+   "duration": 250,
+   "path": "Fred_again\\danielle smile on my face.mp3",
+   "result": false,
+   "tol": 5,
+   "track": {
+    "artists": [
+     "Daft Punk"
+    ],
+    "durationMs": 320000,
+    "id": "t5",
+    "title": "One More Time (feat. Romanthony) - Remastered"
+   }
+  },
+  {
+   "duration": 578,
+   "path": "RUFUS DU SOL\\Innerbloom.m4a",
+   "result": false,
+   "tol": 5,
+   "track": {
+    "artists": [
+     "Daft Punk"
+    ],
+    "durationMs": 320000,
+    "id": "t5",
+    "title": "One More Time (feat. Romanthony) - Remastered"
+   }
+  },
+  {
+   "duration": 700,
+   "path": "Rüfüs du Sol - Innerbloom (Extended Mix).mp3",
+   "result": false,
+   "tol": 5,
+   "track": {
+    "artists": [
+     "Daft Punk"
+    ],
+    "durationMs": 320000,
+    "id": "t5",
+    "title": "One More Time (feat. Romanthony) - Remastered"
+   }
+  },
+  {
+   "duration": 190,
+   "path": "Other Artist\\Selecta.mp3",
+   "result": false,
+   "tol": 5,
+   "track": {
+    "artists": [
+     "Daft Punk"
+    ],
+    "durationMs": 320000,
+    "id": "t5",
+    "title": "One More Time (feat. Romanthony) - Remastered"
+   }
+  },
+  {
+   "duration": null,
+   "path": "Selecta",
+   "result": false,
+   "tol": 5,
+   "track": {
+    "artists": [
+     "Daft Punk"
+    ],
+    "durationMs": 320000,
+    "id": "t5",
+    "title": "One More Time (feat. Romanthony) - Remastered"
+   }
+  },
+  {
+   "duration": 1,
+   "path": "no\\title\\here.mp3",
+   "result": false,
+   "tol": 5,
+   "track": {
+    "artists": [
+     "Daft Punk"
+    ],
+    "durationMs": 320000,
+    "id": "t5",
+    "title": "One More Time (feat. Romanthony) - Remastered"
+   }
+  },
+  {
+   "duration": 190,
+   "path": "Skrillex\\Selecta (feat. BEAM)\\01 Skrillex - Selecta.mp3",
+   "result": false,
+   "tol": 5,
+   "track": {
+    "artists": [
+     "A"
+    ],
+    "durationMs": 100000,
+    "id": "t6",
+    "title": "Remix Of Nothing"
+   }
+  },
+  {
+   "duration": 210,
+   "path": "music\\Selecta.flac",
+   "result": false,
+   "tol": 5,
+   "track": {
+    "artists": [
+     "A"
+    ],
+    "durationMs": 100000,
+    "id": "t6",
+    "title": "Remix Of Nothing"
+   }
+  },
+  {
+   "duration": 190,
+   "path": "a\\b\\c\\Selecta (Skrillex Remix).mp3",
+   "result": false,
+   "tol": 5,
+   "track": {
+    "artists": [
+     "A"
+    ],
+    "durationMs": 100000,
+    "id": "t6",
+    "title": "Remix Of Nothing"
+   }
+  },
+  {
+   "duration": null,
+   "path": "Skrillex - Selecta (Live).mp3",
+   "result": false,
+   "tol": 5,
+   "track": {
+    "artists": [
+     "A"
+    ],
+    "durationMs": 100000,
+    "id": "t6",
+    "title": "Remix Of Nothing"
+   }
+  },
+  {
+   "duration": 189,
+   "path": "Various\\Hits\\Selecta.wav",
+   "result": false,
+   "tol": 5,
+   "track": {
+    "artists": [
+     "A"
+    ],
+    "durationMs": 100000,
+    "id": "t6",
+    "title": "Remix Of Nothing"
+   }
+  },
+  {
+   "duration": 190,
+   "path": "x\\Skrillex - Selecta - karaoke version.mp3",
+   "result": false,
+   "tol": 5,
+   "track": {
+    "artists": [
+     "A"
+    ],
+    "durationMs": 100000,
+    "id": "t6",
+    "title": "Remix Of Nothing"
+   }
+  },
+  {
+   "duration": 241,
+   "path": "Fred again..\\Actual Life\\Danielle (smile on my face).flac",
+   "result": false,
+   "tol": 5,
+   "track": {
+    "artists": [
+     "A"
+    ],
+    "durationMs": 100000,
+    "id": "t6",
+    "title": "Remix Of Nothing"
+   }
+  },
+  {
+   "duration": 250,
+   "path": "Fred_again\\danielle smile on my face.mp3",
+   "result": false,
+   "tol": 5,
+   "track": {
+    "artists": [
+     "A"
+    ],
+    "durationMs": 100000,
+    "id": "t6",
+    "title": "Remix Of Nothing"
+   }
+  },
+  {
+   "duration": 578,
+   "path": "RUFUS DU SOL\\Innerbloom.m4a",
+   "result": false,
+   "tol": 5,
+   "track": {
+    "artists": [
+     "A"
+    ],
+    "durationMs": 100000,
+    "id": "t6",
+    "title": "Remix Of Nothing"
+   }
+  },
+  {
+   "duration": 700,
+   "path": "Rüfüs du Sol - Innerbloom (Extended Mix).mp3",
+   "result": false,
+   "tol": 5,
+   "track": {
+    "artists": [
+     "A"
+    ],
+    "durationMs": 100000,
+    "id": "t6",
+    "title": "Remix Of Nothing"
+   }
+  },
+  {
+   "duration": 190,
+   "path": "Other Artist\\Selecta.mp3",
+   "result": false,
+   "tol": 5,
+   "track": {
+    "artists": [
+     "A"
+    ],
+    "durationMs": 100000,
+    "id": "t6",
+    "title": "Remix Of Nothing"
+   }
+  },
+  {
+   "duration": null,
+   "path": "Selecta",
+   "result": false,
+   "tol": 5,
+   "track": {
+    "artists": [
+     "A"
+    ],
+    "durationMs": 100000,
+    "id": "t6",
+    "title": "Remix Of Nothing"
+   }
+  },
+  {
+   "duration": 1,
+   "path": "no\\title\\here.mp3",
+   "result": false,
+   "tol": 5,
+   "track": {
+    "artists": [
+     "A"
+    ],
+    "durationMs": 100000,
+    "id": "t6",
+    "title": "Remix Of Nothing"
+   }
+  },
+  {
+   "duration": 190,
+   "path": "Skrillex\\Selecta (feat. BEAM)\\01 Skrillex - Selecta.mp3",
+   "result": false,
+   "tol": 5,
+   "track": {
+    "artists": [
+     "Beyoncé"
+    ],
+    "durationMs": 261000,
+    "id": "t7",
+    "title": "Halo [Live]"
+   }
+  },
+  {
+   "duration": 210,
+   "path": "music\\Selecta.flac",
+   "result": false,
+   "tol": 5,
+   "track": {
+    "artists": [
+     "Beyoncé"
+    ],
+    "durationMs": 261000,
+    "id": "t7",
+    "title": "Halo [Live]"
+   }
+  },
+  {
+   "duration": 190,
+   "path": "a\\b\\c\\Selecta (Skrillex Remix).mp3",
+   "result": false,
+   "tol": 5,
+   "track": {
+    "artists": [
+     "Beyoncé"
+    ],
+    "durationMs": 261000,
+    "id": "t7",
+    "title": "Halo [Live]"
+   }
+  },
+  {
+   "duration": null,
+   "path": "Skrillex - Selecta (Live).mp3",
+   "result": false,
+   "tol": 5,
+   "track": {
+    "artists": [
+     "Beyoncé"
+    ],
+    "durationMs": 261000,
+    "id": "t7",
+    "title": "Halo [Live]"
+   }
+  },
+  {
+   "duration": 189,
+   "path": "Various\\Hits\\Selecta.wav",
+   "result": false,
+   "tol": 5,
+   "track": {
+    "artists": [
+     "Beyoncé"
+    ],
+    "durationMs": 261000,
+    "id": "t7",
+    "title": "Halo [Live]"
+   }
+  },
+  {
+   "duration": 190,
+   "path": "x\\Skrillex - Selecta - karaoke version.mp3",
+   "result": false,
+   "tol": 5,
+   "track": {
+    "artists": [
+     "Beyoncé"
+    ],
+    "durationMs": 261000,
+    "id": "t7",
+    "title": "Halo [Live]"
+   }
+  },
+  {
+   "duration": 241,
+   "path": "Fred again..\\Actual Life\\Danielle (smile on my face).flac",
+   "result": false,
+   "tol": 5,
+   "track": {
+    "artists": [
+     "Beyoncé"
+    ],
+    "durationMs": 261000,
+    "id": "t7",
+    "title": "Halo [Live]"
+   }
+  },
+  {
+   "duration": 250,
+   "path": "Fred_again\\danielle smile on my face.mp3",
+   "result": false,
+   "tol": 5,
+   "track": {
+    "artists": [
+     "Beyoncé"
+    ],
+    "durationMs": 261000,
+    "id": "t7",
+    "title": "Halo [Live]"
+   }
+  },
+  {
+   "duration": 578,
+   "path": "RUFUS DU SOL\\Innerbloom.m4a",
+   "result": false,
+   "tol": 5,
+   "track": {
+    "artists": [
+     "Beyoncé"
+    ],
+    "durationMs": 261000,
+    "id": "t7",
+    "title": "Halo [Live]"
+   }
+  },
+  {
+   "duration": 700,
+   "path": "Rüfüs du Sol - Innerbloom (Extended Mix).mp3",
+   "result": false,
+   "tol": 5,
+   "track": {
+    "artists": [
+     "Beyoncé"
+    ],
+    "durationMs": 261000,
+    "id": "t7",
+    "title": "Halo [Live]"
+   }
+  },
+  {
+   "duration": 190,
+   "path": "Other Artist\\Selecta.mp3",
+   "result": false,
+   "tol": 5,
+   "track": {
+    "artists": [
+     "Beyoncé"
+    ],
+    "durationMs": 261000,
+    "id": "t7",
+    "title": "Halo [Live]"
+   }
+  },
+  {
+   "duration": null,
+   "path": "Selecta",
+   "result": false,
+   "tol": 5,
+   "track": {
+    "artists": [
+     "Beyoncé"
+    ],
+    "durationMs": 261000,
+    "id": "t7",
+    "title": "Halo [Live]"
+   }
+  },
+  {
+   "duration": 1,
+   "path": "no\\title\\here.mp3",
+   "result": false,
+   "tol": 5,
+   "track": {
+    "artists": [
+     "Beyoncé"
+    ],
+    "durationMs": 261000,
+    "id": "t7",
+    "title": "Halo [Live]"
+   }
+  }
+ ],
+ "norm": [
+  [
+   "Skrillex & BEAM",
+   "skrillex and beam"
+  ],
+  [
+   "Fred again.. - Danielle (smile on my face)",
+   "fred again danielle smile on my face"
+  ],
+  [
+   "RÜFÜS DU SOL",
+   "rufus du sol"
+  ],
+  [
+   "Beyoncé – Halo",
+   "beyonce halo"
+  ],
+  [
+   "Sigur Rós - Hoppípolla",
+   "sigur ros hoppipolla"
+  ],
+  [
+   "  spaced   out  ",
+   "spaced out"
+  ],
+  [
+   "ÆON FLUX ß",
+   "on flux"
+  ],
+  [
+   "ﬁne ﬂow",
+   "fine flow"
+  ],
+  [
+   "ＦＵＬＬ ＷＩＤＴＨ",
+   "full width"
+  ],
+  [
+   "Mötley Crüe",
+   "motley crue"
+  ],
+  [
+   "AC/DC",
+   "ac dc"
+  ],
+  [
+   "a&b",
+   "a and b"
+  ],
+  [
+   "100% Pure",
+   "100 pure"
+  ],
+  [
+   "",
+   ""
+  ],
+  [
+   "!!!",
+   ""
+  ],
+  [
+   "Ñandú café",
+   "nandu cafe"
+  ],
+  [
+   "naïve",
+   "naive"
+  ],
+  [
+   "Tyler, The Creator",
+   "tyler the creator"
+  ],
+  [
+   "日本語 title",
+   "title"
+  ],
+  [
+   "Don't Stop",
+   "don t stop"
+  ],
+  [
+   "x_y-z",
+   "x y z"
+  ],
+  [
+   "Zoë & the Boys feat. Ünïcode",
+   "zoe and the boys feat unicode"
+  ]
+ ],
+ "quality": [
+  [
+   "flac",
+   null,
+   256,
+   15
+  ],
+  [
+   "flac",
+   128,
+   256,
+   15
+  ],
+  [
+   "flac",
+   192,
+   256,
+   15
+  ],
+  [
+   "flac",
+   256,
+   256,
+   15
+  ],
+  [
+   "flac",
+   320,
+   256,
+   15
+  ],
+  [
+   "flac",
+   500,
+   256,
+   15
+  ],
+  [
+   "flac",
+   501,
+   256,
+   15
+  ],
+  [
+   "flac",
+   900,
+   256,
+   15
+  ],
+  [
+   "flac",
+   1411,
+   256,
+   15
+  ],
+  [
+   "wav",
+   null,
+   256,
+   14
+  ],
+  [
+   "wav",
+   128,
+   256,
+   14
+  ],
+  [
+   "wav",
+   192,
+   256,
+   14
+  ],
+  [
+   "wav",
+   256,
+   256,
+   14
+  ],
+  [
+   "wav",
+   320,
+   256,
+   14
+  ],
+  [
+   "wav",
+   500,
+   256,
+   14
+  ],
+  [
+   "wav",
+   501,
+   256,
+   14
+  ],
+  [
+   "wav",
+   900,
+   256,
+   14
+  ],
+  [
+   "wav",
+   1411,
+   256,
+   14
+  ],
+  [
+   "aiff",
+   null,
+   256,
+   14
+  ],
+  [
+   "aiff",
+   128,
+   256,
+   14
+  ],
+  [
+   "aiff",
+   192,
+   256,
+   14
+  ],
+  [
+   "aiff",
+   256,
+   256,
+   14
+  ],
+  [
+   "aiff",
+   320,
+   256,
+   14
+  ],
+  [
+   "aiff",
+   500,
+   256,
+   14
+  ],
+  [
+   "aiff",
+   501,
+   256,
+   14
+  ],
+  [
+   "aiff",
+   900,
+   256,
+   14
+  ],
+  [
+   "aiff",
+   1411,
+   256,
+   14
+  ],
+  [
+   "aif",
+   null,
+   256,
+   14
+  ],
+  [
+   "aif",
+   128,
+   256,
+   14
+  ],
+  [
+   "aif",
+   192,
+   256,
+   14
+  ],
+  [
+   "aif",
+   256,
+   256,
+   14
+  ],
+  [
+   "aif",
+   320,
+   256,
+   14
+  ],
+  [
+   "aif",
+   500,
+   256,
+   14
+  ],
+  [
+   "aif",
+   501,
+   256,
+   14
+  ],
+  [
+   "aif",
+   900,
+   256,
+   14
+  ],
+  [
+   "aif",
+   1411,
+   256,
+   14
+  ],
+  [
+   "alac",
+   null,
+   256,
+   14
+  ],
+  [
+   "alac",
+   128,
+   256,
+   14
+  ],
+  [
+   "alac",
+   192,
+   256,
+   14
+  ],
+  [
+   "alac",
+   256,
+   256,
+   14
+  ],
+  [
+   "alac",
+   320,
+   256,
+   14
+  ],
+  [
+   "alac",
+   500,
+   256,
+   14
+  ],
+  [
+   "alac",
+   501,
+   256,
+   14
+  ],
+  [
+   "alac",
+   900,
+   256,
+   14
+  ],
+  [
+   "alac",
+   1411,
+   256,
+   14
+  ],
+  [
+   "m4a",
+   null,
+   256,
+   13
+  ],
+  [
+   "m4a",
+   128,
+   256,
+   null
+  ],
+  [
+   "m4a",
+   192,
+   256,
+   null
+  ],
+  [
+   "m4a",
+   256,
+   256,
+   7.5
+  ],
+  [
+   "m4a",
+   320,
+   256,
+   9.5
+  ],
+  [
+   "m4a",
+   500,
+   256,
+   9.5
+  ],
+  [
+   "m4a",
+   501,
+   256,
+   13
+  ],
+  [
+   "m4a",
+   900,
+   256,
+   13
+  ],
+  [
+   "m4a",
+   1411,
+   256,
+   13
+  ],
+  [
+   "mp3",
+   null,
+   256,
+   null
+  ],
+  [
+   "mp3",
+   128,
+   256,
+   null
+  ],
+  [
+   "mp3",
+   192,
+   256,
+   null
+  ],
+  [
+   "mp3",
+   256,
+   256,
+   8.0
+  ],
+  [
+   "mp3",
+   320,
+   256,
+   10.0
+  ],
+  [
+   "mp3",
+   500,
+   256,
+   10.0
+  ],
+  [
+   "mp3",
+   501,
+   256,
+   10.0
+  ],
+  [
+   "mp3",
+   900,
+   256,
+   10.0
+  ],
+  [
+   "mp3",
+   1411,
+   256,
+   10.0
+  ],
+  [
+   "aac",
+   null,
+   256,
+   null
+  ],
+  [
+   "aac",
+   128,
+   256,
+   null
+  ],
+  [
+   "aac",
+   192,
+   256,
+   null
+  ],
+  [
+   "aac",
+   256,
+   256,
+   7.5
+  ],
+  [
+   "aac",
+   320,
+   256,
+   9.5
+  ],
+  [
+   "aac",
+   500,
+   256,
+   9.5
+  ],
+  [
+   "aac",
+   501,
+   256,
+   9.5
+  ],
+  [
+   "aac",
+   900,
+   256,
+   9.5
+  ],
+  [
+   "aac",
+   1411,
+   256,
+   9.5
+  ],
+  [
+   "ogg",
+   null,
+   256,
+   null
+  ],
+  [
+   "ogg",
+   128,
+   256,
+   null
+  ],
+  [
+   "ogg",
+   192,
+   256,
+   null
+  ],
+  [
+   "ogg",
+   256,
+   256,
+   7.0
+  ],
+  [
+   "ogg",
+   320,
+   256,
+   9.0
+  ],
+  [
+   "ogg",
+   500,
+   256,
+   9.0
+  ],
+  [
+   "ogg",
+   501,
+   256,
+   9.0
+  ],
+  [
+   "ogg",
+   900,
+   256,
+   9.0
+  ],
+  [
+   "ogg",
+   1411,
+   256,
+   9.0
+  ],
+  [
+   "opus",
+   null,
+   256,
+   null
+  ],
+  [
+   "opus",
+   128,
+   256,
+   null
+  ],
+  [
+   "opus",
+   192,
+   256,
+   null
+  ],
+  [
+   "opus",
+   256,
+   256,
+   7.0
+  ],
+  [
+   "opus",
+   320,
+   256,
+   9.0
+  ],
+  [
+   "opus",
+   500,
+   256,
+   9.0
+  ],
+  [
+   "opus",
+   501,
+   256,
+   9.0
+  ],
+  [
+   "opus",
+   900,
+   256,
+   9.0
+  ],
+  [
+   "opus",
+   1411,
+   256,
+   9.0
+  ],
+  [
+   "wma",
+   null,
+   256,
+   null
+  ],
+  [
+   "wma",
+   128,
+   256,
+   null
+  ],
+  [
+   "wma",
+   192,
+   256,
+   null
+  ],
+  [
+   "wma",
+   256,
+   256,
+   6.0
+  ],
+  [
+   "wma",
+   320,
+   256,
+   8.0
+  ],
+  [
+   "wma",
+   500,
+   256,
+   8.0
+  ],
+  [
+   "wma",
+   501,
+   256,
+   8.0
+  ],
+  [
+   "wma",
+   900,
+   256,
+   8.0
+  ],
+  [
+   "wma",
+   1411,
+   256,
+   8.0
+  ],
+  [
+   "ape",
+   null,
+   256,
+   null
+  ],
+  [
+   "ape",
+   128,
+   256,
+   null
+  ],
+  [
+   "ape",
+   192,
+   256,
+   null
+  ],
+  [
+   "ape",
+   256,
+   256,
+   6.0
+  ],
+  [
+   "ape",
+   320,
+   256,
+   8.0
+  ],
+  [
+   "ape",
+   500,
+   256,
+   8.0
+  ],
+  [
+   "ape",
+   501,
+   256,
+   8.0
+  ],
+  [
+   "ape",
+   900,
+   256,
+   8.0
+  ],
+  [
+   "ape",
+   1411,
+   256,
+   8.0
+  ]
+ ],
+ "queries": [
+  {
+   "custom": "",
+   "queries": [
+    "skrillex selecta"
+   ],
+   "track": {
+    "artists": [
+     "Skrillex",
+     "BEAM"
+    ],
+    "durationMs": 190000,
+    "id": "t1",
+    "title": "Selecta"
+   }
+  },
+  {
+   "custom": "  Custom Words & More  ",
+   "queries": [
+    "custom words and more",
+    "skrillex selecta"
+   ],
+   "track": {
+    "artists": [
+     "Skrillex",
+     "BEAM"
+    ],
+    "durationMs": 190000,
+    "id": "t1",
+    "title": "Selecta"
+   }
+  },
+  {
+   "custom": "",
+   "queries": [
+    "fred again danielle smile on my face",
+    "fred again danielle"
+   ],
+   "track": {
+    "artists": [
+     "Fred again.."
+    ],
+    "durationMs": 240000,
+    "id": "t2",
+    "title": "Danielle (smile on my face)"
+   }
+  },
+  {
+   "custom": "  Custom Words & More  ",
+   "queries": [
+    "custom words and more",
+    "fred again danielle smile on my face",
+    "fred again danielle"
+   ],
+   "track": {
+    "artists": [
+     "Fred again.."
+    ],
+    "durationMs": 240000,
+    "id": "t2",
+    "title": "Danielle (smile on my face)"
+   }
+  },
+  {
+   "custom": "",
+   "queries": [
+    "rufus du sol innerbloom"
+   ],
+   "track": {
+    "artists": [
+     "RÜFÜS DU SOL"
+    ],
+    "durationMs": 577000,
+    "id": "t3",
+    "title": "Innerbloom - Original Mix"
+   }
+  },
+  {
+   "custom": "  Custom Words & More  ",
+   "queries": [
+    "custom words and more",
+    "rufus du sol innerbloom"
+   ],
+   "track": {
+    "artists": [
+     "RÜFÜS DU SOL"
+    ],
+    "durationMs": 577000,
+    "id": "t3",
+    "title": "Innerbloom - Original Mix"
+   }
+  },
+  {
+   "custom": "",
+   "queries": [
+    "no artist song"
+   ],
+   "track": {
+    "artists": [],
+    "durationMs": null,
+    "id": "t4",
+    "title": "No Artist Song"
+   }
+  },
+  {
+   "custom": "  Custom Words & More  ",
+   "queries": [
+    "custom words and more",
+    "no artist song"
+   ],
+   "track": {
+    "artists": [],
+    "durationMs": null,
+    "id": "t4",
+    "title": "No Artist Song"
+   }
+  },
+  {
+   "custom": "",
+   "queries": [
+    "daft punk one more time"
+   ],
+   "track": {
+    "artists": [
+     "Daft Punk"
+    ],
+    "durationMs": 320000,
+    "id": "t5",
+    "title": "One More Time (feat. Romanthony) - Remastered"
+   }
+  },
+  {
+   "custom": "  Custom Words & More  ",
+   "queries": [
+    "custom words and more",
+    "daft punk one more time"
+   ],
+   "track": {
+    "artists": [
+     "Daft Punk"
+    ],
+    "durationMs": 320000,
+    "id": "t5",
+    "title": "One More Time (feat. Romanthony) - Remastered"
+   }
+  },
+  {
+   "custom": "",
+   "queries": [
+    "a remix of nothing"
+   ],
+   "track": {
+    "artists": [
+     "A"
+    ],
+    "durationMs": 100000,
+    "id": "t6",
+    "title": "Remix Of Nothing"
+   }
+  },
+  {
+   "custom": "  Custom Words & More  ",
+   "queries": [
+    "custom words and more",
+    "a remix of nothing"
+   ],
+   "track": {
+    "artists": [
+     "A"
+    ],
+    "durationMs": 100000,
+    "id": "t6",
+    "title": "Remix Of Nothing"
+   }
+  },
+  {
+   "custom": "",
+   "queries": [
+    "beyonce halo live",
+    "beyonce halo"
+   ],
+   "track": {
+    "artists": [
+     "Beyoncé"
+    ],
+    "durationMs": 261000,
+    "id": "t7",
+    "title": "Halo [Live]"
+   }
+  },
+  {
+   "custom": "  Custom Words & More  ",
+   "queries": [
+    "custom words and more",
+    "beyonce halo live",
+    "beyonce halo"
+   ],
+   "track": {
+    "artists": [
+     "Beyoncé"
+    ],
+    "durationMs": 261000,
+    "id": "t7",
+    "title": "Halo [Live]"
+   }
+  }
+ ],
+ "rank": [
+  {
+   "expected": [
+    {
+     "ext": "flac",
+     "label": "FLAC  28.6MB  alice  free  1953KB/s",
+     "path": "Skrillex\\Selecta.flac",
+     "quality": 15,
+     "size": 30000000,
+     "username": "alice"
+    },
+    {
+     "ext": "wav",
+     "label": "WAV  57.2MB  dave  free  2929KB/s",
+     "path": "Skrillex\\Selecta.wav",
+     "quality": 14,
+     "size": 60000000,
+     "username": "dave"
+    },
+    {
+     "ext": "mp3",
+     "label": "MP3 320kbps  7.6MB  ivy  free  4882KB/s",
+     "path": "Skrillex\\Selecta.mp3",
+     "quality": 10.0,
+     "size": 8000000,
+     "username": "ivy"
+    },
+    {
+     "ext": "mp3",
+     "label": "MP3 320kbps  7.6MB  jo  free  4882KB/s",
+     "path": "Skrillex\\Selecta.mp3",
+     "quality": 10.0,
+     "size": 8000000,
+     "username": "jo"
+    },
+    {
+     "ext": "mp3",
+     "label": "MP3 320kbps  6.7MB  bob  queue 8  488KB/s",
+     "path": "m\\Skrillex - Selecta.mp3",
+     "quality": 10.0,
+     "size": 7000000,
+     "username": "bob"
+    },
+    {
+     "ext": "ogg",
+     "label": "OGG 500kbps  4.8MB  frank  queue 80  0KB/s",
+     "path": "S\\Skrillex Selecta.ogg",
+     "quality": 9.0,
+     "size": 5000000,
+     "username": "frank"
+    }
+   ],
+   "loose": null,
+   "results": [
+    {
+     "files": [
+      {
+       "br": null,
+       "dur": 190,
+       "ext": "flac",
+       "filename": "Skrillex\\Selecta.flac",
+       "size": 30000000
+      },
+      {
+       "br": 320,
+       "dur": 190,
+       "ext": "mp3",
+       "filename": "Skrillex\\Selecta.mp3",
+       "size": 8000000
+      }
+     ],
+     "free": true,
+     "queue": 0,
+     "speed": 2000000,
+     "username": "alice"
+    },
+    {
+     "files": [
+      {
+       "br": 320,
+       "dur": 191,
+       "ext": "mp3",
+       "filename": "m\\Skrillex - Selecta.mp3",
+       "size": 7000000
+      },
+      {
+       "br": 192,
+       "dur": 191,
+       "ext": "mp3",
+       "filename": "m\\Skrillex - Selecta.mp3",
+       "size": 7000000
+      }
+     ],
+     "free": false,
+     "queue": 8,
+     "speed": 500000,
+     "username": "bob"
+    },
+    {
+     "files": [
+      {
+       "br": null,
+       "dur": 190,
+       "ext": "flac",
+       "filename": "x\\Selecta (Skrillex Remix).flac",
+       "size": 25000000
+      }
+     ],
+     "free": true,
+     "queue": 0,
+     "speed": 100,
+     "username": "carol"
+    },
+    {
+     "files": [
+      {
+       "br": null,
+       "dur": 191,
+       "ext": "wav",
+       "filename": "Skrillex\\Selecta.wav",
+       "size": 60000000
+      },
+      {
+       "br": 1000,
+       "dur": 191,
+       "ext": "m4a",
+       "filename": "Skrillex\\Selecta.m4a",
+       "size": 9000000
+      }
+     ],
+     "free": true,
+     "queue": 2,
+     "speed": 3000000,
+     "username": "dave"
+    },
+    {
+     "files": [
+      {
+       "br": 320,
+       "dur": 190,
+       "ext": "mp3",
+       "filename": "S\\Skrillex Selecta.mp3",
+       "size": 400000
+      }
+     ],
+     "free": true,
+     "queue": 0,
+     "speed": 1,
+     "username": "erin"
+    },
+    {
+     "files": [
+      {
+       "br": 500,
+       "dur": 190,
+       "ext": "ogg",
+       "filename": "S\\Skrillex Selecta.ogg",
+       "size": 5000000
+      },
+      {
+       "br": 256,
+       "dur": 190,
+       "ext": "",
+       "filename": "S\\Skrillex Selecta.aac",
+       "size": 5000000
+      }
+     ],
+     "free": false,
+     "queue": 80,
+     "speed": 9,
+     "username": "frank"
+    },
+    {
+     "files": [
+      {
+       "br": null,
+       "dur": 190,
+       "ext": "mp3",
+       "filename": "S\\Skrillex Selecta.mp3",
+       "size": 5000000
+      },
+      {
+       "br": 250,
+       "dur": 190,
+       "ext": "mp3",
+       "filename": "S\\Skrillex Selecta.mp3",
+       "size": 5000000
+      }
+     ],
+     "free": true,
+     "queue": 0,
+     "speed": 9,
+     "username": "gina"
+    },
+    {
+     "files": [
+      {
+       "br": null,
+       "dur": 400,
+       "ext": ".FLAC",
+       "filename": "Skrillex\\Selecta.FLAC",
+       "size": 28000000
+      }
+     ],
+     "free": true,
+     "queue": 0,
+     "speed": 9,
+     "username": "hank"
+    },
+    {
+     "files": [
+      {
+       "br": 320,
+       "dur": 190,
+       "ext": "mp3",
+       "filename": "Skrillex\\Selecta.mp3",
+       "size": 8000000
+      }
+     ],
+     "free": true,
+     "queue": 0,
+     "speed": 5000000,
+     "username": "ivy"
+    },
+    {
+     "files": [
+      {
+       "br": 320,
+       "dur": 190,
+       "ext": "mp3",
+       "filename": "Skrillex\\Selecta.mp3",
+       "size": 8000000
+      },
+      {
+       "br": null,
+       "dur": null,
+       "ext": "txt",
+       "filename": "Skrillex\\Selecta.txt",
+       "size": 9000000
+      }
+     ],
+     "free": true,
+     "queue": 0,
+     "speed": 5000000,
+     "username": "jo"
+    }
+   ],
+   "track": {
+    "artists": [
+     "Skrillex",
+     "BEAM"
+    ],
+    "durationMs": 190000,
+    "id": "t1",
+    "title": "Selecta"
+   }
+  },
+  {
+   "expected": [
+    {
+     "ext": "flac",
+     "label": "FLAC  28.6MB  alice  free  1953KB/s",
+     "path": "Skrillex\\Selecta.flac",
+     "quality": 15,
+     "size": 30000000,
+     "username": "alice"
+    },
+    {
+     "ext": "flac",
+     "label": "FLAC  23.8MB  carol  free  0KB/s",
+     "path": "x\\Selecta (Skrillex Remix).flac",
+     "quality": 15,
+     "size": 25000000,
+     "username": "carol"
+    },
+    {
+     "ext": "wav",
+     "label": "WAV  57.2MB  dave  free  2929KB/s",
+     "path": "Skrillex\\Selecta.wav",
+     "quality": 14,
+     "size": 60000000,
+     "username": "dave"
+    },
+    {
+     "ext": "mp3",
+     "label": "MP3 320kbps  7.6MB  ivy  free  4882KB/s",
+     "path": "Skrillex\\Selecta.mp3",
+     "quality": 10.0,
+     "size": 8000000,
+     "username": "ivy"
+    },
+    {
+     "ext": "mp3",
+     "label": "MP3 320kbps  7.6MB  jo  free  4882KB/s",
+     "path": "Skrillex\\Selecta.mp3",
+     "quality": 10.0,
+     "size": 8000000,
+     "username": "jo"
+    },
+    {
+     "ext": "mp3",
+     "label": "MP3 320kbps  6.7MB  bob  queue 8  488KB/s",
+     "path": "m\\Skrillex - Selecta.mp3",
+     "quality": 10.0,
+     "size": 7000000,
+     "username": "bob"
+    },
+    {
+     "ext": "ogg",
+     "label": "OGG 500kbps  4.8MB  frank  queue 80  0KB/s",
+     "path": "S\\Skrillex Selecta.ogg",
+     "quality": 9.0,
+     "size": 5000000,
+     "username": "frank"
+    }
+   ],
+   "loose": "skrillex selecta",
+   "results": [
+    {
+     "files": [
+      {
+       "br": null,
+       "dur": 190,
+       "ext": "flac",
+       "filename": "Skrillex\\Selecta.flac",
+       "size": 30000000
+      },
+      {
+       "br": 320,
+       "dur": 190,
+       "ext": "mp3",
+       "filename": "Skrillex\\Selecta.mp3",
+       "size": 8000000
+      }
+     ],
+     "free": true,
+     "queue": 0,
+     "speed": 2000000,
+     "username": "alice"
+    },
+    {
+     "files": [
+      {
+       "br": 320,
+       "dur": 191,
+       "ext": "mp3",
+       "filename": "m\\Skrillex - Selecta.mp3",
+       "size": 7000000
+      },
+      {
+       "br": 192,
+       "dur": 191,
+       "ext": "mp3",
+       "filename": "m\\Skrillex - Selecta.mp3",
+       "size": 7000000
+      }
+     ],
+     "free": false,
+     "queue": 8,
+     "speed": 500000,
+     "username": "bob"
+    },
+    {
+     "files": [
+      {
+       "br": null,
+       "dur": 190,
+       "ext": "flac",
+       "filename": "x\\Selecta (Skrillex Remix).flac",
+       "size": 25000000
+      }
+     ],
+     "free": true,
+     "queue": 0,
+     "speed": 100,
+     "username": "carol"
+    },
+    {
+     "files": [
+      {
+       "br": null,
+       "dur": 191,
+       "ext": "wav",
+       "filename": "Skrillex\\Selecta.wav",
+       "size": 60000000
+      },
+      {
+       "br": 1000,
+       "dur": 191,
+       "ext": "m4a",
+       "filename": "Skrillex\\Selecta.m4a",
+       "size": 9000000
+      }
+     ],
+     "free": true,
+     "queue": 2,
+     "speed": 3000000,
+     "username": "dave"
+    },
+    {
+     "files": [
+      {
+       "br": 320,
+       "dur": 190,
+       "ext": "mp3",
+       "filename": "S\\Skrillex Selecta.mp3",
+       "size": 400000
+      }
+     ],
+     "free": true,
+     "queue": 0,
+     "speed": 1,
+     "username": "erin"
+    },
+    {
+     "files": [
+      {
+       "br": 500,
+       "dur": 190,
+       "ext": "ogg",
+       "filename": "S\\Skrillex Selecta.ogg",
+       "size": 5000000
+      },
+      {
+       "br": 256,
+       "dur": 190,
+       "ext": "",
+       "filename": "S\\Skrillex Selecta.aac",
+       "size": 5000000
+      }
+     ],
+     "free": false,
+     "queue": 80,
+     "speed": 9,
+     "username": "frank"
+    },
+    {
+     "files": [
+      {
+       "br": null,
+       "dur": 190,
+       "ext": "mp3",
+       "filename": "S\\Skrillex Selecta.mp3",
+       "size": 5000000
+      },
+      {
+       "br": 250,
+       "dur": 190,
+       "ext": "mp3",
+       "filename": "S\\Skrillex Selecta.mp3",
+       "size": 5000000
+      }
+     ],
+     "free": true,
+     "queue": 0,
+     "speed": 9,
+     "username": "gina"
+    },
+    {
+     "files": [
+      {
+       "br": null,
+       "dur": 400,
+       "ext": ".FLAC",
+       "filename": "Skrillex\\Selecta.FLAC",
+       "size": 28000000
+      }
+     ],
+     "free": true,
+     "queue": 0,
+     "speed": 9,
+     "username": "hank"
+    },
+    {
+     "files": [
+      {
+       "br": 320,
+       "dur": 190,
+       "ext": "mp3",
+       "filename": "Skrillex\\Selecta.mp3",
+       "size": 8000000
+      }
+     ],
+     "free": true,
+     "queue": 0,
+     "speed": 5000000,
+     "username": "ivy"
+    },
+    {
+     "files": [
+      {
+       "br": 320,
+       "dur": 190,
+       "ext": "mp3",
+       "filename": "Skrillex\\Selecta.mp3",
+       "size": 8000000
+      },
+      {
+       "br": null,
+       "dur": null,
+       "ext": "txt",
+       "filename": "Skrillex\\Selecta.txt",
+       "size": 9000000
+      }
+     ],
+     "free": true,
+     "queue": 0,
+     "speed": 5000000,
+     "username": "jo"
+    }
+   ],
+   "track": {
+    "artists": [
+     "Skrillex",
+     "BEAM"
+    ],
+    "durationMs": 190000,
+    "id": "t1",
+    "title": "Selecta"
+   }
+  },
+  {
+   "expected": [],
+   "loose": null,
+   "results": [
+    {
+     "files": [
+      {
+       "br": null,
+       "dur": 190,
+       "ext": "flac",
+       "filename": "Skrillex\\Selecta.flac",
+       "size": 30000000
+      },
+      {
+       "br": 320,
+       "dur": 190,
+       "ext": "mp3",
+       "filename": "Skrillex\\Selecta.mp3",
+       "size": 8000000
+      }
+     ],
+     "free": true,
+     "queue": 0,
+     "speed": 2000000,
+     "username": "alice"
+    },
+    {
+     "files": [
+      {
+       "br": 320,
+       "dur": 191,
+       "ext": "mp3",
+       "filename": "m\\Skrillex - Selecta.mp3",
+       "size": 7000000
+      },
+      {
+       "br": 192,
+       "dur": 191,
+       "ext": "mp3",
+       "filename": "m\\Skrillex - Selecta.mp3",
+       "size": 7000000
+      }
+     ],
+     "free": false,
+     "queue": 8,
+     "speed": 500000,
+     "username": "bob"
+    },
+    {
+     "files": [
+      {
+       "br": null,
+       "dur": 190,
+       "ext": "flac",
+       "filename": "x\\Selecta (Skrillex Remix).flac",
+       "size": 25000000
+      }
+     ],
+     "free": true,
+     "queue": 0,
+     "speed": 100,
+     "username": "carol"
+    },
+    {
+     "files": [
+      {
+       "br": null,
+       "dur": 191,
+       "ext": "wav",
+       "filename": "Skrillex\\Selecta.wav",
+       "size": 60000000
+      },
+      {
+       "br": 1000,
+       "dur": 191,
+       "ext": "m4a",
+       "filename": "Skrillex\\Selecta.m4a",
+       "size": 9000000
+      }
+     ],
+     "free": true,
+     "queue": 2,
+     "speed": 3000000,
+     "username": "dave"
+    },
+    {
+     "files": [
+      {
+       "br": 320,
+       "dur": 190,
+       "ext": "mp3",
+       "filename": "S\\Skrillex Selecta.mp3",
+       "size": 400000
+      }
+     ],
+     "free": true,
+     "queue": 0,
+     "speed": 1,
+     "username": "erin"
+    },
+    {
+     "files": [
+      {
+       "br": 500,
+       "dur": 190,
+       "ext": "ogg",
+       "filename": "S\\Skrillex Selecta.ogg",
+       "size": 5000000
+      },
+      {
+       "br": 256,
+       "dur": 190,
+       "ext": "",
+       "filename": "S\\Skrillex Selecta.aac",
+       "size": 5000000
+      }
+     ],
+     "free": false,
+     "queue": 80,
+     "speed": 9,
+     "username": "frank"
+    },
+    {
+     "files": [
+      {
+       "br": null,
+       "dur": 190,
+       "ext": "mp3",
+       "filename": "S\\Skrillex Selecta.mp3",
+       "size": 5000000
+      },
+      {
+       "br": 250,
+       "dur": 190,
+       "ext": "mp3",
+       "filename": "S\\Skrillex Selecta.mp3",
+       "size": 5000000
+      }
+     ],
+     "free": true,
+     "queue": 0,
+     "speed": 9,
+     "username": "gina"
+    },
+    {
+     "files": [
+      {
+       "br": null,
+       "dur": 400,
+       "ext": ".FLAC",
+       "filename": "Skrillex\\Selecta.FLAC",
+       "size": 28000000
+      }
+     ],
+     "free": true,
+     "queue": 0,
+     "speed": 9,
+     "username": "hank"
+    },
+    {
+     "files": [
+      {
+       "br": 320,
+       "dur": 190,
+       "ext": "mp3",
+       "filename": "Skrillex\\Selecta.mp3",
+       "size": 8000000
+      }
+     ],
+     "free": true,
+     "queue": 0,
+     "speed": 5000000,
+     "username": "ivy"
+    },
+    {
+     "files": [
+      {
+       "br": 320,
+       "dur": 190,
+       "ext": "mp3",
+       "filename": "Skrillex\\Selecta.mp3",
+       "size": 8000000
+      },
+      {
+       "br": null,
+       "dur": null,
+       "ext": "txt",
+       "filename": "Skrillex\\Selecta.txt",
+       "size": 9000000
+      }
+     ],
+     "free": true,
+     "queue": 0,
+     "speed": 5000000,
+     "username": "jo"
+    }
+   ],
+   "track": {
+    "artists": [
+     "Fred again.."
+    ],
+    "durationMs": 240000,
+    "id": "t2",
+    "title": "Danielle (smile on my face)"
+   }
+  },
+  {
+   "expected": [],
+   "loose": "skrillex selecta",
+   "results": [
+    {
+     "files": [
+      {
+       "br": null,
+       "dur": 190,
+       "ext": "flac",
+       "filename": "Skrillex\\Selecta.flac",
+       "size": 30000000
+      },
+      {
+       "br": 320,
+       "dur": 190,
+       "ext": "mp3",
+       "filename": "Skrillex\\Selecta.mp3",
+       "size": 8000000
+      }
+     ],
+     "free": true,
+     "queue": 0,
+     "speed": 2000000,
+     "username": "alice"
+    },
+    {
+     "files": [
+      {
+       "br": 320,
+       "dur": 191,
+       "ext": "mp3",
+       "filename": "m\\Skrillex - Selecta.mp3",
+       "size": 7000000
+      },
+      {
+       "br": 192,
+       "dur": 191,
+       "ext": "mp3",
+       "filename": "m\\Skrillex - Selecta.mp3",
+       "size": 7000000
+      }
+     ],
+     "free": false,
+     "queue": 8,
+     "speed": 500000,
+     "username": "bob"
+    },
+    {
+     "files": [
+      {
+       "br": null,
+       "dur": 190,
+       "ext": "flac",
+       "filename": "x\\Selecta (Skrillex Remix).flac",
+       "size": 25000000
+      }
+     ],
+     "free": true,
+     "queue": 0,
+     "speed": 100,
+     "username": "carol"
+    },
+    {
+     "files": [
+      {
+       "br": null,
+       "dur": 191,
+       "ext": "wav",
+       "filename": "Skrillex\\Selecta.wav",
+       "size": 60000000
+      },
+      {
+       "br": 1000,
+       "dur": 191,
+       "ext": "m4a",
+       "filename": "Skrillex\\Selecta.m4a",
+       "size": 9000000
+      }
+     ],
+     "free": true,
+     "queue": 2,
+     "speed": 3000000,
+     "username": "dave"
+    },
+    {
+     "files": [
+      {
+       "br": 320,
+       "dur": 190,
+       "ext": "mp3",
+       "filename": "S\\Skrillex Selecta.mp3",
+       "size": 400000
+      }
+     ],
+     "free": true,
+     "queue": 0,
+     "speed": 1,
+     "username": "erin"
+    },
+    {
+     "files": [
+      {
+       "br": 500,
+       "dur": 190,
+       "ext": "ogg",
+       "filename": "S\\Skrillex Selecta.ogg",
+       "size": 5000000
+      },
+      {
+       "br": 256,
+       "dur": 190,
+       "ext": "",
+       "filename": "S\\Skrillex Selecta.aac",
+       "size": 5000000
+      }
+     ],
+     "free": false,
+     "queue": 80,
+     "speed": 9,
+     "username": "frank"
+    },
+    {
+     "files": [
+      {
+       "br": null,
+       "dur": 190,
+       "ext": "mp3",
+       "filename": "S\\Skrillex Selecta.mp3",
+       "size": 5000000
+      },
+      {
+       "br": 250,
+       "dur": 190,
+       "ext": "mp3",
+       "filename": "S\\Skrillex Selecta.mp3",
+       "size": 5000000
+      }
+     ],
+     "free": true,
+     "queue": 0,
+     "speed": 9,
+     "username": "gina"
+    },
+    {
+     "files": [
+      {
+       "br": null,
+       "dur": 400,
+       "ext": ".FLAC",
+       "filename": "Skrillex\\Selecta.FLAC",
+       "size": 28000000
+      }
+     ],
+     "free": true,
+     "queue": 0,
+     "speed": 9,
+     "username": "hank"
+    },
+    {
+     "files": [
+      {
+       "br": 320,
+       "dur": 190,
+       "ext": "mp3",
+       "filename": "Skrillex\\Selecta.mp3",
+       "size": 8000000
+      }
+     ],
+     "free": true,
+     "queue": 0,
+     "speed": 5000000,
+     "username": "ivy"
+    },
+    {
+     "files": [
+      {
+       "br": 320,
+       "dur": 190,
+       "ext": "mp3",
+       "filename": "Skrillex\\Selecta.mp3",
+       "size": 8000000
+      },
+      {
+       "br": null,
+       "dur": null,
+       "ext": "txt",
+       "filename": "Skrillex\\Selecta.txt",
+       "size": 9000000
+      }
+     ],
+     "free": true,
+     "queue": 0,
+     "speed": 5000000,
+     "username": "jo"
+    }
+   ],
+   "track": {
+    "artists": [
+     "Fred again.."
+    ],
+    "durationMs": 240000,
+    "id": "t2",
+    "title": "Danielle (smile on my face)"
+   }
+  },
+  {
+   "expected": [],
+   "loose": null,
+   "results": [
+    {
+     "files": [
+      {
+       "br": null,
+       "dur": 190,
+       "ext": "flac",
+       "filename": "Skrillex\\Selecta.flac",
+       "size": 30000000
+      },
+      {
+       "br": 320,
+       "dur": 190,
+       "ext": "mp3",
+       "filename": "Skrillex\\Selecta.mp3",
+       "size": 8000000
+      }
+     ],
+     "free": true,
+     "queue": 0,
+     "speed": 2000000,
+     "username": "alice"
+    },
+    {
+     "files": [
+      {
+       "br": 320,
+       "dur": 191,
+       "ext": "mp3",
+       "filename": "m\\Skrillex - Selecta.mp3",
+       "size": 7000000
+      },
+      {
+       "br": 192,
+       "dur": 191,
+       "ext": "mp3",
+       "filename": "m\\Skrillex - Selecta.mp3",
+       "size": 7000000
+      }
+     ],
+     "free": false,
+     "queue": 8,
+     "speed": 500000,
+     "username": "bob"
+    },
+    {
+     "files": [
+      {
+       "br": null,
+       "dur": 190,
+       "ext": "flac",
+       "filename": "x\\Selecta (Skrillex Remix).flac",
+       "size": 25000000
+      }
+     ],
+     "free": true,
+     "queue": 0,
+     "speed": 100,
+     "username": "carol"
+    },
+    {
+     "files": [
+      {
+       "br": null,
+       "dur": 191,
+       "ext": "wav",
+       "filename": "Skrillex\\Selecta.wav",
+       "size": 60000000
+      },
+      {
+       "br": 1000,
+       "dur": 191,
+       "ext": "m4a",
+       "filename": "Skrillex\\Selecta.m4a",
+       "size": 9000000
+      }
+     ],
+     "free": true,
+     "queue": 2,
+     "speed": 3000000,
+     "username": "dave"
+    },
+    {
+     "files": [
+      {
+       "br": 320,
+       "dur": 190,
+       "ext": "mp3",
+       "filename": "S\\Skrillex Selecta.mp3",
+       "size": 400000
+      }
+     ],
+     "free": true,
+     "queue": 0,
+     "speed": 1,
+     "username": "erin"
+    },
+    {
+     "files": [
+      {
+       "br": 500,
+       "dur": 190,
+       "ext": "ogg",
+       "filename": "S\\Skrillex Selecta.ogg",
+       "size": 5000000
+      },
+      {
+       "br": 256,
+       "dur": 190,
+       "ext": "",
+       "filename": "S\\Skrillex Selecta.aac",
+       "size": 5000000
+      }
+     ],
+     "free": false,
+     "queue": 80,
+     "speed": 9,
+     "username": "frank"
+    },
+    {
+     "files": [
+      {
+       "br": null,
+       "dur": 190,
+       "ext": "mp3",
+       "filename": "S\\Skrillex Selecta.mp3",
+       "size": 5000000
+      },
+      {
+       "br": 250,
+       "dur": 190,
+       "ext": "mp3",
+       "filename": "S\\Skrillex Selecta.mp3",
+       "size": 5000000
+      }
+     ],
+     "free": true,
+     "queue": 0,
+     "speed": 9,
+     "username": "gina"
+    },
+    {
+     "files": [
+      {
+       "br": null,
+       "dur": 400,
+       "ext": ".FLAC",
+       "filename": "Skrillex\\Selecta.FLAC",
+       "size": 28000000
+      }
+     ],
+     "free": true,
+     "queue": 0,
+     "speed": 9,
+     "username": "hank"
+    },
+    {
+     "files": [
+      {
+       "br": 320,
+       "dur": 190,
+       "ext": "mp3",
+       "filename": "Skrillex\\Selecta.mp3",
+       "size": 8000000
+      }
+     ],
+     "free": true,
+     "queue": 0,
+     "speed": 5000000,
+     "username": "ivy"
+    },
+    {
+     "files": [
+      {
+       "br": 320,
+       "dur": 190,
+       "ext": "mp3",
+       "filename": "Skrillex\\Selecta.mp3",
+       "size": 8000000
+      },
+      {
+       "br": null,
+       "dur": null,
+       "ext": "txt",
+       "filename": "Skrillex\\Selecta.txt",
+       "size": 9000000
+      }
+     ],
+     "free": true,
+     "queue": 0,
+     "speed": 5000000,
+     "username": "jo"
+    }
+   ],
+   "track": {
+    "artists": [
+     "RÜFÜS DU SOL"
+    ],
+    "durationMs": 577000,
+    "id": "t3",
+    "title": "Innerbloom - Original Mix"
+   }
+  },
+  {
+   "expected": [],
+   "loose": "skrillex selecta",
+   "results": [
+    {
+     "files": [
+      {
+       "br": null,
+       "dur": 190,
+       "ext": "flac",
+       "filename": "Skrillex\\Selecta.flac",
+       "size": 30000000
+      },
+      {
+       "br": 320,
+       "dur": 190,
+       "ext": "mp3",
+       "filename": "Skrillex\\Selecta.mp3",
+       "size": 8000000
+      }
+     ],
+     "free": true,
+     "queue": 0,
+     "speed": 2000000,
+     "username": "alice"
+    },
+    {
+     "files": [
+      {
+       "br": 320,
+       "dur": 191,
+       "ext": "mp3",
+       "filename": "m\\Skrillex - Selecta.mp3",
+       "size": 7000000
+      },
+      {
+       "br": 192,
+       "dur": 191,
+       "ext": "mp3",
+       "filename": "m\\Skrillex - Selecta.mp3",
+       "size": 7000000
+      }
+     ],
+     "free": false,
+     "queue": 8,
+     "speed": 500000,
+     "username": "bob"
+    },
+    {
+     "files": [
+      {
+       "br": null,
+       "dur": 190,
+       "ext": "flac",
+       "filename": "x\\Selecta (Skrillex Remix).flac",
+       "size": 25000000
+      }
+     ],
+     "free": true,
+     "queue": 0,
+     "speed": 100,
+     "username": "carol"
+    },
+    {
+     "files": [
+      {
+       "br": null,
+       "dur": 191,
+       "ext": "wav",
+       "filename": "Skrillex\\Selecta.wav",
+       "size": 60000000
+      },
+      {
+       "br": 1000,
+       "dur": 191,
+       "ext": "m4a",
+       "filename": "Skrillex\\Selecta.m4a",
+       "size": 9000000
+      }
+     ],
+     "free": true,
+     "queue": 2,
+     "speed": 3000000,
+     "username": "dave"
+    },
+    {
+     "files": [
+      {
+       "br": 320,
+       "dur": 190,
+       "ext": "mp3",
+       "filename": "S\\Skrillex Selecta.mp3",
+       "size": 400000
+      }
+     ],
+     "free": true,
+     "queue": 0,
+     "speed": 1,
+     "username": "erin"
+    },
+    {
+     "files": [
+      {
+       "br": 500,
+       "dur": 190,
+       "ext": "ogg",
+       "filename": "S\\Skrillex Selecta.ogg",
+       "size": 5000000
+      },
+      {
+       "br": 256,
+       "dur": 190,
+       "ext": "",
+       "filename": "S\\Skrillex Selecta.aac",
+       "size": 5000000
+      }
+     ],
+     "free": false,
+     "queue": 80,
+     "speed": 9,
+     "username": "frank"
+    },
+    {
+     "files": [
+      {
+       "br": null,
+       "dur": 190,
+       "ext": "mp3",
+       "filename": "S\\Skrillex Selecta.mp3",
+       "size": 5000000
+      },
+      {
+       "br": 250,
+       "dur": 190,
+       "ext": "mp3",
+       "filename": "S\\Skrillex Selecta.mp3",
+       "size": 5000000
+      }
+     ],
+     "free": true,
+     "queue": 0,
+     "speed": 9,
+     "username": "gina"
+    },
+    {
+     "files": [
+      {
+       "br": null,
+       "dur": 400,
+       "ext": ".FLAC",
+       "filename": "Skrillex\\Selecta.FLAC",
+       "size": 28000000
+      }
+     ],
+     "free": true,
+     "queue": 0,
+     "speed": 9,
+     "username": "hank"
+    },
+    {
+     "files": [
+      {
+       "br": 320,
+       "dur": 190,
+       "ext": "mp3",
+       "filename": "Skrillex\\Selecta.mp3",
+       "size": 8000000
+      }
+     ],
+     "free": true,
+     "queue": 0,
+     "speed": 5000000,
+     "username": "ivy"
+    },
+    {
+     "files": [
+      {
+       "br": 320,
+       "dur": 190,
+       "ext": "mp3",
+       "filename": "Skrillex\\Selecta.mp3",
+       "size": 8000000
+      },
+      {
+       "br": null,
+       "dur": null,
+       "ext": "txt",
+       "filename": "Skrillex\\Selecta.txt",
+       "size": 9000000
+      }
+     ],
+     "free": true,
+     "queue": 0,
+     "speed": 5000000,
+     "username": "jo"
+    }
+   ],
+   "track": {
+    "artists": [
+     "RÜFÜS DU SOL"
+    ],
+    "durationMs": 577000,
+    "id": "t3",
+    "title": "Innerbloom - Original Mix"
+   }
+  },
+  {
+   "expected": [],
+   "loose": null,
+   "results": [
+    {
+     "files": [
+      {
+       "br": null,
+       "dur": 190,
+       "ext": "flac",
+       "filename": "Skrillex\\Selecta.flac",
+       "size": 30000000
+      },
+      {
+       "br": 320,
+       "dur": 190,
+       "ext": "mp3",
+       "filename": "Skrillex\\Selecta.mp3",
+       "size": 8000000
+      }
+     ],
+     "free": true,
+     "queue": 0,
+     "speed": 2000000,
+     "username": "alice"
+    },
+    {
+     "files": [
+      {
+       "br": 320,
+       "dur": 191,
+       "ext": "mp3",
+       "filename": "m\\Skrillex - Selecta.mp3",
+       "size": 7000000
+      },
+      {
+       "br": 192,
+       "dur": 191,
+       "ext": "mp3",
+       "filename": "m\\Skrillex - Selecta.mp3",
+       "size": 7000000
+      }
+     ],
+     "free": false,
+     "queue": 8,
+     "speed": 500000,
+     "username": "bob"
+    },
+    {
+     "files": [
+      {
+       "br": null,
+       "dur": 190,
+       "ext": "flac",
+       "filename": "x\\Selecta (Skrillex Remix).flac",
+       "size": 25000000
+      }
+     ],
+     "free": true,
+     "queue": 0,
+     "speed": 100,
+     "username": "carol"
+    },
+    {
+     "files": [
+      {
+       "br": null,
+       "dur": 191,
+       "ext": "wav",
+       "filename": "Skrillex\\Selecta.wav",
+       "size": 60000000
+      },
+      {
+       "br": 1000,
+       "dur": 191,
+       "ext": "m4a",
+       "filename": "Skrillex\\Selecta.m4a",
+       "size": 9000000
+      }
+     ],
+     "free": true,
+     "queue": 2,
+     "speed": 3000000,
+     "username": "dave"
+    },
+    {
+     "files": [
+      {
+       "br": 320,
+       "dur": 190,
+       "ext": "mp3",
+       "filename": "S\\Skrillex Selecta.mp3",
+       "size": 400000
+      }
+     ],
+     "free": true,
+     "queue": 0,
+     "speed": 1,
+     "username": "erin"
+    },
+    {
+     "files": [
+      {
+       "br": 500,
+       "dur": 190,
+       "ext": "ogg",
+       "filename": "S\\Skrillex Selecta.ogg",
+       "size": 5000000
+      },
+      {
+       "br": 256,
+       "dur": 190,
+       "ext": "",
+       "filename": "S\\Skrillex Selecta.aac",
+       "size": 5000000
+      }
+     ],
+     "free": false,
+     "queue": 80,
+     "speed": 9,
+     "username": "frank"
+    },
+    {
+     "files": [
+      {
+       "br": null,
+       "dur": 190,
+       "ext": "mp3",
+       "filename": "S\\Skrillex Selecta.mp3",
+       "size": 5000000
+      },
+      {
+       "br": 250,
+       "dur": 190,
+       "ext": "mp3",
+       "filename": "S\\Skrillex Selecta.mp3",
+       "size": 5000000
+      }
+     ],
+     "free": true,
+     "queue": 0,
+     "speed": 9,
+     "username": "gina"
+    },
+    {
+     "files": [
+      {
+       "br": null,
+       "dur": 400,
+       "ext": ".FLAC",
+       "filename": "Skrillex\\Selecta.FLAC",
+       "size": 28000000
+      }
+     ],
+     "free": true,
+     "queue": 0,
+     "speed": 9,
+     "username": "hank"
+    },
+    {
+     "files": [
+      {
+       "br": 320,
+       "dur": 190,
+       "ext": "mp3",
+       "filename": "Skrillex\\Selecta.mp3",
+       "size": 8000000
+      }
+     ],
+     "free": true,
+     "queue": 0,
+     "speed": 5000000,
+     "username": "ivy"
+    },
+    {
+     "files": [
+      {
+       "br": 320,
+       "dur": 190,
+       "ext": "mp3",
+       "filename": "Skrillex\\Selecta.mp3",
+       "size": 8000000
+      },
+      {
+       "br": null,
+       "dur": null,
+       "ext": "txt",
+       "filename": "Skrillex\\Selecta.txt",
+       "size": 9000000
+      }
+     ],
+     "free": true,
+     "queue": 0,
+     "speed": 5000000,
+     "username": "jo"
+    }
+   ],
+   "track": {
+    "artists": [
+     "Daft Punk"
+    ],
+    "durationMs": 320000,
+    "id": "t5",
+    "title": "One More Time (feat. Romanthony) - Remastered"
+   }
+  },
+  {
+   "expected": [],
+   "loose": "skrillex selecta",
+   "results": [
+    {
+     "files": [
+      {
+       "br": null,
+       "dur": 190,
+       "ext": "flac",
+       "filename": "Skrillex\\Selecta.flac",
+       "size": 30000000
+      },
+      {
+       "br": 320,
+       "dur": 190,
+       "ext": "mp3",
+       "filename": "Skrillex\\Selecta.mp3",
+       "size": 8000000
+      }
+     ],
+     "free": true,
+     "queue": 0,
+     "speed": 2000000,
+     "username": "alice"
+    },
+    {
+     "files": [
+      {
+       "br": 320,
+       "dur": 191,
+       "ext": "mp3",
+       "filename": "m\\Skrillex - Selecta.mp3",
+       "size": 7000000
+      },
+      {
+       "br": 192,
+       "dur": 191,
+       "ext": "mp3",
+       "filename": "m\\Skrillex - Selecta.mp3",
+       "size": 7000000
+      }
+     ],
+     "free": false,
+     "queue": 8,
+     "speed": 500000,
+     "username": "bob"
+    },
+    {
+     "files": [
+      {
+       "br": null,
+       "dur": 190,
+       "ext": "flac",
+       "filename": "x\\Selecta (Skrillex Remix).flac",
+       "size": 25000000
+      }
+     ],
+     "free": true,
+     "queue": 0,
+     "speed": 100,
+     "username": "carol"
+    },
+    {
+     "files": [
+      {
+       "br": null,
+       "dur": 191,
+       "ext": "wav",
+       "filename": "Skrillex\\Selecta.wav",
+       "size": 60000000
+      },
+      {
+       "br": 1000,
+       "dur": 191,
+       "ext": "m4a",
+       "filename": "Skrillex\\Selecta.m4a",
+       "size": 9000000
+      }
+     ],
+     "free": true,
+     "queue": 2,
+     "speed": 3000000,
+     "username": "dave"
+    },
+    {
+     "files": [
+      {
+       "br": 320,
+       "dur": 190,
+       "ext": "mp3",
+       "filename": "S\\Skrillex Selecta.mp3",
+       "size": 400000
+      }
+     ],
+     "free": true,
+     "queue": 0,
+     "speed": 1,
+     "username": "erin"
+    },
+    {
+     "files": [
+      {
+       "br": 500,
+       "dur": 190,
+       "ext": "ogg",
+       "filename": "S\\Skrillex Selecta.ogg",
+       "size": 5000000
+      },
+      {
+       "br": 256,
+       "dur": 190,
+       "ext": "",
+       "filename": "S\\Skrillex Selecta.aac",
+       "size": 5000000
+      }
+     ],
+     "free": false,
+     "queue": 80,
+     "speed": 9,
+     "username": "frank"
+    },
+    {
+     "files": [
+      {
+       "br": null,
+       "dur": 190,
+       "ext": "mp3",
+       "filename": "S\\Skrillex Selecta.mp3",
+       "size": 5000000
+      },
+      {
+       "br": 250,
+       "dur": 190,
+       "ext": "mp3",
+       "filename": "S\\Skrillex Selecta.mp3",
+       "size": 5000000
+      }
+     ],
+     "free": true,
+     "queue": 0,
+     "speed": 9,
+     "username": "gina"
+    },
+    {
+     "files": [
+      {
+       "br": null,
+       "dur": 400,
+       "ext": ".FLAC",
+       "filename": "Skrillex\\Selecta.FLAC",
+       "size": 28000000
+      }
+     ],
+     "free": true,
+     "queue": 0,
+     "speed": 9,
+     "username": "hank"
+    },
+    {
+     "files": [
+      {
+       "br": 320,
+       "dur": 190,
+       "ext": "mp3",
+       "filename": "Skrillex\\Selecta.mp3",
+       "size": 8000000
+      }
+     ],
+     "free": true,
+     "queue": 0,
+     "speed": 5000000,
+     "username": "ivy"
+    },
+    {
+     "files": [
+      {
+       "br": 320,
+       "dur": 190,
+       "ext": "mp3",
+       "filename": "Skrillex\\Selecta.mp3",
+       "size": 8000000
+      },
+      {
+       "br": null,
+       "dur": null,
+       "ext": "txt",
+       "filename": "Skrillex\\Selecta.txt",
+       "size": 9000000
+      }
+     ],
+     "free": true,
+     "queue": 0,
+     "speed": 5000000,
+     "username": "jo"
+    }
+   ],
+   "track": {
+    "artists": [
+     "Daft Punk"
+    ],
+    "durationMs": 320000,
+    "id": "t5",
+    "title": "One More Time (feat. Romanthony) - Remastered"
+   }
+  }
+ ]
+}
