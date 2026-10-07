@@ -328,7 +328,8 @@ std::vector<std::string> LibraryStore::row_ids(ListFilter filter, const std::opt
     std::lock_guard lock(m_);
     std::vector<std::string> out;
     if (filter == ListFilter::on_pc) {  // every analysed file; searched by its tags, its name and the track it matched
-        // Only files inside the library folders: the organiser also analyses files it leaves in Downloads.
+        // Only files inside the library folders, and never WreckBox's own folder: that's its downloads (Tracks), and ~/Music
+        // contains it. The organiser also analyses files it leaves outside the folders.
         auto folded = [](const std::string& p) {
             std::wstring w = to_path(p).lexically_normal().generic_wstring();
             CharLowerBuffW(w.data(), DWORD(w.size()));
@@ -340,8 +341,10 @@ std::vector<std::string> LibraryStore::row_ids(ListFilter filter, const std::opt
             if (!root.empty() && root.back() != L'/') root += L'/';
             roots.push_back(std::move(root));
         }
+        const auto own = folded(to_utf8(paths::root())) + L'/';
         for (const auto& [path, f] : analysis_) {
             const auto fp = folded(path);
+            if (fp.starts_with(own)) continue;
             if (std::none_of(roots.begin(), roots.end(), [&](const std::wstring& root) { return fp.starts_with(root); })) continue;
             if (!q.empty()) {
                 const auto* t = f.library_track_id && library_ ? track_locked(*f.library_track_id) : nullptr;

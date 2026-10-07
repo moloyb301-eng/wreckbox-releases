@@ -162,7 +162,7 @@ private:
     void bug_send();
     void set_bug_msg(std::string s);
     std::optional<updates::Info> update_;
-    size_t n_on_pc_ = 0;            // On this PC: audio files in the library folders
+    size_t n_on_pc_ = 0;            // My folders: audio files in the library folders, not WreckBox's own
     std::optional<size_t> n_flac_;  // and how many are FLAC (counted when that page shows)
     bool update_busy_ = false;
     std::string update_msg_, bug_msg_;  // guarded by status_m_

@@ -22,7 +22,7 @@ between the Flutter build and this one.
 ## Download
 
 **[WreckBox-0.1.0-win-native-x64.zip](downloads/WreckBox-0.1.0-win-native-x64.zip?raw=1)** (71 MB): the latest build of
-this branch, including the file type column and the "On this PC" list.
+this branch, including the file type column and the "My folders" list.
 
 1. Unzip it into a folder of its own (e.g. `C:\WreckBox`). The app needs the files next to it, so don't move
    `wreckbox.exe` out on its own.
@@ -51,7 +51,7 @@ Work happens in phases — see [docs/PLAN.md](docs/PLAN.md) for the full list wi
 | 8 | Soulseek sync through the bundled sidecar (queue, results, retry) | ✅ bridge tested; needs a real Soulseek account to run |
 | 9 | Packaging: zip, smoke test, CI workflow | ✅ zip verified on a clean folder; CI not run yet |
 | 10 | Native Soulseek client (replaces the sidecar) | ✅ built, protocol checked against aioslsk's bytes, sync tested against stand-ins; opt-in until it has run on the real network |
-| 11 | File type column + FLAC filter; "On this PC" list of every audio file in your library folders | ✅ tested; Windows first |
+| 11 | File type column + FLAC filter; "My folders": the songs already on your PC (not WreckBox's downloads) | ✅ tested; Windows first |
 
 ## Build
 

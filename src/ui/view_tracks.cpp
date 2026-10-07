@@ -5,6 +5,7 @@
 #include <format>
 
 #include "library/matcher.h"
+#include "model/paths.h"
 #include "model/settings.h"
 #include "sources/sync.h"
 #include "ui/view.h"
@@ -129,7 +130,7 @@ void View::track_page(const Rect& r) {
         case Page::downloaded: title = L"In my crate"; break;
         case Page::missing: title = L"Missing"; break;
         case Page::ignored: title = L"Ignored"; break;
-        case Page::on_pc: title = L"On this PC"; break;
+        case Page::on_pc: title = L"My folders"; break;
         default: title = playlist_ ? wide(*playlist_) : L"All tracks";
     }
     auto actions = library_actions(page_ == Page::downloaded);
@@ -142,15 +143,33 @@ void View::track_page(const Rect& r) {
                                                             can ? std::function<void()>{[this] { sync_playlist(); }} : std::function<void()>{});
                                                }});
     }
-    // On this PC counts its FLAC files (once per refresh: it reads every row).
-    if (page_ == Page::on_pc && !n_flac_) {
-        size_t n = 0;
-        for (const auto& id : store_.row_ids(ListFilter::on_pc))
-            if (const auto t = store_.row(id); t && t->is_flac()) ++n;
-        n_flac_ = n;
+    std::wstring subtitle = std::format(L"{} tracks · {} in your crate", list_total_, list_crate_);
+    if (page_ == Page::on_pc) {
+        // My folders counts its FLAC files (once per refresh: it reads every row) and names the folders it shows.
+        if (!n_flac_) {
+            size_t n = 0;
+            for (const auto& id : store_.row_ids(ListFilter::on_pc))
+                if (const auto t = store_.row(id); t && t->is_flac()) ++n;
+            n_flac_ = n;
+        }
+        std::wstring where;
+        for (const auto& f : store_.scan_folders()) {
+            const std::filesystem::path p = widen(f);
+            if (p == paths::tracks()) continue;  // WreckBox's downloads: never listed here
+            where += (where.empty() ? L"" : L", ") + (p.has_filename() ? p.filename().wstring() : p.wstring());
+        }
+        subtitle = std::format(L"{} songs already on this PC · {} FLAC · from {} (not WreckBox downloads)", list_total_, *n_flac_, where);
+        const bool can = !store_.busy();
+        actions.insert(actions.begin(), Action{ui_.pill_width(L"Add folder…", icon::add), [this, can](float x, float y) {
+                                                   ui_.pill(x, y, L"Add folder…", icon::add, Ui::Pill::glass,
+                                                            can ? std::function<void()>{[this] {
+                                                                const auto picked = pick_folders();
+                                                                for (const auto& f : picked) store_.add_scan_folder(f);
+                                                                if (!picked.empty()) jobs_.run([this] { store_.rescan(); });
+                                                            }}
+                                                                : std::function<void()>{});
+                                               }});
     }
-    const std::wstring subtitle = page_ == Page::on_pc ? std::format(L"{} audio files in your library folders · {} FLAC", list_total_, *n_flac_)
-                                                       : std::format(L"{} tracks · {} in your crate", list_total_, list_crate_);
     float h = header(r, playlist_ ? L"Playlist" : L"Library", title, subtitle, actions);
     // The last sync's result, or why this playlist can't sync.
     if (is_playlist && (!sync_message_.empty() || sync_unavailable_)) {
@@ -287,7 +306,7 @@ void View::list(const Rect& r) {
     if (ids_.empty()) {
         const bool filtered = !search_text_.empty() || mix_.active();
         g_.text(filtered               ? L"No tracks match."
-                : page_ == Page::on_pc ? L"No audio files found yet. Add folders in Settings, then Rescan & analyse."
+                : page_ == Page::on_pc ? L"No songs found in your folders yet. Use Add folder… to pick where your music is."
                                        : L"Nothing here yet.",
                 area, {Font::ui, 13, 400, text3, Align::center});
         return;
@@ -357,8 +376,8 @@ void View::inspector(const Rect& r, bool floating) {
     float y = in.t - insp_scroll_;
 
     // Status + close
-    const bool is_file = !tr->file_id.empty();  // an On this PC row: a file, which may not be in the library
-    ui_.dot_label(is_file                                    ? L"On this PC"
+    const bool is_file = !tr->file_id.empty();  // a My folders row: a file, which may not be in the library
+    ui_.dot_label(is_file                                    ? L"In your folders"
                   : tr->status() == TrackStatus::downloaded ? L"In your crate"
                   : tr->status() == TrackStatus::ignored    ? L"Ignored"
                                                             : L"Missing",

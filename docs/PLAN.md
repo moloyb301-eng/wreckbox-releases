@@ -590,7 +590,7 @@ the same queue.
 
 ---
 
-## Phase 11 — File type and "On this PC" ✅ (Windows first; the other apps later)
+## Phase 11 — File type and "My folders" ✅ (Windows first; the other apps later)
 
 You asked to see at a glance whether each song is a FLAC, for songs WreckBox downloaded and for files already on the PC,
 and for a separate list of the music on this computer with the same features as the track list.
@@ -598,17 +598,20 @@ and for a separate list of the music on this computer with the same features as 
 - [x] **Type column** on every track list (FLAC in lilac, any other type in peach; blank while a song has no file), sortable
 - [x] **FLAC / Not FLAC** filter chips beside the BPM and key filters ("Not FLAC" = has a file of another type: the ones
       to upgrade). The row wraps onto a second line when the inspector leaves no room.
-- [x] **On this PC** (sidebar, under Library): every audio file found in the library folders by *Rescan & analyse*,
-      whether or not it's in the WreckBox library. Same list: search (tags, file name and the matched track), BPM / key /
-      type filters, sorting, playback, the inspector, *Mixes with*, *Show in folder*. The header counts the files and
-      the FLACs.
+- [x] **My folders** (sidebar, under Library; first called "On this PC"): the songs already on the PC in your library
+      folders, found by *Rescan & analyse*, whether or not they're in the WreckBox library. **WreckBox's own folder
+      (`Music\WreckBox`, where its downloads go) is never listed**, even though `Music` contains it: you asked for only
+      the songs you already had. *Add folder…* on the page picks more folders (the same list as Settings → Library
+      folders) and rescans. Same list: search (tags, file name and the matched track), BPM / key /
+      type filters, sorting, playback, the inspector, *Mixes with*, *Show in folder*. The header counts the songs and
+      the FLACs and names the folders.
   - A file that matches a library track shows the track's names and cover; any other file shows its own tags (or its
     file name).
-  - The inspector shows the type, size and "Not in your library". *Write tags* is hidden there: tags come from the
+  - The inspector says "In your folders" and shows the type, size and "Not in your library". *Write tags* is hidden there: tags come from the
     library, so a file shown as itself keeps its own tags.
-  - Files the organiser analysed but left in Downloads aren't listed (they aren't in a library folder).
-- [x] Tests (`library_tests`): an unmatched file and a matched one after a rescan, search, the file type, the library
-      lists unchanged.
+  - Files outside the library folders aren't listed, even if the organiser analysed them.
+- [x] Tests (`library_tests`): a picked folder with an unmatched file and a matched one, Tracks left out, search, the
+      file type, the library lists unchanged.
 
 **Known limit:** a file the engine can't analyse doesn't appear (the list is built from the analysis cache).
 

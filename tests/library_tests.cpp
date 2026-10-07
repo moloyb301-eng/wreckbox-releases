@@ -145,20 +145,28 @@ static void organise_and_rescan() {
     // Rescan finds a file named "Artist - Title" in Tracks and notices a deleted one.
     write_click_wav(wb::paths::tracks() / L"Other - Kept Song.wav", 128, 8);
     fs::remove(filed);
-    const fs::path loose = wb::paths::tracks() / L"Somebody Else - Loose Tune.wav";  // on the PC, not in the library
+    const fs::path mine = fs::temp_directory_path() / L"wreckbox-library-tests-mine";  // a folder the user picked
+    fs::remove_all(mine);
+    fs::create_directories(mine);
+    store.add_scan_folder(reinterpret_cast<const char*>(mine.u8string().c_str()));
+    const fs::path loose = mine / L"Somebody Else - Loose Tune.wav";  // on the PC, not in the library
     write_click_wav(loose, 110, 6);
     store.rescan();
     CHECK(store.row("spotify:b")->status() == wb::TrackStatus::downloaded);
     CHECK(store.row("spotify:a")->status() == wb::TrackStatus::missing);
     CHECK(!store.busy());
 
-    // On this PC: every scanned file, matched or not, as rows with their file type.
+    // My folders: the files in the user's folders as rows with their file type; WreckBox's own downloads (Tracks) aren't.
     const auto on_pc = store.row_ids(wb::ListFilter::on_pc);
-    CHECK(on_pc.size() == 2, "%zu: %s", on_pc.size(), on_pc.empty() ? "" : on_pc.back().c_str());
     const std::string loose_id = wb::kFileIdPrefix + std::string(reinterpret_cast<const char*>(loose.u8string().c_str()));
     const auto lr = store.row(loose_id);
     CHECK(lr && lr->id() == loose_id && lr->track.title == "Somebody Else - Loose Tune" && lr->format() == "WAV" && !lr->is_flac());
     CHECK(lr && lr->status() == wb::TrackStatus::downloaded && lr->file && !lr->file->library_track_id && lr->duration_text() == "0:06");
+    CHECK(on_pc == std::vector{loose_id}, "%zu: %s", on_pc.size(), on_pc.empty() ? "" : on_pc.back().c_str());
+    CHECK(store.row_ids(wb::ListFilter::on_pc, std::nullopt, "kept").empty());  // in Tracks
+    // A file in the user's folder that matches a library track shows the library's names.
+    write_click_wav(mine / L"Other - Kept Song.wav", 128, 8);
+    store.rescan();
     const auto kept = store.row_ids(wb::ListFilter::on_pc, std::nullopt, "kept");
     CHECK(kept.size() == 1 && store.row(kept[0])->track.id == "spotify:b" && store.row(kept[0])->track.title == "Kept Song");  // the library's names
     CHECK(store.row_ids(wb::ListFilter::on_pc, std::nullopt, "loose") == std::vector{loose_id});
@@ -192,6 +200,7 @@ static void organise_and_rescan() {
     CHECK(fs::exists(wb::paths::cache() / L"organiser_seen.json"));
     CHECK(wb::dart_iso("2026-01-02T03:04:05Z") == "2026-01-02T03:04:05.000Z" && wb::dart_iso("2026-01-02T03:04:05.123Z") == "2026-01-02T03:04:05.123Z");
     fs::remove_all(root);
+    fs::remove_all(mine);
 }
 
 // Opt-in (WRECKBOX_NET_TESTS=1): the real services the store calls.
