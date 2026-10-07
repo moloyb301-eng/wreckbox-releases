@@ -1,0 +1,5 @@
+# Text is stored with LF in the repo and checked out with this PC's line endings; binaries are left alone.
+* text=auto
+*.ttf binary
+*.png binary
+*.ico binary
