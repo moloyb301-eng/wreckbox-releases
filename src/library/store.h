@@ -105,6 +105,9 @@ public:
     std::optional<FileAnalysis> analyze_file(const std::string& path, const std::optional<std::string>& track_id = std::nullopt);
     FileFacts facts(const std::string& path) const;
     void rescan();
+    // My folders: deletes one of your own files (to the Recycle Bin unless `recycle` is false, for tests) and forgets it; a
+    // library track it was the file of goes back to missing. Refuses WreckBox's own folder. Returns "" or why it failed.
+    std::string delete_file(const std::string& path, bool recycle = true);
     std::string organise(const std::string& path, const std::string& source, std::optional<std::string> track_id = std::nullopt);
     void write_tags(const std::optional<std::vector<std::string>>& ids = std::nullopt);
 

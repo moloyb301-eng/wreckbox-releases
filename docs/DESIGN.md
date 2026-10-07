@@ -298,8 +298,9 @@ gets a 403.
 
 ### Updates and bug reports
 
-- **Updates**: `GET https://api.github.com/repos/moloyb301-eng/wreckbox-releases/releases/latest`, then compare the
-  tag with our version and pick the asset for this platform.
+- **Updates**: `GET https://api.github.com/repos/moloyb301-eng/wreckbox-releases/releases?per_page=30` (newest first),
+  take the first release, not a draft or pre-release, with a `win-native` asset, and compare its tag with our version.
+  (The Flutter build reads `/releases/latest`; the native build can't, because that is usually the Flutter app's.)
 - **Bug reports**: `POST` to the relay URL with header `X-WreckBox-Key`, sending JSON with `title, description, app,
   version, platform, reporter, contact, logs` and up to 3 screenshots (base64).
 - Both constants live in one `config.h`, mirroring `config.dart`.

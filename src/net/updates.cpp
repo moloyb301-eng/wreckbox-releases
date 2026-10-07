@@ -39,7 +39,7 @@ bool is_newer(const std::string& latest, const std::string& current) {
 
 std::string releases_url() {
     if (const char* v = std::getenv("WRECKBOX_UPDATE_URL"); v && *v) return v;
-    return std::string("https://api.github.com/repos/") + kReleasesRepo + "/releases/latest";
+    return std::string("https://api.github.com/repos/") + kReleasesRepo + "/releases?per_page=30";  // newest first
 }
 
 Result check(const std::string& current_version) {
@@ -49,27 +49,26 @@ Result check(const std::string& current_version) {
         return {std::nullopt, res.status == 403 || res.status == 429 ? "GitHub is busy — try again in a few minutes."
                                                                        : "the update server answered " + std::to_string(res.status) + "."};
     const json j = json::parse(res.body, nullptr, false);
-    if (!j.is_object()) return {std::nullopt, "the update server sent something unexpected."};
-    std::string latest = j.value("tag_name", "");
-    if (!latest.empty() && (latest[0] == 'v' || latest[0] == 'V')) latest.erase(0, 1);
-    if (!is_newer(latest, current_version)) return {};
-    Info info{latest, j.value("body", ""), j.value("html_url", "")};
-    // This build's own zip is "WreckBox-<v>-win-native-x64.zip"; once it takes over the plain "windows" name, that.
-    for (const char* want : {"win-native", "windows"}) {
-        bool found = false;
-        if (j.contains("assets") && j["assets"].is_array())
-            for (const auto& a : j["assets"]) {
-                std::string name = a.value("name", "");
-                std::transform(name.begin(), name.end(), name.begin(), ::tolower);
-                if (name.find(want) != std::string::npos && a.contains("browser_download_url") && a["browser_download_url"].is_string()) {
-                    info.url = a["browser_download_url"].get<std::string>();
-                    found = true;
-                    break;
-                }
-            }
-        if (found) break;
+    if (!j.is_array()) return {std::nullopt, "the update server sent something unexpected."};
+    // The releases repo also carries the Flutter app's releases (its own version numbers, a "windows" zip). Only a
+    // release with this build's zip, "WreckBox-<v>-win-native-x64.zip", is an update for it: the newest such one counts.
+    // Drafts and pre-releases aren't offered.
+    for (const auto& rel : j) {
+        if (!rel.is_object() || rel.value("draft", false) || rel.value("prerelease", false) || !rel.contains("assets") ||
+            !rel["assets"].is_array())
+            continue;
+        for (const auto& a : rel["assets"]) {
+            std::string name = a.is_object() ? a.value("name", "") : "";
+            std::transform(name.begin(), name.end(), name.begin(), ::tolower);
+            if (name.find("win-native") == std::string::npos || !a.contains("browser_download_url") || !a["browser_download_url"].is_string())
+                continue;
+            std::string latest = rel.value("tag_name", "");
+            if (!latest.empty() && (latest[0] == 'v' || latest[0] == 'V')) latest.erase(0, 1);
+            if (!is_newer(latest, current_version)) return {};
+            return {Info{latest, rel.value("body", ""), a["browser_download_url"].get<std::string>()}, ""};
+        }
     }
-    return {info, ""};
+    return {};
 }
 
 }  // namespace wb::updates

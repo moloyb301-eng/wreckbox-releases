@@ -508,6 +508,18 @@ void View::inspector(const Rect& r, bool floating) {
         action(L"Un-ignore", icon::undo, Ui::Pill::glass, [this, i = tr->id()] { jobs_.run([this, i] { store_.set_status({i}, TrackStatus::missing); }); });
     if (x > in.l) y += 34;
     if (path) y += 8 + g_.paragraph(wide(*path), Rect{in.l, y + 8, in.r, y + 8}, {Font::ui, 11, 400, text3});
+    if (is_file && path) {
+        const bool asking = confirm_delete_ == tr->id();
+        const std::wstring label = asking ? L"Move it to the Recycle Bin? Click again" : L"Delete from PC";
+        const TextStyle st{Font::ui, 11.5f, 600, text3};
+        const Rect link{in.l, y + 14, in.l + g_.measure(label, st) + 4, y + 32};
+        g_.text(label, link, {st.font, st.size, st.weight, asking || ui_.hover(link) ? peach : text3});
+        ui_.click(link, [this, i = tr->id(), asking] {
+            if (asking) delete_from_pc(i);
+            else confirm_delete_ = i;
+        });
+        y += 34;
+    }
     y += 4;
     ui_.pop_clip();
     const float before = insp_scroll_;
@@ -528,6 +540,10 @@ void View::row_menu(const std::string& id) {
         AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
         if (tr->file_id.empty()) AppendMenuW(m, store_.busy() ? MF_GRAYED : MF_STRING, 1, L"Write tags to file");
         AppendMenuW(m, MF_STRING, 2, L"Show in folder");
+        if (!tr->file_id.empty()) {  // My folders: your own file
+            AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
+            AppendMenuW(m, MF_STRING, 6, L"Move to Recycle Bin");
+        }
     }
     if (tr->status() == TrackStatus::missing) AppendMenuW(m, MF_STRING, 3, L"Ignore");
     if (tr->status() == TrackStatus::ignored) AppendMenuW(m, MF_STRING, 4, L"Un-ignore");
@@ -541,8 +557,19 @@ void View::row_menu(const std::string& id) {
         case 3: jobs_.run([this, id] { store_.set_status({id}, TrackStatus::ignored); }); break;
         case 4: jobs_.run([this, id] { store_.set_status({id}, TrackStatus::missing); }); break;
         case 5: play_track(id); break;
+        case 6: delete_from_pc(id); break;
     }
     InvalidateRect(hwnd_, nullptr, FALSE);
+}
+
+void View::delete_from_pc(const std::string& id) {
+    confirm_delete_.clear();
+    const auto tr = store_.row(id);
+    if (!tr || tr->file_id.empty() || !tr->state || !tr->state->local_path) return;
+    if (const player::Item* now = player_.current(); now && now->track_id == id) player_.stop();  // VLC holds it open
+    const std::string path = *tr->state->local_path;
+    const std::string err = store_.delete_file(path);
+    show_toast(err.empty() ? L"Moved to the Recycle Bin: " + wide(tr->track.title) : wide(err));
 }
 
 void View::key_menu() {

@@ -116,6 +116,14 @@ bool View::double_click() {
     return true;
 }
 
+void View::set_vis_panel(bool on) {
+    vis_.opt.panel = on;
+    if (!on) eq_open_ = false;  // it hangs from the bar
+    save_vis();
+    mouse_moved();
+    InvalidateRect(hwnd_, nullptr, FALSE);
+}
+
 void View::save_vis() {
     auto& s = Settings::current();
     s.extra["visualizer"] = vis_.opt.to_json();
@@ -151,6 +159,7 @@ bool View::vis_key(WPARAM vk) {
             }
             return true;
         case 'M': vis_use_milk(vis_.opt.mode != VisOptions::Mode::milkdrop); return true;
+        case 'H': set_vis_panel(!vis_.opt.panel); return true;
         case VK_OEM_4:  // [  pictures earlier
         case VK_OEM_6:  // ]  pictures later
             vis_.opt.sync_ms = std::clamp(vis_.opt.sync_ms + (vk == VK_OEM_6 ? 25 : -25), -300, 300);
@@ -424,30 +433,36 @@ void View::draw_scope(const Rect& r, bool over_bars) {
     }
 }
 
-// The player panel over the picture: hint line and exit at the top; at the bottom a glass card with the song, the
-// transport, seek and volume, and the preset controls, and next to it the "Up next" list. It fades as one layer.
+// The player bar over the picture: hint line and exit at the top; along the bottom, edge to edge, one glass bar with the
+// song, the transport, seek and volume, the preset controls and, on the right, the "Up next" list. It fades as one layer.
+// Its hide button (or H) leaves only a "Show player" button.
 void View::vis_overlay(const Rect& r, float a) {
     const bool milk = milk_ && milk_->ok() && vis_.opt.mode == VisOptions::Mode::milkdrop;
     if (a < 1) g_.push_opacity(a);
     g_.fill_span(Rect{r.l, r.t, r.r, r.t + 80}, {0, r.t}, {0, r.t + 80}, {argb(0xA0000000), argb(0x00000000)});  // keeps the hint legible
-    g_.text(milk ? L"Click / N: next preset     P: previous     R: random     L: lock     M: bars     Right-click: options     Space: pause     Esc: exit"
-                 : L"Click: spectrum · scope · both · off     M: MilkDrop     Right-click: options     V: look     Space: pause     Esc: exit",
+    g_.text(milk ? L"Click / N: next preset     P: previous     R: random     L: lock     M: bars     H: hide player     Right-click: options     Space: pause     Esc: exit"
+                 : L"Click: spectrum · scope · both · off     M: MilkDrop     H: hide player     Right-click: options     V: look     Space: pause     Esc: exit",
             Rect{r.l + 48, r.t + 18, r.r - 100, r.t + 44}, {Font::ui, 12.5f, 500, text2});
     ui_.icon_button(Rect::xywh(r.r - 64, r.t + 14, 36, 36), icon::exit_full, 14, [this] { set_fullscreen(false); }, false, false,
                     L"Exit full screen (Esc)");
 
     const player::Item* cur = player_.current();
-    if (cur) {
+    if (cur && !vis_.opt.panel) {
+        const std::wstring label = L"Show player";
+        const float w = ui_.pill_width(label, icon::chevron_up);
+        ui_.pill((r.l + r.r - w) / 2, r.b - 16 - 36, label, icon::chevron_up, Ui::Pill::glass, [this] { set_vis_panel(true); });
+    } else if (cur) {
         const auto& items = player_.queue().items();
         const size_t first_next = size_t(player_.queue().index() + 1), upcoming = first_next < items.size() ? items.size() - first_next : 0;
         const bool up = upcoming > 0 && r.w() >= 1100;
-        const float gap = 12, uw = 260, ph = 236;
-        const float pw = std::min(760.f, r.w() - 48 - (up ? gap + uw : 0));
-        const float left = (r.w() - pw - (up ? gap + uw : 0)) / 2;
-        const Rect panel = Rect::xywh(r.l + left, r.b - 24 - ph, pw, ph);
+        const float uw = 300, ph = 236;
+        const Rect panel{r.l + 16, r.b - 16 - ph, r.r - 16, r.b - 16};
         ui_.glass(panel, 24, false, true);
         ui_.click(panel, [] {});  // clicks on the panel stay on it
-        const Rect in = panel.inset(20);
+        const Rect box = panel.inset(20);
+        const Rect in{box.l + 4, box.t, up ? box.r - uw : box.r - 4, box.b};  // the player; Up next takes the rest
+        ui_.icon_button(Rect::xywh(in.r - 32, in.t, 32, 32), icon::chevron_down, 13, [this] { set_vis_panel(false); }, false, false,
+                        L"Hide the player (H)");
 
         // Row 1: cover, title, artist, BPM and key.
         const auto row = cur->track_id ? store_.row(*cur->track_id) : std::nullopt;
@@ -459,8 +474,8 @@ void View::vis_overlay(const Rect& r, float a) {
         }
         const float tx = cover.r + 18;
         const auto d = player_.display();
-        g_.text(wide(d.title), Rect{tx, in.t, in.r, in.t + 34}, {Font::ui, 26, 600, text});
-        g_.text(wide(d.subtitle), Rect{tx, in.t + 34, in.r, in.t + 58}, {Font::ui, 15, 400, text2});
+        g_.text(wide(d.title), Rect{tx, in.t, in.r - 44, in.t + 34}, {Font::ui, 26, 600, text});
+        g_.text(wide(d.subtitle), Rect{tx, in.t + 34, in.r - 44, in.t + 58}, {Font::ui, 15, 400, text2});
         if (row) {
             float x = tx;
             const float cy = in.t + 80;
@@ -512,9 +527,8 @@ void View::vis_overlay(const Rect& r, float a) {
 
         // Up next: the next five items in the queue, each a click to play.
         if (up) {
-            const Rect card = Rect::xywh(panel.r + gap, panel.t, uw, ph);
-            ui_.glass(card, 24, false, true);
-            ui_.click(card, [] {});
+            const Rect card{in.r + 12, panel.t, panel.r, panel.b};
+            g_.fill(Rect{card.l, card.t + 20, card.l + 1, card.b - 20}, glass_border);  // the divider
             ui_.dot_label(L"Up next", card.l + 20, card.t + 28, text3);
             for (size_t i = 0; i < std::min<size_t>(5, upcoming); ++i) {
                 const player::Item& it = items[first_next + i];

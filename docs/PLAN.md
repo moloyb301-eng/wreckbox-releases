@@ -477,8 +477,9 @@ stream with seeking, and use it away from home through the tunnel with your real
 Port of the update check and bug-report parts of `services.dart`, plus `ui/bug_report.dart`, `ui/settings_page.dart`
 and `ui/account_ui.dart`.
 
-- [x] **Update check** (`net/updates.*`): the latest release of the public releases repo is compared with this build's
-      version (from `CMakeLists.txt`); a "WreckBox x.y.z is available — Download / Later" banner shows above the page.
+- [x] **Update check** (`net/updates.*`): the newest release of the public releases repo **that carries this build's
+      `win-native` zip** is compared with this build's version (2026-10-08: the repo's latest release is the Flutter app's
+      0.6.0, which this build used to announce; drafts and pre-releases are skipped too) (from `CMakeLists.txt`); a "WreckBox x.y.z is available — Download / Later" banner shows above the page.
       Runs once at startup on a worker (not for a `--root` test library, nor with `WRECKBOX_NO_UPDATE_CHECK=1`), and from
       Settings → About → *Check for updates* (which also says "up to date" or why it couldn't check). "Later" hides that
       version until the next one. It prefers an asset named `…win-native…`, then `…windows…`, then the release page.
@@ -539,7 +540,7 @@ first login with a new name creates one.
       `CMakeLists.txt`, the one place): `wreckbox.exe`, libVLC, `plugins\`, `milkdrop\`, `licenses\`, `soulseek\`,
       `README.md`. 69.9 MB (a third of it the MilkDrop presets, half the Soulseek Python).
 - [x] App icon and version resource were already in (`res/app.rc`); the version resource follows `project(VERSION)`.
-- [x] Asset naming: `win-native` until cut-over (DESIGN §9); the update check prefers it.
+- [x] Asset naming: `win-native` until cut-over (DESIGN §9); the update check only offers releases that have it.
 - [x] `docs/INSTALL.md` (shipped as the zip's `README.md`) and a README update.
 
 **Checked here:** the zip, unzipped to a new folder with only `System32` on `PATH` (no VC runtime, no Python, no Visual
@@ -610,10 +611,21 @@ and for a separate list of the music on this computer with the same features as 
   - The inspector says "In your folders" and shows the type, size and "Not in your library". *Write tags* is hidden there: tags come from the
     library, so a file shown as itself keeps its own tags.
   - Files outside the library folders aren't listed, even if the organiser analysed them.
+- [x] **Delete from PC** (2026-10-08), kept out of the way: *Move to Recycle Bin* at the end of a My folders row's
+      right-click menu, and a small dim *Delete from PC* link at the very bottom of the inspector that asks again
+      ("Move it to the Recycle Bin? Click again"). The file goes to the **Recycle Bin**, so it can be restored; it stops
+      playing first, leaves the list, and a library track it was the file of goes back to *Missing*. WreckBox's own
+      folder is refused (`LibraryStore::delete_file`).
 - [x] Tests (`library_tests`): a picked folder with an unmatched file and a matched one, Tracks left out, search, the
-      file type, the library lists unchanged.
+      file type, the library lists unchanged; delete (permanently in the test, to keep out of your Recycle Bin), deleting
+      it twice, and the refusal for a file in Tracks.
 
 **Known limit:** a file the engine can't analyse doesn't appear (the list is built from the analysis cache).
+
+**Full-screen player bar** (2026-10-08, phase 5b's panel): one glass bar along the bottom, edge to edge (16 px from the
+sides), 236 px tall: song, transport, a seek bar as wide as the screen allows, preset controls, and "Up next" as its
+right-hand column behind a divider (from 1,100 px wide). A ⌄ button at its top right (or **H**) hides it, leaving a
+small *Show player* button; that choice is remembered (`VisOptions::panel`, `"panel"` in the visualizer settings).
 
 ---
 

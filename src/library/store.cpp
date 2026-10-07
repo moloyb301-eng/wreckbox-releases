@@ -1,6 +1,7 @@
 #include "library/store.h"
 
 #include <windows.h>
+#include <shellapi.h>
 
 #include <algorithm>
 #include <chrono>
@@ -30,6 +31,12 @@ std::string basename(const std::string& utf8) { return to_utf8(to_path(utf8).fil
 bool exists(const std::string& utf8) {
     std::error_code ec;
     return fs::is_regular_file(to_path(utf8), ec);
+}
+// A path for comparing: normalised, forward slashes, lower case (Windows paths ignore case).
+std::wstring folded(const std::string& p) {
+    std::wstring w = to_path(p).lexically_normal().generic_wstring();
+    CharLowerBuffW(w.data(), DWORD(w.size()));
+    return w;
 }
 
 // Analysis-cache timestamps are compared at whole-second resolution, like isoSeconds() in Dart.
@@ -330,11 +337,6 @@ std::vector<std::string> LibraryStore::row_ids(ListFilter filter, const std::opt
     if (filter == ListFilter::on_pc) {  // every analysed file; searched by its tags, its name and the track it matched
         // Only files inside the library folders, and never WreckBox's own folder: that's its downloads (Tracks), and ~/Music
         // contains it. The organiser also analyses files it leaves outside the folders.
-        auto folded = [](const std::string& p) {
-            std::wstring w = to_path(p).lexically_normal().generic_wstring();
-            CharLowerBuffW(w.data(), DWORD(w.size()));
-            return w;
-        };
         std::vector<std::wstring> roots;
         for (const auto& d : state_.scan_folders) {
             auto root = folded(d);
@@ -678,6 +680,37 @@ FileFacts LibraryStore::facts(const std::string& path) const {
 }
 
 // MARK: Rescan
+
+std::string LibraryStore::delete_file(const std::string& path, bool recycle) {
+    // Only a file in your own folders: never WreckBox's folder (its downloads, its caches).
+    if (folded(path).starts_with(folded(to_utf8(paths::root())) + L'/')) return "WreckBox's own files can't be deleted here.";
+    if (!exists(path)) return "The file is already gone.";
+    std::wstring from = to_path(path).wstring();
+    from.push_back(L'\0');  // SHFileOperation takes a list that ends in two nulls
+    SHFILEOPSTRUCTW op{};
+    op.wFunc = FO_DELETE;
+    op.pFrom = from.c_str();
+    op.fFlags = FOF_NOCONFIRMATION | FOF_NOERRORUI | FOF_SILENT | (recycle ? FOF_ALLOWUNDO : 0);
+    if (SHFileOperationW(&op) != 0 || op.fAnyOperationsAborted || exists(path))
+        return "Windows couldn't delete it. Is it open in another app?";
+    {
+        std::lock_guard lock(m_);
+        analysis_.erase(path);
+        for (auto& [id, s] : state_.tracks)
+            if (s.status == TrackStatus::downloaded && s.local_path == path) {  // the file of a library track: missing again
+                TrackState m;
+                m.status = TrackStatus::missing;
+                m.source = "deleted";
+                m.updated_at = iso_seconds_now();
+                s = m;
+            }
+        log_locked("deleted", basename(path) + (recycle ? " moved to the Recycle Bin" : " deleted") + " – " + path);
+    }
+    save_analysis();
+    save();
+    changed();
+    return "";
+}
 
 void LibraryStore::rescan() {
     if (!begin_busy("Scanning folders…")) return;

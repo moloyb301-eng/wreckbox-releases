@@ -71,8 +71,8 @@ Close WreckBox before updating. It uses `curl` and `tar`, which come with Window
 
 > Windows 10 or 11, 64-bit. Uses the same `Music\WreckBox` library as the original app.
 
-> **Known:** the account, bug reports and update check still use the original WreckBox services, and the version
-> still reads 0.1.0. See [CHANGELOG.md](CHANGELOG.md).
+> **Known:** the account and bug reports still use the original WreckBox services, and the version still reads
+> 0.1.0. The update check only announces releases of this build (not the original app's). See [CHANGELOG.md](CHANGELOG.md).
 
 <br>
 
@@ -309,14 +309,18 @@ any folder you add with **Add folder…**; the header names them. A song that ma
 names and cover; the details panel shows the type and size and says "Not in your library" when it isn't. *Write tags*
 is hidden there, so your own files keep their tags. A file WreckBox can't analyse doesn't appear.
 
+To delete a song from the PC: right-click it → *Move to Recycle Bin*, or the small *Delete from PC* link at the bottom
+of its details panel (click twice). It goes to the Recycle Bin, so you can restore it.
+
 </details>
 
 <details>
 <summary><b>Visualizer</b></summary>
 <br>
 
-The visualizer button (or **F11**) goes full screen: **MilkDrop** presets under a player panel (song, transport, seek,
-volume, EQ, "Up next") that fades when the mouse is still.
+The visualizer button (or **F11**) goes full screen: **MilkDrop** presets under a player bar across the bottom of the
+screen (song, transport, seek, volume, EQ, "Up next") that fades when the mouse is still. Its ⌄ button (or **H**) hides
+it; *Show player* brings it back.
 
 - **N / P** next / previous preset · **R** random · **L** lock · click = next · **M** switch MilkDrop ↔ Winamp bars ·
   Space pauses · Esc / F11 / double-click leave.

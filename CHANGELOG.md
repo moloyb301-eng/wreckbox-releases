@@ -12,6 +12,13 @@ Day-to-day work goes on `main`; bigger features on a branch (`feature/<name>`), 
 
 ## Unreleased
 
+- **Full-screen player bar**: one bar across the bottom of the screen, with "Up next" inside it, and a button (or **H**)
+  to hide it; remembered
+- **Delete from PC** in My folders, tucked away (right-click menu, and a small link at the bottom of the details panel
+  that asks twice); the file goes to the Recycle Bin
+- **Fixed:** "WreckBox 0.6.0 is available" — the update check announced the original app's releases; it now only
+  offers releases of this build
+
 - **File type** column on every track list (FLAC stands out) and **FLAC / Not FLAC** filters
 - **My folders**: the songs already on your PC in the folders you pick (WreckBox's own downloads are left out), in
   the library or not, with the same search, filters, sorting, playback and inspector as the track list, and an

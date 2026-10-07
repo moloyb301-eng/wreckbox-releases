@@ -307,11 +307,11 @@ static void visualizer() {
     // The beat options: strong pulse, cuts on drops, beat-heavy presets, normal sensitivity by default; they round-trip
     // and out-of-range values are clamped.
     const VisOptions def;
-    CHECK(def.pulse == 2 && def.hard_cuts && !def.all_presets && def.beat_sensitivity == 2 && def.sync_ms == 0);
+    CHECK(def.pulse == 2 && def.hard_cuts && !def.all_presets && def.beat_sensitivity == 2 && def.sync_ms == 0 && def.panel);
     VisOptions beat;
-    beat.pulse = 1, beat.hard_cuts = false, beat.all_presets = true, beat.beat_sensitivity = 3, beat.sync_ms = -75;
+    beat.pulse = 1, beat.hard_cuts = false, beat.all_presets = true, beat.beat_sensitivity = 3, beat.sync_ms = -75, beat.panel = false;
     const VisOptions bb = VisOptions::from_json(beat.to_json());
-    CHECK(bb.pulse == 1 && !bb.hard_cuts && bb.all_presets && bb.beat_sensitivity == 3 && bb.sync_ms == -75);
+    CHECK(bb.pulse == 1 && !bb.hard_cuts && bb.all_presets && bb.beat_sensitivity == 3 && bb.sync_ms == -75 && !bb.panel);
     const VisOptions clamped = VisOptions::from_json(wb::json{{"pulse", 9}, {"syncMs", 5000}, {"beatSensitivity", 0}});
     CHECK(clamped.pulse == 2 && clamped.sync_ms == 300 && clamped.beat_sensitivity == 1);
     // MilkDrop is the default look; its options round-trip and a bad value falls back to the nearest choice.

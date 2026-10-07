@@ -27,6 +27,7 @@ struct VisOptions {
     bool all_presets = false;   // false: the beat-heavy categories only
     int beat_sensitivity = 2;   // 1 low, 2 normal, 3 high
     int sync_ms = 0;            // your calibration: + draws the pictures later, − earlier (−300…300)
+    bool panel = true;          // the full-screen player bar is shown (false: hidden, a "Show player" button instead)
 
     json to_json() const;
     static VisOptions from_json(const json& j);

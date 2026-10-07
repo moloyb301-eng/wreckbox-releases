@@ -47,7 +47,8 @@ json VisOptions::to_json() const {
             {"hardCuts", hard_cuts},
             {"presets", all_presets ? "all" : "beat"},
             {"beatSensitivity", beat_sensitivity},
-            {"syncMs", sync_ms}};
+            {"syncMs", sync_ms},
+            {"panel", panel}};
 }
 
 VisOptions VisOptions::from_json(const json& j) {
@@ -68,6 +69,7 @@ VisOptions VisOptions::from_json(const json& j) {
     o.all_presets = j.value("presets", std::string("beat")) == "all";
     o.beat_sensitivity = std::clamp(j.value("beatSensitivity", o.beat_sensitivity), 1, 3);
     o.sync_ms = std::clamp(j.value("syncMs", o.sync_ms), -300, 300);
+    o.panel = j.value("panel", o.panel);
     return o;
 }
 

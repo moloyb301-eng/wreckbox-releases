@@ -201,6 +201,7 @@ void View::paint() {
         if (bug_open_) bug_dialog();
         if (slsk_query_open_) slsk_query_dialog();
     }
+    draw_toast();
     if (const UINT due = ui_.draw_tooltip()) SetTimer(hwnd_, kTooltipTimer, due + 10, nullptr);
     hide_unused_edits();
     update_timer();

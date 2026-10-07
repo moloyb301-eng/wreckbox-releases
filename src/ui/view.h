@@ -115,6 +115,8 @@ private:
     ListFilter list_filter() const;
     void focus(const std::optional<std::string>& id);
     void row_menu(const std::string& id);
+    void delete_from_pc(const std::string& id);  // My folders: the file to the Recycle Bin
+    std::string confirm_delete_;                 // the row whose "Delete from PC" was clicked once (asks again)
     void key_menu();
     void show_in_folder(const std::string& path);
 
@@ -250,6 +252,7 @@ private:
     void vis_overlay(const Rect& r, float alpha);
     void vis_menu();
     void save_vis();
+    void set_vis_panel(bool on);  // show / hide the full-screen player bar (remembered)
     bool vis_key(WPARAM vk);
     float overlay_alpha() const;
     void vis_click();
