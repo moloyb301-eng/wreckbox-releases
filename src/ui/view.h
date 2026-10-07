@@ -73,13 +73,15 @@ public:
     void tab(int from_id, bool back);  // Tab / Shift+Tab inside a text box
 
 private:
-    enum class Page { home, all, downloaded, missing, ignored, playlist, queue, soulseek, phone, settings };
-    enum class Sort { none, title, artist, bpm, key, energy };
+    enum class Page { home, all, downloaded, missing, ignored, on_pc, playlist, queue, soulseek, phone, settings };
+    enum class Sort { none, title, artist, bpm, key, energy, type };
+    enum class Format { any, flac, not_flac };  // not_flac: has a file, of another type
     struct Mix {
         std::wstring min_bpm, max_bpm;
         std::optional<std::string> key;
         bool compatible = true;
-        bool active() const { return !min_bpm.empty() || !max_bpm.empty() || key; }
+        Format format = Format::any;
+        bool active() const { return !min_bpm.empty() || !max_bpm.empty() || key || format != Format::any; }
     };
 
     // A header action (button or status text): its width, and how to draw it at (x, y).
@@ -98,7 +100,7 @@ private:
     void home(const Rect& r);
     void placeholder(const Rect& r, const std::wstring& title, const std::wstring& subtitle, const std::wstring& phase);
     void track_page(const Rect& r);
-    void filters(const Rect& r);
+    float filters(const Rect& r);  // returns the height used (the row wraps when the page is narrow)
     void list(const Rect& r);
     void row(const TrackRow& row, const Rect& r);
     void inspector(const Rect& r, bool floating);
@@ -160,6 +162,8 @@ private:
     void bug_send();
     void set_bug_msg(std::string s);
     std::optional<updates::Info> update_;
+    size_t n_on_pc_ = 0;            // On this PC: audio files in the library folders
+    std::optional<size_t> n_flac_;  // and how many are FLAC (counted when that page shows)
     bool update_busy_ = false;
     std::string update_msg_, bug_msg_;  // guarded by status_m_
     bool bug_open_ = false, bug_sending_ = false, bug_include_shot_ = true, bug_focused_ = false;

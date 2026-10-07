@@ -75,6 +75,13 @@ std::string TrackRow::duration_text() const {
     const int64_t ms = *track.duration_ms;
     return std::format("{}:{:02}", ms / 60000, ms / 1000 % 60);
 }
+std::string TrackRow::format() const {
+    if (!state || !state->local_path) return "";
+    std::string ext = to_utf8(to_path(*state->local_path).extension());
+    if (!ext.empty()) ext.erase(0, 1);
+    for (auto& c : ext) c = char(std::toupper(static_cast<unsigned char>(c)));
+    return ext;
+}
 
 // MARK: Load / save
 
@@ -272,6 +279,7 @@ std::optional<LibraryTrack> LibraryStore::track(const std::string& id) const {
 }
 
 std::optional<TrackRow> LibraryStore::row_locked(const std::string& id) const {
+    if (is_file_id(id)) return file_row_locked(id.substr(std::string_view(kFileIdPrefix).size()));
     const auto* t = track_locked(id);
     if (!t) return std::nullopt;
     TrackRow r{*t};
@@ -285,6 +293,31 @@ std::optional<TrackRow> LibraryStore::row_locked(const std::string& id) const {
     return r;
 }
 
+// A file found by a scan, as a row: the library track it matched (names, cover, playlists), else its own tags or name.
+std::optional<TrackRow> LibraryStore::file_row_locked(const std::string& path) const {
+    const auto a = analysis_.find(path);
+    if (a == analysis_.end()) return std::nullopt;
+    const FileAnalysis& f = a->second;
+    TrackRow r;
+    if (const auto* t = f.library_track_id ? track_locked(*f.library_track_id) : nullptr) {
+        r.track = *t;
+        if (const auto g = state_.genre_overrides.find(t->id); g != state_.genre_overrides.end()) r.genre = g->second;
+    } else {
+        const std::string stem = to_utf8(to_path(path).stem());
+        r.track.id = std::string(kFileIdPrefix) + path;
+        r.track.title = f.title && !f.title->empty() ? *f.title : stem;
+        if (f.artist && !f.artist->empty()) r.track.artists = {*f.artist};
+        if (f.duration_sec) r.track.duration_ms = int64_t(*f.duration_sec * 1000);
+        r.track.file_name = stem;
+    }
+    r.file_id = std::string(kFileIdPrefix) + path;
+    r.state = TrackState{};
+    r.state->status = TrackStatus::downloaded;
+    r.state->local_path = path;
+    r.file = f;
+    return r;
+}
+
 std::optional<TrackRow> LibraryStore::row(const std::string& id) const {
     std::lock_guard lock(m_);
     return row_locked(id);
@@ -294,6 +327,32 @@ std::vector<std::string> LibraryStore::row_ids(ListFilter filter, const std::opt
     const std::string q = normalized(search);  // outside the lock: the only per-call text work
     std::lock_guard lock(m_);
     std::vector<std::string> out;
+    if (filter == ListFilter::on_pc) {  // every analysed file; searched by its tags, its name and the track it matched
+        // Only files inside the library folders: the organiser also analyses files it leaves in Downloads.
+        auto folded = [](const std::string& p) {
+            std::wstring w = to_path(p).lexically_normal().generic_wstring();
+            CharLowerBuffW(w.data(), DWORD(w.size()));
+            return w;
+        };
+        std::vector<std::wstring> roots;
+        for (const auto& d : state_.scan_folders) {
+            auto root = folded(d);
+            if (!root.empty() && root.back() != L'/') root += L'/';
+            roots.push_back(std::move(root));
+        }
+        for (const auto& [path, f] : analysis_) {
+            const auto fp = folded(path);
+            if (std::none_of(roots.begin(), roots.end(), [&](const std::wstring& root) { return fp.starts_with(root); })) continue;
+            if (!q.empty()) {
+                const auto* t = f.library_track_id && library_ ? track_locked(*f.library_track_id) : nullptr;
+                const std::string hay = normalized(f.artist.value_or("") + " " + f.title.value_or("") + " " + to_utf8(to_path(path).stem()) +
+                                                   (t ? " " + t->artist() + " " + t->title + " " + t->album.value_or("") : ""));
+                if (hay.find(q) == std::string::npos) continue;
+            }
+            out.push_back(std::string(kFileIdPrefix) + path);
+        }
+        return out;
+    }
     if (!library_) return out;
     auto keep = [&](size_t i) {
         const auto& id = library_->tracks[i].id;
@@ -374,6 +433,7 @@ std::vector<TrackRow> LibraryStore::mixes_with(const TrackRow& r) const {
 }
 
 std::string LibraryStore::describe_locked(const std::string& id) const {
+    if (is_file_id(id)) return basename(id.substr(std::string_view(kFileIdPrefix).size()));
     const auto* t = track_locked(id);
     return t ? t->artist() + " – " + t->title : id;
 }

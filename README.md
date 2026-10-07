@@ -39,6 +39,7 @@ Work happens in phases — see [docs/PLAN.md](docs/PLAN.md) for the full list wi
 | 8 | Soulseek sync through the bundled sidecar (queue, results, retry) | ✅ bridge tested; needs a real Soulseek account to run |
 | 9 | Packaging: zip, smoke test, CI workflow | ✅ zip verified on a clean folder; CI not run yet |
 | 10 | Native Soulseek client (replaces the sidecar) | ✅ built, protocol checked against aioslsk's bytes, sync tested against stand-ins; opt-in until it has run on the real network |
+| 11 | File type column + FLAC filter; "On this PC" list of every audio file in your library folders | ✅ tested; Windows first |
 
 ## Build
 

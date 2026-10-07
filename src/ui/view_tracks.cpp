@@ -29,8 +29,8 @@ int compare_ci(const std::string& a, const std::string& b) {
     return CompareStringOrdinal(wa.c_str(), int(wa.size()), wb_.c_str(), int(wb_.size()), TRUE) - CSTR_EQUAL;
 }
 
-// Column widths of the desktop list, right to left: status 16 (+10 gap), duration 50, energy 60, key 70, BPM 60.
-constexpr float kStatus = 26, kDuration = 50, kEnergy = 60, kKey = 70, kBpm = 60;
+// Column widths of the desktop list, right to left: status 16 (+10 gap), duration 50, type 56, energy 60, key 70, BPM 60.
+constexpr float kStatus = 26, kDuration = 50, kType = 56, kEnergy = 60, kKey = 70, kBpm = 60;
 
 }  // namespace
 
@@ -44,6 +44,7 @@ void View::refresh() {
     n_missing_ = store_.count(TrackStatus::missing);
     n_ignored_ = store_.count(TrackStatus::ignored);
     n_analysed_ = store_.analysis_count();
+    n_on_pc_ = store_.row_ids(ListFilter::on_pc).size();
     n_priority_ = store_.state_copy().download_priority.size();
     mixes_for_.reset();
 
@@ -73,9 +74,10 @@ void View::refresh() {
     ids_ = store_.row_ids(filter, playlist_, narrow(search_text_));
     list_total_ = store_.row_ids(filter, playlist_).size();
     list_crate_ = filter == ListFilter::all || filter == ListFilter::downloaded ? store_.row_ids(ListFilter::downloaded, playlist_).size() : 0;
+    n_flac_.reset();
     if (!mix_.active() && sort_ == Sort::none) return;
 
-    // Filtering by BPM / key and sorting need each row's analysis.
+    // Filtering by BPM / key / file type and sorting need each row's analysis.
     std::vector<TrackRow> rows;
     rows.reserve(ids_.size());
     const auto lo = parse_number(mix_.min_bpm), hi = parse_number(mix_.max_bpm);
@@ -87,6 +89,8 @@ void View::refresh() {
         if (lo && (!b || *b < *lo)) continue;
         if (hi && (!b || *b > *hi)) continue;
         if (mix_.key && (mix_.compatible ? !keys.contains(r->camelot()) : r->camelot() != *mix_.key)) continue;
+        if (mix_.format == Format::flac && !r->is_flac()) continue;
+        if (mix_.format == Format::not_flac && (r->is_flac() || r->format().empty())) continue;
         rows.push_back(std::move(*r));
     }
     auto by = [this](auto key) {
@@ -110,6 +114,7 @@ void View::refresh() {
             std::stable_sort(rows.begin(), rows.end(), by([](const TrackRow& r) { return camelot_order(r.camelot().empty() ? std::nullopt : std::optional(r.camelot())); }));
             break;
         case Sort::energy: std::stable_sort(rows.begin(), rows.end(), by([](const TrackRow& r) { return r.energy().value_or(-1); })); break;
+        case Sort::type: std::stable_sort(rows.begin(), rows.end(), by([](const TrackRow& r) { return r.format(); })); break;
         case Sort::none: break;
     }
     ids_.clear();
@@ -124,6 +129,7 @@ void View::track_page(const Rect& r) {
         case Page::downloaded: title = L"In my crate"; break;
         case Page::missing: title = L"Missing"; break;
         case Page::ignored: title = L"Ignored"; break;
+        case Page::on_pc: title = L"On this PC"; break;
         default: title = playlist_ ? wide(*playlist_) : L"All tracks";
     }
     auto actions = library_actions(page_ == Page::downloaded);
@@ -136,7 +142,16 @@ void View::track_page(const Rect& r) {
                                                             can ? std::function<void()>{[this] { sync_playlist(); }} : std::function<void()>{});
                                                }});
     }
-    float h = header(r, playlist_ ? L"Playlist" : L"Library", title, std::format(L"{} tracks · {} in your crate", list_total_, list_crate_), actions);
+    // On this PC counts its FLAC files (once per refresh: it reads every row).
+    if (page_ == Page::on_pc && !n_flac_) {
+        size_t n = 0;
+        for (const auto& id : store_.row_ids(ListFilter::on_pc))
+            if (const auto t = store_.row(id); t && t->is_flac()) ++n;
+        n_flac_ = n;
+    }
+    const std::wstring subtitle = page_ == Page::on_pc ? std::format(L"{} audio files in your library folders · {} FLAC", list_total_, *n_flac_)
+                                                       : std::format(L"{} tracks · {} in your crate", list_total_, list_crate_);
+    float h = header(r, playlist_ ? L"Playlist" : L"Library", title, subtitle, actions);
     // The last sync's result, or why this playlist can't sync.
     if (is_playlist && (!sync_message_.empty() || sync_unavailable_)) {
         const bool msg = !sync_message_.empty(), failed = sync_message_.rfind("Sync failed", 0) == 0;
@@ -144,8 +159,8 @@ void View::track_page(const Rect& r) {
                 {Font::ui, 12, msg ? 600 : 400, failed ? peach : msg ? lilac : text3});
         h += 18;
     }
-    filters(Rect{r.l, r.t + h, r.r, r.t + h + 38});
-    list(Rect{r.l, r.t + h + 50, r.r, r.b});
+    h += filters(Rect{r.l, r.t + h, r.r, r.t + h + 38});
+    list(Rect{r.l, r.t + h + 12, r.r, r.b});
 }
 
 void View::sync_playlist() {
@@ -182,7 +197,7 @@ void View::sync_playlist() {
         });
 }
 
-void View::filters(const Rect& r) {
+float View::filters(const Rect& r) {
     // Search: a native text box laid over a drawn pill.
     const Rect box = Rect::xywh(r.l, r.t, 260, 38);
     g_.fill_round(box, 19, glass_fill);
@@ -219,14 +234,26 @@ void View::filters(const Rect& r) {
             changed();
         }) + 6;
     }
+    // The file type chips (and Clear) go on a second line when they don't fit beside the rest.
+    float t = r.t;
+    if (x + 60 + ui_.chip_width(L"FLAC") + ui_.chip_width(L"Not FLAC") + (mix_.active() ? 70 : 0) > r.r) x = r.l, t += 46;
+    x += ui_.dot_label(L"Type", x + 4, t + 19, text3, 10) + 12;
+    for (const auto& [label, f] : {std::pair{L"FLAC", Format::flac}, std::pair{L"Not FLAC", Format::not_flac}}) {
+        const bool on = mix_.format == f;
+        x += ui_.chip(x, t + 4, label, std::nullopt, on, false, [this, on, f = f, changed] {
+            mix_.format = on ? Format::any : f;
+            changed();
+        }) + 6;
+    }
     if (mix_.active()) {
-        const Rect clear = Rect::xywh(x + 4, r.t + 4, g_.measure(L"Clear", {Font::ui, 12.5f, 600}) + 16, 30);
+        const Rect clear = Rect::xywh(x + 4, t + 4, g_.measure(L"Clear", {Font::ui, 12.5f, 600}) + 16, 30);
         g_.text(L"Clear", clear, {Font::ui, 12.5f, 600, ui_.hover(clear) ? text : text2, Align::center});
         ui_.click(clear, [this, changed] {
             mix_ = {};
             changed();
         });
     }
+    return t - r.t + 38;
 }
 
 void View::list(const Rect& r) {
@@ -234,8 +261,8 @@ void View::list(const Rect& r) {
     // Column header (click to sort: ascending → descending → off).
     const float hy = r.t + 14, hb = r.t + 36;
     const float right = r.r - 16;
-    const float x_status = right - kStatus, x_dur = x_status - kDuration, x_energy = x_dur - kEnergy, x_key = x_energy - kKey,
-                x_bpm = x_key - kBpm;
+    const float x_status = right - kStatus, x_dur = x_status - kDuration, x_type = x_dur - kType, x_energy = x_type - kEnergy,
+                x_key = x_energy - kKey, x_bpm = x_key - kBpm;
     auto head = [&](const wchar_t* label, Sort k, float x0, float x1) {
         const bool on = sort_ == k;
         const Rect hr{x0, hy, x1, hb - 4};
@@ -251,14 +278,18 @@ void View::list(const Rect& r) {
     head(L"Title", Sort::title, r.l + 16 + 52, x_bpm);
     head(L"BPM", Sort::bpm, x_bpm, x_key);
     head(L"Key", Sort::key, x_key, x_energy);
-    head(L"Energy", Sort::energy, x_energy, x_dur);
+    head(L"Energy", Sort::energy, x_energy, x_type);
+    head(L"Type", Sort::type, x_type, x_dur);
     g_.line(r.l, hb, r.r, hb, hairline);
 
     const Rect area{r.l, hb + 1, r.r, r.b - 1};
     list_view_h_ = area.h();
     if (ids_.empty()) {
         const bool filtered = !search_text_.empty() || mix_.active();
-        g_.text(filtered ? L"No tracks match." : L"Nothing here yet.", area, {Font::ui, 13, 400, text3, Align::center});
+        g_.text(filtered               ? L"No tracks match."
+                : page_ == Page::on_pc ? L"No audio files found yet. Add folders in Settings, then Rescan & analyse."
+                                       : L"Nothing here yet.",
+                area, {Font::ui, 13, 400, text3, Align::center});
         return;
     }
     constexpr float row_h = 54, pad = 6;
@@ -299,13 +330,15 @@ void View::row(const TrackRow& tr, const Rect& r) {
     }
 
     const float right = c.r + 8;  // columns line up with the header (which has no scrollbar gutter)
-    const float x_status = right - kStatus, x_dur = x_status - kDuration, x_energy = x_dur - kEnergy, x_key = x_energy - kKey,
-                x_bpm = x_key - kBpm;
+    const float x_status = right - kStatus, x_dur = x_status - kDuration, x_type = x_dur - kType, x_energy = x_type - kEnergy,
+                x_key = x_energy - kKey, x_bpm = x_key - kBpm;
     g_.text(wide(tr.track.title), Rect{c.l + 52, cy - 18, x_bpm - 8, cy}, {Font::ui, 13.5f, 600, current ? lilac : text});
     g_.text(wide(tr.track.artist()), Rect{c.l + 52, cy + 1, x_bpm - 8, cy + 17}, {Font::ui, 12, 400, text2});
     ui_.bpm_readout(x_bpm, cy, tr.bpm(), tr.file && tr.file->bpm_unsure());
     ui_.key_badge(x_key, cy, tr.camelot(), tr.file && tr.file->key_unsure());
     ui_.energy_meter(x_energy, cy + 7, tr.energy());
+    if (const std::string type = tr.format(); !type.empty())  // FLAC in lilac; any other type in peach, so it's easy to spot
+        g_.text(wide(type), Rect{x_type, cy - 10, x_type + kType - 8, cy + 10}, {Font::dot, 12, 700, tr.is_flac() ? lilac : peach});
     g_.text(wide(tr.duration_text()), Rect{x_dur, cy - 10, x_dur + kDuration, cy + 10}, {Font::dot, 12, 700, text3, Align::right});
     ui_.status_dot(right - 8, cy, tr.status());
     ui_.click(r, [this, id = tr.id()] { focus(id); }, [this, id = tr.id()] { row_menu(id); });
@@ -324,7 +357,11 @@ void View::inspector(const Rect& r, bool floating) {
     float y = in.t - insp_scroll_;
 
     // Status + close
-    ui_.dot_label(tr->status() == TrackStatus::downloaded ? L"In your crate" : tr->status() == TrackStatus::ignored ? L"Ignored" : L"Missing",
+    const bool is_file = !tr->file_id.empty();  // an On this PC row: a file, which may not be in the library
+    ui_.dot_label(is_file                                    ? L"On this PC"
+                  : tr->status() == TrackStatus::downloaded ? L"In your crate"
+                  : tr->status() == TrackStatus::ignored    ? L"Ignored"
+                                                            : L"Missing",
                   in.l, y + 14);
     const Rect close = Rect::xywh(in.r - 30, y, 30, 28);
     if (ui_.hover(close)) g_.fill_round(close, 8, theme::hover);
@@ -374,6 +411,10 @@ void View::inspector(const Rect& r, bool floating) {
     else {
         note = std::format(L"Full-track analysis · tempo confidence {}%", std::lround(fa->bpm_confidence.value_or(0) * 100));
         if (fa->key_agreement) note += std::format(L" · key {}/3 methods agree", *fa->key_agreement);
+    }
+    if (const std::string type = tr->format(); !type.empty()) {
+        note = wide(type) + (tr->is_flac() ? L" (lossless)" : L"") + (fa ? std::format(L" · {:.1f} MB · ", double(fa->size_bytes) / 1048576.0) : L" · ") + note;
+        if (is_file && !fa->library_track_id) note += L" · Not in your library";
     }
     y += g_.paragraph(note, Rect{in.l, y, in.r, y}, {Font::ui, 11.5f, 400, text3}) + 14;
 
@@ -436,8 +477,10 @@ void View::inspector(const Rect& r, bool floating) {
         const player::Item* now = player_.current();
         const bool playing = now && now->track_id == tr->id() && player_.playing();
         action(playing ? L"Pause" : L"Play", playing ? icon::pause : icon::play, Ui::Pill::primary, [this, i = tr->id()] { play_track(i); });
-        action(L"Write tags to file", icon::tag, Ui::Pill::smart,
-               busy ? std::function<void()>{} : [this, i = tr->id()] { jobs_.run([this, i] { store_.write_tags(std::vector{i}); }); });
+        // Tags come from the library track, so a file shown as itself keeps its own.
+        if (!is_file)
+            action(L"Write tags to file", icon::tag, Ui::Pill::smart,
+                   busy ? std::function<void()>{} : [this, i = tr->id()] { jobs_.run([this, i] { store_.write_tags(std::vector{i}); }); });
         action(L"Show in folder", icon::folder, Ui::Pill::glass, [this, p = *path] { show_in_folder(p); });
     }
     if (tr->status() == TrackStatus::missing)
@@ -464,7 +507,7 @@ void View::row_menu(const std::string& id) {
     if (tr->status() == TrackStatus::downloaded && path) {
         AppendMenuW(m, MF_STRING, 5, L"Play");
         AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
-        AppendMenuW(m, store_.busy() ? MF_GRAYED : MF_STRING, 1, L"Write tags to file");
+        if (tr->file_id.empty()) AppendMenuW(m, store_.busy() ? MF_GRAYED : MF_STRING, 1, L"Write tags to file");
         AppendMenuW(m, MF_STRING, 2, L"Show in folder");
     }
     if (tr->status() == TrackStatus::missing) AppendMenuW(m, MF_STRING, 3, L"Ignore");

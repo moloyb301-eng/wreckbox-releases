@@ -22,14 +22,21 @@
 
 namespace wb {
 
+// "On this PC" rows are files, not library tracks: their id is this prefix + the file's path.
+inline constexpr const char* kFileIdPrefix = "file:";
+inline bool is_file_id(const std::string& id) { return id.starts_with(kFileIdPrefix); }
+
 struct TrackRow {
     LibraryTrack track;
     std::optional<TrackState> state;
     std::optional<FileAnalysis> file;
     std::string genre;
     json remote;  // phone: the computer's per-track summary from the account (status, bpm, key, energy)
+    std::string file_id;  // "file:<path>" for an On this PC row (track then keeps its library id, for the cover)
 
-    const std::string& id() const { return track.id; }
+    const std::string& id() const { return file_id.empty() ? track.id : file_id; }
+    std::string format() const;  // the file's type in capitals ("FLAC", "MP3"…), "" when there's no file
+    bool is_flac() const { return format() == "FLAC"; }
     TrackStatus status() const { return state ? state->status : TrackStatus::missing; }
     std::optional<double> bpm() const;
     std::string camelot() const;
@@ -37,7 +44,7 @@ struct TrackRow {
     std::string duration_text() const;
 };
 
-enum class ListFilter { all, missing, downloaded, ignored };
+enum class ListFilter { all, missing, downloaded, ignored, on_pc };  // on_pc: every audio file in the library folders
 
 class LibraryStore {
 public:
@@ -104,6 +111,7 @@ public:
 private:
     FileAnalysis reconcile_bpm(FileAnalysis a, const std::string& track_id);
     std::optional<TrackRow> row_locked(const std::string& id) const;
+    std::optional<TrackRow> file_row_locked(const std::string& path) const;
     const LibraryTrack* track_locked(const std::string& id) const;
     std::string describe_locked(const std::string& id) const;
     void log_locked(const std::string& event, const std::string& detail, std::optional<std::string> track_id = std::nullopt);

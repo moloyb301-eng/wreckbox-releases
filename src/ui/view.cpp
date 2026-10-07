@@ -254,6 +254,7 @@ void View::sidebar(const Rect& r) {
     item(Page::downloaded, L"In my crate", icon::check_circle, n_downloaded_);
     item(Page::missing, L"Missing", icon::circle, n_missing_);
     item(Page::ignored, L"Ignored", icon::block, n_ignored_);
+    item(Page::on_pc, L"On this PC", icon::folder, n_on_pc_);
     section(L"Playlists");
     if (lib_)
         for (const auto& p : lib_->playlists) item(Page::playlist, wide(p.name), p.collaborative ? icon::people : icon::music, p.track_ids.size(), p.name);
@@ -462,6 +463,7 @@ ListFilter View::list_filter() const {
         case Page::downloaded: return ListFilter::downloaded;
         case Page::missing: return ListFilter::missing;
         case Page::ignored: return ListFilter::ignored;
+        case Page::on_pc: return ListFilter::on_pc;
         default: return ListFilter::all;
     }
 }

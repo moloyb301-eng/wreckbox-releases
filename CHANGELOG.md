@@ -12,6 +12,10 @@ Day-to-day work goes on `main`; bigger features on a branch (`feature/<name>`), 
 
 ## Unreleased
 
+- **File type** column on every track list (FLAC stands out) and **FLAC / Not FLAC** filters
+- **On this PC**: a list of every audio file in your library folders, in the library or not, with the same search,
+  filters, sorting, playback and inspector as the track list
+
 ## 0.1.0 — 2026-10-07
 
 The first build of the native C++ / Direct2D rewrite of WreckBox for Windows. It reads and writes the same library
