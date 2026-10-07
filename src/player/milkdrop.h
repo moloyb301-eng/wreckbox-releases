@@ -17,6 +17,8 @@ struct MilkDropConfig {
     int width = 1280, height = 720;
     std::vector<std::filesystem::path> preset_dirs;  // scanned recursively for .milk files
     std::filesystem::path texture_dir;
+    bool hard_cuts = true;         // switch preset on a big beat after a quiet part (at most every 15 s)
+    float beat_sensitivity = 2.f;  // projectM's beat detection: 1 low, 2 normal, 3 high
 };
 
 class MilkDrop {
@@ -45,6 +47,8 @@ public:
     void lock(bool on);  // hold the current preset (manual next / previous still work)
     bool locked() const;
     void set_auto_advance(double seconds);  // 0 = never switch by itself
+    void set_hard_cuts(bool on);
+    void set_beat_sensitivity(float s);
 
     std::string preset_name() const;  // file name without folders or extension
     size_t preset_count() const;

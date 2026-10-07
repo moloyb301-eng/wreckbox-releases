@@ -13,7 +13,7 @@ small C++ executable built for **weak Windows 10/11 PCs** (old dual-core, ~4 GB 
 | RAM while browsing 5,000 tracks | not measured yet | target < 60 MB; measured 38 MB at rest, up to 69 MB after heavy scrolling |
 | Cold start | not measured yet | target < 0.3 s to first paint; measured ~0.12 s |
 | Idle CPU | Flutter frame scheduler | 0 % (draws only on change), measured; 0 % paused too |
-| Playing | media_kit (libmpv) | VLC's engine; 1.4 % of one core with the player bar, ~26–30 % with full-screen MilkDrop at 720p (the Winamp bars: 3.3 %) |
+| Playing | media_kit (libmpv) | VLC's engine; 1.4 % of one core with the player bar, ~42 % with full-screen MilkDrop at 720p and 60 fps (the Winamp bars: 3.3 %) |
 
 It is a **drop-in replacement**: it reads and writes the same `Music\WreckBox` folder and settings file, and speaks
 the same phone-sync protocol, so the existing Android app and existing libraries keep working. You can switch
@@ -33,6 +33,7 @@ Work happens in phases — see [docs/PLAN.md](docs/PLAN.md) for the full list wi
 | 4+ | Playlist Sync: a Sync button on every playlist mirrors it from its source (Spotify, YouTube or the CSV) | ✅ tested offline; a live Sync needs your keys |
 | 5 | Player on VLC's engine: 18+ formats, radio / streams, files outside the library, equalizer, normalizer, Winamp-style full-screen visualizer, media keys | ✅ tested (formats, EQ, pacing, visualizer maths). Needs your ears. |
 | 5b | MilkDrop visualizer + player panel (projectM) | ✅ tested and measured; needs your look with real music |
+| 5c | MilkDrop beat sync: fed what you hear, every frame; beat pulse; preset cuts on drops | ✅ tested (kick probe 100% vs 0% before); needs your ears |
 | 6 | Phone sync (QR pairing, LAN server), WreckBox account, "Use from anywhere" tunnel | ✅ tested against fakes; needs the Android app on a real phone |
 | 7 | Update check, bug reports, Settings (library folders, organiser), Downloads organiser running | ✅ tested against fakes |
 | 8 | Soulseek sync through the bundled sidecar (queue, results, retry) | ✅ bridge tested; needs a real Soulseek account to run |
@@ -79,7 +80,10 @@ Output lands in `build\Release\` (or `build\Debug\`):
   and webamp.org, played by projectM) under a player panel with the song, transport, seek, volume, the equalizer
   and an "Up next" list; the panel fades when the mouse is still. **N / P** next / previous preset, **R** random,
   **L** lock the preset, click = next preset, **M** switches between MilkDrop and the Winamp bars, Space pauses,
-  Esc / F11 / double-click leave. Right-click: quality (540p / 720p / 1080p), how often presets change, lock, and
+  Esc / F11 / double-click leave. It follows the beat: each kick pulses the picture, presets change on drops, and
+  **[** / **]** move the pictures earlier / later by 25 ms if they don't sit on the beat (Bluetooth speakers are
+  allowed for automatically). Right-click: beat pulse (off / subtle / strong), change preset on drops, beat
+  sensitivity, presets (beat-heavy / all), sync, quality (540p / 720p / 1080p), how often presets change, lock, and
   *Open presets folder* — drop your own `.milk` files in `%APPDATA%\local.wreckbox\wreckbox\milkdrop\presets`.
   In the bars mode, click steps through spectrum → oscilloscope → both → off, right-click has every Winamp option, **V**
   switches between the Classic Winamp and WreckBox colours. A PC without OpenGL 3.3 gets the bars automatically

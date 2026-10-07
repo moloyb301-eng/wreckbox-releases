@@ -122,10 +122,12 @@ would have made the port hard to check against the original. So instead:
 ```
 libVLC (decode, resample to 48 kHz, equalizer, normvol)
   → amem callbacks, 16-bit stereo (all VLC 3's amem can give) → float
-  → AudioOutput: 0.25 s ring → miniaudio (WASAPI, shared mode) → speakers
-                 └─ tap: the last 4,096 audible samples (before volume), with a write counter
-                       ├─ tap(): the newest samples → Winamp bars (player::Visualizer)
-                       └─ take_tap(cursor): every sample once → MilkDrop (projectM)
+  → AudioOutput: 0.25 s ring → miniaudio (WASAPI, shared mode, 20 ms periods × 3) → speakers
+                 └─ tap: every frame sent to the device (before volume), 1 s, indexed by the device's clock
+                       heard_index(t) = sent − queued in the device + time since the last callback
+                       ├─ tap_until(heard at the next refresh) → Winamp bars (player::Visualizer)
+                       ├─ tap_until(heard two frames from now), each sample once → MilkDrop (projectM)
+                       └─ the same samples → player::BeatPulse (kick detector) → zoom + flash
 ```
 
 - **libVLC owns decoding and timing.** It delivers blocks against its own clock; when our ring is full its write
@@ -135,6 +137,17 @@ libVLC (decode, resample to 48 kHz, equalizer, normvol)
   (equalizer, normalizer) would be heard that late. Volume, mute and pause act on our side and are instant.
 - **The device runs only while playing**, so a paused WreckBox costs 0 % CPU like an idle one. miniaudio follows the
   default device (headphones unplugged → speakers).
+- **Beat sync** (phase 5c). The visualizers draw what is *heard* when the picture appears, not what was last sent:
+  - 20 ms device periods. miniaudio's "conservative" profile (100 ms × 3) gave the tap audio in 100 ms lumps up to
+    300 ms early, and projectM analyses only the newest 576 samples (12 ms) of each feed, so most kicks were never seen
+    (measured with a probe preset: 0% of kicks seen fed in lumps, 100% fed per frame).
+  - The tap records every device frame (silence on an underrun too), so its index is the device's clock;
+    `heard_index(t)` subtracts what the device still holds (`internalPeriodSizeInFrames × internalPeriods`).
+  - MilkDrop's frame is on screen two refreshes later (read back one frame behind, then presented), the bars' one.
+  - A Bluetooth default speaker (`PKEY_Device_EnumeratorName` = `BTH…`) adds 180 ms that WASAPI doesn't report; the
+    rest is the user's calibration (`[` / `]`, ±300 ms, saved as `syncMs`).
+  - In full screen the render target presents on vsync (`Gfx::set_vsync`) and repaints right after each frame, so
+    frames land on the display's refresh instead of on 15.6 ms WM_TIMER ticks.
 - **libVLC options are core options only.** libVLC refuses to start on options of plugins we don't ship (e.g.
   `--no-lua`). Plugins are found in `plugins\` next to `libvlccore.dll`; the `VLC_PLUGIN_PATH` variable is not seen.
   Local paths must use backslashes.
@@ -146,9 +159,8 @@ libVLC (decode, resample to 48 kHz, equalizer, normvol)
   generates a native one from the DLL's exports. Startup doesn't pay for ~3 MB of DLLs until something plays.
 - **The visualizer** is maths in `player/visualizer.*` (unit-tested) and drawing in `ui/view_visualizer.cpp`:
   2,048-point Hann FFT (`RealFft`), log bands 20 Hz–16 kHz (interpolated below ~300 Hz, where a band is narrower than
-  a bin), dB scale with a +3 dB/octave tilt, instant attack and Winamp-style falloff with hanging peak caps. It runs
-  on a timer only while full screen and playing (or while the bars fall after a pause): 60 fps, 30 fps if frames
-  average over 12 ms.
+  a bin), dB scale with a +3 dB/octave tilt, instant attack and Winamp-style falloff with hanging peak caps. It draws
+  only while full screen and playing (or while the picture settles after a pause), one frame per display refresh.
 - **MilkDrop** (`player/milkdrop.*`) is projectM 4.1, which plays Winamp's `.milk` presets. projectM 4.1 always draws
   its final image to *framebuffer 0* (`projectm_opengl_render_frame_fbo` only exists in the unreleased 4.2), so the
   engine renders into a **WGL pbuffer** (a 3.3 core context on an off-screen surface): framebuffer 0 is then

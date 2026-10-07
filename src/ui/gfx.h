@@ -47,6 +47,9 @@ public:
     float width() const;   // client size in DIPs
     float height() const;
 
+    // Present on the display's refresh (EndDraw waits for it) instead of at once: the full-screen visualizer's frames
+    // then land exactly on each refresh. Changing it rebuilds the render target.
+    void set_vsync(bool on);
     bool begin();  // false if the render target couldn't be created
     void end();    // handles device loss by recreating the target next frame
 
@@ -71,7 +74,9 @@ public:
     // A picture that changes every frame (MilkDrop): one BGRA bitmap, made again only when the size or the render target
     // changes, refilled with `upload`, drawn stretched over r (`flip`: the rows are bottom-up, as OpenGL reads them).
     void upload_stream(const uint8_t* bgra, int w, int h);
-    bool draw_stream(const Rect& r, bool flip);  // false if nothing was uploaded yet
+    // Draws the streamed bitmap over r, flipped vertically if asked and zoomed by `zoom` about r's centre (the beat
+    // pulse). False if nothing was uploaded yet.
+    bool draw_stream(const Rect& r, bool flip, float zoom = 1);
     void clear_stream() { stream_.Reset(); }
 
     // Text — one line, trimmed with an ellipsis to the rect width, vertically centred in the rect.
@@ -111,6 +116,7 @@ private:
     ComPtr<ID2D1RenderTarget> target_;  // what drawing goes to: the window, or a bitmap while cached() records
     ComPtr<ID2D1SolidColorBrush> brush_;
     int generation_ = 0;
+    bool vsync_ = false;
     std::unordered_map<std::wstring, ComPtr<IDWriteTextFormat>> formats_;
     std::unordered_map<std::wstring, float> widths_;  // measure() cache
     // Per-target caches: creating Direct2D resources every frame is what makes a frame slow, so they're kept and only

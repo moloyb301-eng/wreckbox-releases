@@ -380,14 +380,49 @@ projectM, under a glass player panel. Design and decisions: `docs/MILKDROP-PLAN.
 - It needs OpenGL 3.3 and WGL pbuffers (old Intel drivers, Remote Desktop may not have them): the bars show then.
 - On a weak GPU, 720p is already heavy: it drops to 540p, and the next step would be a 30 fps cap (not built yet).
   The reference weak PC hasn't run it.
-- Hard cuts on beats are off (presets change by the timer only); there's no per-preset rating or favourites list.
+- There's no per-preset rating or favourites list. (Hard cuts on drops: phase 5c.)
 - Some presets don't compile in projectM's HLSL → GLSL step; they're skipped (count: `MilkDrop::failed_presets()`).
 - projectM is **statically** linked (LGPL-2.1): `NOTICE.txt` says how to relink. Building it as a DLL instead is the
   alternative if that is not enough.
 - The presets' LICENSE treats them as public domain, and authors can ask for removal.
-- In a 1080p window at 31 ms ticks the loop is paced by WM_TIMER (15.6 ms steps), so "30 fps" is 30 at best.
 
 **Still to do by you:** look at it with real music, on the weak PC, and say whether 720p / 30 s per preset feel right.
+
+## Phase 5c — MilkDrop beat sync ✅ (pending your listen with real music)
+
+You reported that MilkDrop didn't move with the beat. The causes, found in the code and in miniaudio's and projectM's
+source, and proved by a test before anything was changed:
+
+1. The sound device ran miniaudio's "conservative" profile, **100 ms periods × 3**, so the visualizer tap got audio in
+   100 ms lumps; projectM analyses only the **newest 576 samples (12 ms)** of each feed, so most kicks were never seen.
+   A probe preset (`tests/fixtures/milkdrop/beat_probe.milk`, brightness = `bass`) fed a 120 BPM kick track:
+   **100% of kicks light the screen fed per frame, 0% fed in 100 ms lumps.**
+2. The tap was filled when audio was *queued*: the pictures ran up to ~300 ms ahead of the sound (more with Bluetooth).
+3. Frames were paced by WM_TIMER (15.6 ms steps, flipping to 31 ms right at the measured frame times).
+4. Hard cuts were off, and the shuffle included the "! Transition" and the slow categories.
+
+- [x] 20 ms device periods; the tap records every device frame (1 s deep) and `heard_index` / `tap_until` give the
+      audio being heard at any moment (`player/audio_output.*`)
+- [x] MilkDrop is fed exactly the samples heard while its frame is on screen (two refreshes ahead); the Winamp bars look
+      at the next refresh; Bluetooth speakers add 180 ms automatically; `[` / `]` nudge the sync by 25 ms (shown at the
+      top, saved as `syncMs`)
+- [x] Full screen presents on vsync and repaints after each frame (`Gfx::set_vsync`): frames on the display's refresh
+- [x] Presets: **hard cuts on drops** (at most every 15 s), beat sensitivity 2 (Low / Normal / High), **beat-heavy
+      categories** by default (no Fractal, Hypnotic; "! Transition" never) — 8,157 presets; "All" in the menu
+- [x] **Beat pulse** (strong by default): `player::BeatPulse` finds kicks in the same heard audio (low-pass energy
+      against its last-second average); each kick zooms the picture 5% and flashes it, easing back over ~200 ms. Off /
+      Subtle / Strong in the menu.
+- [x] Tests (`player_tests`): the beat-sync probe above (≥ 90% of kicks, per-frame feed); the heard clock with fake
+      timestamps (latency, time since the callback, clamping, underruns, the tap's depth); `tap_until` contents; the
+      kick detector (16 / 16 kicks on time on a 120 BPM track, none in hi-hats or silence, gone 300 ms later); the new
+      options round trip and clamp.
+
+**Measured (dev PC, muted, 1920×1080):** MilkDrop gets ~800 samples a frame with no frame missing new audio (was 0
+then ~4,800 every sixth frame); the device queues 60 ms; ~59 fps on most presets, 30–40 on the heaviest ones (18–26 ms
+frames); 42% of one core playing (was 26–30%: the frame rate is now really 60); **0 ms of CPU in 10 s paused**.
+
+**Still to do by you:** play music with clear kicks. If the pictures feel early or late (Bluetooth, a TV), press `[` or
+`]` until they sit on the beat; it's remembered.
 
 ## Phase 6 — Phone sync, account, tunnel ✅ (pending the Android app on a real phone)
 

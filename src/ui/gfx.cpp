@@ -61,9 +61,10 @@ bool Gfx::create_target() {
     const bool software = GetEnvironmentVariableW(L"WRECKBOX_SOFTWARE", sw, 4) && sw[0] == L'1';
     const auto props = D2D1::RenderTargetProperties(software ? D2D1_RENDER_TARGET_TYPE_SOFTWARE : D2D1_RENDER_TARGET_TYPE_DEFAULT,
                                                     D2D1::PixelFormat(), dpi_, dpi_);
-    // Don't block the UI thread waiting for the monitor's refresh; the desktop compositor already prevents tearing.
+    // Normally don't block the UI thread waiting for the monitor's refresh (the desktop compositor already prevents
+    // tearing); the moving visualizer does want to wait, so its frames are paced by the refresh (set_vsync).
     const auto hprops = D2D1::HwndRenderTargetProperties(hwnd_, D2D1::SizeU(UINT(rc.right - rc.left), UINT(rc.bottom - rc.top)),
-                                                         D2D1_PRESENT_OPTIONS_IMMEDIATELY);
+                                                         vsync_ ? D2D1_PRESENT_OPTIONS_NONE : D2D1_PRESENT_OPTIONS_IMMEDIATELY);
     if (FAILED(d2d_->CreateHwndRenderTarget(props, hprops, &rt_))) return false;
     rt_->SetTextAntialiasMode(D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE);  // ClearType fringes look wrong on translucent fills
     rt_->CreateSolidColorBrush(D2D1::ColorF(1, 1, 1), &brush_);
@@ -105,6 +106,12 @@ float Gfx::height() const {
     RECT rc;
     GetClientRect(hwnd_, &rc);
     return float(rc.bottom - rc.top) * 96.f / dpi_;
+}
+
+void Gfx::set_vsync(bool on) {
+    if (on == vsync_) return;
+    vsync_ = on;
+    drop_target();  // made again with the other present option on the next begin()
 }
 
 bool Gfx::begin() {
@@ -229,11 +236,12 @@ void Gfx::upload_stream(const uint8_t* bgra, int w, int h) {
     stream_->CopyFromMemory(nullptr, bgra, UINT(w) * 4);
 }
 
-bool Gfx::draw_stream(const Rect& r, bool flip) {
+bool Gfx::draw_stream(const Rect& r, bool flip, float zoom) {
     if (!stream_) return false;
-    if (flip) target_->SetTransform(D2D1::Matrix3x2F::Scale(1, -1, D2D1::Point2F(0, (r.t + r.b) / 2)));
+    const auto centre = D2D1::Point2F((r.l + r.r) / 2, (r.t + r.b) / 2);
+    target_->SetTransform(D2D1::Matrix3x2F::Scale(zoom, flip ? -zoom : zoom, centre));
     target_->DrawBitmap(stream_.Get(), r.d2d(), 1, D2D1_BITMAP_INTERPOLATION_MODE_LINEAR);
-    if (flip) target_->SetTransform(D2D1::Matrix3x2F::Identity());
+    target_->SetTransform(D2D1::Matrix3x2F::Identity());
     return true;
 }
 

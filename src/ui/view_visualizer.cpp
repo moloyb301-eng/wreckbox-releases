@@ -1,7 +1,9 @@
 // The full-screen visualizer: MilkDrop presets (player::MilkDrop, drawn from its pixels) by default, or Winamp 2 style —
 // spectrum bars (normal / fire / line) with falling peak caps, the oscilloscope (dots / lines / solid), both, or off, in
-// Classic Winamp colours or WreckBox pastel. Without OpenGL 3.3 it shows the Winamp bars. Click: next preset (Winamp
-// modes: step through them), right-click has every option, N / P / R / L / M / V keys; Esc, F11 or a double-click leave.
+// Classic Winamp colours or WreckBox pastel. Without OpenGL 3.3 it shows the Winamp bars. Both draw the audio being heard
+// as each frame appears (AudioOutput::heard_index), plus WreckBox's beat pulse over MilkDrop. Click: next preset
+// (Winamp modes: step through them), right-click has every option, N / P / R / L / M / V and [ / ] (sync) keys; Esc,
+// F11 or a double-click leave.
 // The bar maths is player::Visualizer (unit-tested); this file draws it and runs the screen.
 #include <algorithm>
 #include <cmath>
@@ -71,12 +73,17 @@ void View::set_fullscreen(bool on) {
         milk_tried_ = false;
         milk_quality_ = vis_.opt.quality;
         slow_frames_ = 0;
+        milk_heard_ = -1;
+        pulse_ = {};
+        frame_at_ = {};
+        bt_output_ = player::default_output_is_bluetooth();  // looked at each visit: the default speaker may have changed
+        if (bt_output_) perf_log("visualizer: Bluetooth speaker, pictures drawn 180 ms later");
     } else {
         if (milk_pending_.valid()) milk_pending_.wait();  // left before it finished starting
         milk_pending_ = {};
         milk_.reset();  // free the GPU and its memory
         g_.clear_stream();
-        tap_cursor_ = 0;
+        milk_heard_ = -1;
         SetWindowLongW(hwnd_, GWL_STYLE, saved_style_);
         SetWindowPlacement(hwnd_, &saved_place_);
         SetWindowPos(hwnd_, nullptr, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
@@ -144,6 +151,13 @@ bool View::vis_key(WPARAM vk) {
             }
             return true;
         case 'M': vis_use_milk(vis_.opt.mode != VisOptions::Mode::milkdrop); return true;
+        case VK_OEM_4:  // [  pictures earlier
+        case VK_OEM_6:  // ]  pictures later
+            vis_.opt.sync_ms = std::clamp(vis_.opt.sync_ms + (vk == VK_OEM_6 ? 25 : -25), -300, 300);
+            milk_heard_ = -1;
+            save_vis();
+            show_toast(std::format(L"Sync {:+} ms{}", vis_.opt.sync_ms, bt_output_ ? L" (+180 ms Bluetooth)" : L""));
+            return true;
         default: mouse_moved(); return false;
     }
 }
@@ -162,7 +176,18 @@ void View::milk_start() {
     player::MilkDropConfig cfg;
     cfg.height = milk_quality_;
     cfg.width = int(std::lround(milk_quality_ * g_.width() / std::max(1.f, g_.height()))) & ~1;
-    cfg.preset_dirs = {base / L"presets", user_presets_dir()};
+    // The pack's categories, minus "! Transition" (made for blending, not watching) and, unless "All presets", the slow
+    // Fractal and Hypnotic ones that barely move with the beat.
+    std::error_code dir_ec;
+    for (const auto& d : std::filesystem::directory_iterator(base / L"presets", dir_ec)) {
+        const auto name = d.path().filename().wstring();
+        if (!d.is_directory() || name.starts_with(L"!")) continue;
+        if (!vis_.opt.all_presets && (name == L"Fractal" || name == L"Hypnotic")) continue;
+        cfg.preset_dirs.push_back(d.path());
+    }
+    cfg.preset_dirs.push_back(user_presets_dir());
+    cfg.hard_cuts = vis_.opt.hard_cuts;
+    cfg.beat_sensitivity = float(vis_.opt.beat_sensitivity);
     cfg.texture_dir = base / L"textures";
     milk_w_ = cfg.width, milk_h_ = cfg.height;
     milk_asked_ = clock_t_::now();
@@ -187,6 +212,13 @@ void View::milk_poll() {
     audio_at_ = clock_t_::now();
 }
 
+int64_t View::heard_end(const player::AudioOutput& out, float frames_ahead) const {
+    // The frame drawn now is on screen `frames_ahead` frames from now; Bluetooth and your calibration (+ = later) make
+    // the sound that is heard then older.
+    const float ms = frames_ahead * frame_dt_ * 1000 - float(vis_.opt.sync_ms + (bt_output_ ? 180 : 0));
+    return out.heard_index(clock_t_::now() + std::chrono::duration_cast<clock_t_::duration>(std::chrono::duration<float, std::milli>(ms)));
+}
+
 void View::milk_screen(float W, float H) {
     const auto now = clock_t_::now();
     const bool playing = player_.playing();
@@ -197,8 +229,30 @@ void View::milk_screen(float W, float H) {
     if (live) {
         size_t n = 0;
         player::AudioOutput* out = player_.output();
-        if (playing && out) n = out->take_tap(tap_cursor_, pcm_.data(), pcm_.size());
-        else if (!playing) std::fill(pcm_.begin(), pcm_.begin() + 512, 0.f), n = 512;
+        if (playing && out) {
+            // What's heard while this frame is on screen: it's read back one frame later, then presented — about two
+            // frames from now. projectM analyses the newest 12 ms it's given, so it must get exactly this, every frame.
+            const int64_t end = heard_end(*out, 2);
+            if (milk_heard_ < 0 || end - milk_heard_ > int64_t(pcm_.size())) milk_heard_ = end - 800;
+            n = size_t(std::max<int64_t>(0, end - milk_heard_));
+            out->tap_until(end, pcm_.data(), n);
+            milk_heard_ = std::max(milk_heard_, end);
+            feed_samples_ += int64_t(n), feed_empty_ += n == 0;
+            if (feed_since_ == clock_t_::time_point{}) feed_since_ = now;
+            if (++feed_frames_ == 300) {
+                const double s = std::chrono::duration<double>(now - feed_since_).count();
+                perf_log(std::format("MilkDrop feed: {} frames in {:.2f} s ({:.1f} fps), {:.0f} samples a frame, {} frames without new "
+                                     "audio; device latency {} ms, Bluetooth {}, sync {:+} ms",
+                                     feed_frames_, s, feed_frames_ / s, double(feed_samples_) / feed_frames_, feed_empty_,
+                                     out->latency_frames() * 1000 / player::kRate, bt_output_ ? "yes" : "no", vis_.opt.sync_ms));
+                feed_frames_ = feed_empty_ = 0, feed_samples_ = 0, feed_since_ = now;
+            }
+        } else if (!playing) {
+            std::fill(pcm_.begin(), pcm_.begin() + 512, 0.f);
+            n = 512;
+            milk_heard_ = -1;
+        }
+        pulse_.update(pcm_.data(), playing ? n : 0, frame_dt_);
         const int h = milk_quality_, w = int(std::lround(h * W / std::max(1.f, H))) & ~1;
         if ((w != milk_w_ || h != milk_h_) && milk_->resize(w, h)) milk_w_ = w, milk_h_ = h;
         if (milk_->ok()) {
@@ -206,7 +260,38 @@ void View::milk_screen(float W, float H) {
             if (f) g_.upload_stream(f.bgra, f.width, f.height);
         }
     }
-    if (!g_.draw_stream(Rect{0, 0, W, H}, true)) g_.fill(Rect{0, 0, W, H}, black);
+    // The beat pulse: each kick zooms the picture in and flashes it, then it eases back over ~200 ms.
+    const float e = vis_.opt.pulse ? pulse_.envelope() : 0.f;
+    const bool strong = vis_.opt.pulse == 2;
+    if (!g_.draw_stream(Rect{0, 0, W, H}, true, 1 + (strong ? 0.05f : 0.02f) * e)) g_.fill(Rect{0, 0, W, H}, black);
+    else if (e > 0.02f) g_.fill(Rect{0, 0, W, H}, with_alpha(white, (strong ? 0.18f : 0.08f) * e));
+}
+
+void View::show_toast(std::wstring note) {
+    toast_ = std::move(note);
+    toast_until_ = clock_t_::now() + std::chrono::milliseconds(1500);
+    SetTimer(hwnd_, kTooltipTimer, 1550, nullptr);  // clears it even when nothing else repaints (paused)
+    InvalidateRect(hwnd_, nullptr, FALSE);
+}
+
+void View::draw_toast() {
+    if (toast_.empty() || clock_t_::now() >= toast_until_) return;
+    const TextStyle st{Font::ui, 14, 600, text};
+    const float w = g_.measure(toast_, st) + 36, x = (g_.width() - w) / 2;
+    const Rect r = Rect::xywh(x, 64, w, 38);
+    g_.fill_round(r, 19, argb(0xE01C1C21));
+    g_.stroke_round(r, 19, glass_border);
+    g_.text(toast_, Rect{r.l + 18, r.t, r.r, r.b}, st);
+}
+
+void View::milk_restart() {
+    if (milk_pending_.valid()) milk_pending_.wait();
+    milk_pending_ = {};
+    milk_.reset();
+    g_.clear_stream();
+    milk_w_ = milk_h_ = 0;
+    milk_tried_ = false;
+    milk_heard_ = -1;
 }
 
 void View::vis_click() {
@@ -223,6 +308,9 @@ void View::vis_click() {
 
 void View::visualizer_screen() {
     const auto t0 = clock_t_::now();
+    if (frame_at_ != clock_t_::time_point{})
+        frame_dt_ = frame_dt_ * 0.9f + 0.1f * std::clamp(std::chrono::duration<float>(t0 - frame_at_).count(), 0.004f, 0.1f);
+    frame_at_ = t0;
     const float W = g_.width(), H = g_.height();
     const bool want_milk = vis_.opt.mode == VisOptions::Mode::milkdrop;
     if (want_milk && !milk_ && !milk_tried_) milk_start();
@@ -260,7 +348,7 @@ void View::visualizer_screen() {
     vis_at_ = t0;
     // What's audible right now, or silence while paused so the bars fall away.
     player::AudioOutput* out = player_.output();
-    if (out && player_.playing()) out->tap(tap_.data(), tap_.size());
+    if (out && player_.playing()) out->tap_until(heard_end(*out, 1), tap_.data(), tap_.size());  // shown next refresh
     else std::fill(tap_.begin(), tap_.end(), 0.f);
     vis_.set_band_count(size_t(W / 14));
     vis_.update(tap_.data(), dt);
@@ -455,7 +543,7 @@ void View::vis_use_milk(bool milk) {
 
 void View::vis_menu() {
     auto& o = vis_.opt;
-    enum : UINT { kMode = 100, kBars = 200, kScope = 300, kBarFall = 400, kPeakFall = 500, kPeaks = 600, kLook = 700, kExit = 800, kQuality = 900, kAdvance = 1000, kLock = 1100, kFolder = 1200 };
+    enum : UINT { kMode = 100, kBars = 200, kScope = 300, kBarFall = 400, kPeakFall = 500, kPeaks = 600, kLook = 700, kExit = 800, kQuality = 900, kAdvance = 1000, kLock = 1100, kFolder = 1200, kPulse = 1300, kCuts = 1400, kPresets = 1500, kSense = 1600, kSync = 1700 };
     auto radio = [](HMENU m, UINT id, const wchar_t* label, bool on) { AppendMenuW(m, MF_STRING | (on ? MF_CHECKED : 0), id, label); };
     HMENU m = CreatePopupMenu();
     const wchar_t* modes[] = {L"Spectrum analyser", L"Oscilloscope", L"Both", L"Off"};
@@ -470,6 +558,23 @@ void View::vis_menu() {
     AppendMenuW(m, MF_POPUP, UINT_PTR(quality), L"MilkDrop quality");
     AppendMenuW(m, MF_POPUP, UINT_PTR(advance), L"Next preset automatically");
     radio(m, kLock, L"Lock this preset\tL", milk_ && milk_->locked());
+    HMENU pulse = CreatePopupMenu(), presets = CreatePopupMenu(), sense = CreatePopupMenu(), sync = CreatePopupMenu();
+    const wchar_t* pulses[] = {L"Off", L"Subtle", L"Strong"};
+    const wchar_t* senses[] = {L"Low", L"Normal", L"High"};
+    for (int i = 0; i < 3; ++i) radio(pulse, kPulse + i, pulses[i], o.pulse == i);
+    for (int i = 0; i < 3; ++i) radio(sense, kSense + i + 1, senses[i], o.beat_sensitivity == i + 1);
+    radio(presets, kPresets + 0, L"Beat-heavy (no Fractal, Hypnotic)", !o.all_presets);
+    radio(presets, kPresets + 1, L"All", o.all_presets);
+    const std::wstring now_sync = std::format(L"Now {:+} ms{}", o.sync_ms, bt_output_ ? L" + 180 ms Bluetooth" : L"");
+    AppendMenuW(sync, MF_STRING | MF_GRAYED, 0, now_sync.c_str());
+    AppendMenuW(sync, MF_STRING, kSync + 0, L"Pictures earlier (−25 ms)\t[");
+    AppendMenuW(sync, MF_STRING, kSync + 1, L"Pictures later (+25 ms)\t]");
+    AppendMenuW(sync, MF_STRING, kSync + 2, L"Reset");
+    AppendMenuW(m, MF_POPUP, UINT_PTR(pulse), L"Beat pulse");
+    radio(m, kCuts, L"Change preset on drops", o.hard_cuts);
+    AppendMenuW(m, MF_POPUP, UINT_PTR(sense), L"Beat sensitivity");
+    AppendMenuW(m, MF_POPUP, UINT_PTR(presets), L"Presets");
+    AppendMenuW(m, MF_POPUP, UINT_PTR(sync), L"Sync with the sound");
     AppendMenuW(m, MF_STRING, kFolder, L"Open presets folder…");
     AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
     HMENU bars = CreatePopupMenu(), scope = CreatePopupMenu(), bar_fall = CreatePopupMenu(), peak_fall = CreatePopupMenu(), look = CreatePopupMenu();
@@ -514,6 +619,25 @@ void View::vis_menu() {
         case kLock:
             if (milk_) milk_->lock(!milk_->locked());
             return;
+        case kPulse: o.pulse = i; break;
+        case kCuts:
+            o.hard_cuts = !o.hard_cuts;
+            if (milk_) milk_->set_hard_cuts(o.hard_cuts);
+            break;
+        case kSense:
+            o.beat_sensitivity = i;
+            if (milk_) milk_->set_beat_sensitivity(float(i));
+            break;
+        case kPresets:
+            if (o.all_presets != (i == 1)) {
+                o.all_presets = i == 1;
+                milk_restart();  // a different set of folders: build the playlist again (about a second)
+            }
+            break;
+        case kSync:
+            o.sync_ms = i == 2 ? 0 : std::clamp(o.sync_ms + (i ? 25 : -25), -300, 300);
+            milk_heard_ = -1;
+            break;
         case kFolder: {
             std::error_code ec;
             std::filesystem::create_directories(user_presets_dir(), ec);

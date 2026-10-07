@@ -53,6 +53,8 @@ public:
     bool hide_cursor() const;         // full screen with the overlay faded out
     void set_fullscreen(bool on);
     bool fullscreen() const { return fullscreen_; }
+    // The full-screen visualizer is moving: the window repaints right after each frame, paced by the compositor.
+    bool vsync_loop() const { return vsync_loop_; }
     void set_update(std::optional<updates::Info> info);  // the startup check found a newer release (or nothing)
     void attach_soulseek(soulseek::Sync& sl);
     void attach_phone(sync::Server& server, sync::Tunnel& tunnel);  // the phone-sync services (owned by the app)
@@ -229,6 +231,7 @@ private:
     void open_url();
     void play_track(const std::string& id);  // the current track toggles
     bool player_key(WPARAM vk);
+    bool vsync_loop_ = false;
     void update_timer();  // repaint ticks: 4 a second while playing, ~60 in the full-screen visualizer
     player::Player& player_;
     bool eq_open_ = false, url_open_ = false;
@@ -265,8 +268,23 @@ private:
     std::string milk_why_;        // why it failed, for the log
     int milk_w_ = 0, milk_h_ = 0, milk_quality_ = 720;  // render size, and the quality after any automatic drop
     int slow_frames_ = 0;
-    uint64_t tap_cursor_ = 0;
+    // The audio heard when a frame appears (AudioOutput::heard_index): MilkDrop is fed what was heard since the last
+    // frame, the bars and the beat pulse look at the same moment.
+    int64_t milk_heard_ = -1;  // tap index fed up to; -1 = start afresh
     std::vector<float> pcm_ = std::vector<float>(4096);
+    player::BeatPulse pulse_;
+    bool bt_output_ = false;   // default speaker is Bluetooth: +180 ms, which Windows doesn't report
+    std::chrono::steady_clock::time_point frame_at_{};
+    float frame_dt_ = 1 / 60.f;  // seconds between full-screen frames (averaged)
+    int feed_frames_ = 0, feed_empty_ = 0;  // WRECKBOX_PERF: what MilkDrop was fed, logged every 300 frames
+    int64_t feed_samples_ = 0;
+    std::chrono::steady_clock::time_point feed_since_{};
+    std::wstring toast_;         // a short note at the top ("Sync +50 ms"), until toast_until_
+    std::chrono::steady_clock::time_point toast_until_{};
+    int64_t heard_end(const player::AudioOutput& out, float frames_ahead) const;
+    void show_toast(std::wstring note);
+    void draw_toast();
+    void milk_restart();         // rebuild the engine (a different set of presets)
     std::chrono::steady_clock::time_point audio_at_{};  // last time sound was playing: pictures settle for 4 s after
     player::VisOptions::Mode winamp_mode_ = player::VisOptions::Mode::spectrum;  // what M switches back to
     player::VisOptions::Mode mode_before_click_{};

@@ -22,9 +22,29 @@ struct VisOptions {
     bool classic = true;   // Classic Winamp colours; false = WreckBox pastel
     int quality = 720;      // MilkDrop render height: 540 / 720 / 1080
     int auto_advance = 30;  // MilkDrop: seconds per preset, 0 = stay on one
+    int pulse = 2;          // WreckBox's beat pulse over MilkDrop: 0 off, 1 subtle, 2 strong
+    bool hard_cuts = true;  // MilkDrop switches preset on a big beat after a quiet part (at most every 15 s)
+    bool all_presets = false;   // false: the beat-heavy categories only
+    int beat_sensitivity = 2;   // 1 low, 2 normal, 3 high
+    int sync_ms = 0;            // your calibration: + draws the pictures later, − earlier (−300…300)
 
     json to_json() const;
     static VisOptions from_json(const json& j);
+};
+
+// The beat pulse: a kick detector on the audio being heard. Two one-pole low-passes (~150 Hz) give the bass energy of
+// each frame's samples; a kick is energy well above its last-second average and rising, at least 150 ms after the last
+// one. Each kick sets the envelope to 1; it decays with a 60 ms time constant (gone after ~200 ms).
+class BeatPulse {
+public:
+    // `mono`: the samples heard since the last call (may be none); `dt`: seconds since the last call. Returns envelope().
+    float update(const float* mono, size_t n, float dt);
+    float envelope() const { return env_; }
+    int kicks() const { return kicks_; }  // detected so far (tests)
+
+private:
+    float lp1_ = 0, lp2_ = 0, avg_ = 0, last_ = 0, env_ = 0, since_ = 1;
+    int kicks_ = 0;
 };
 
 class Visualizer {

@@ -4,6 +4,7 @@
 // Tests use their own Sink, so they never make a sound.
 #pragma once
 #include <atomic>
+#include <chrono>
 #include <condition_variable>
 #include <cstdint>
 #include <memory>
@@ -40,15 +41,20 @@ public:
     void set_muted(bool m) { muted_ = m; }
     int64_t played_frames() const { return played_; }  // frames sent to the device since the last flush
 
-    // The last `n` (≤ 4096) audible samples as a mono mix, newest last. Cheap; for the visualizer.
-    void tap(float* out, size_t n) const;
+    // The visualizers' tap: a mono mix of every frame sent to the device (silence included, so its index runs with the
+    // device's clock), before volume, 1 s deep. Index i = the i-th frame since the device first started.
+    using Clock = std::chrono::steady_clock;
+    // The tap index of the frame coming out of the speakers at `at`: what was last sent, minus what's still queued in
+    // the device, plus the time since. Pictures drawn for `at` should show the audio up to here.
+    int64_t heard_index(Clock::time_point at) const;
+    // The `n` tap samples just before index `end`, oldest first (zeros for any part outside the tap).
+    void tap_until(int64_t end, float* out, size_t n) const;
+    int64_t latency_frames() const { return latency_; }
+    void set_latency_frames(int64_t frames) { latency_ = frames; }  // measured from the device on start; tests set it
 
-    // For MilkDrop: the samples heard since `cursor` (start at 0), oldest first, at most `max`; advances the cursor. If
-    // more than the ring holds was missed (a long pause), it skips ahead and returns just the newest `min(max, 4096)`.
-    size_t take_tap(uint64_t& cursor, float* out, size_t max) const;
-
-    // Called by the audio device (miniaudio's thread).
-    void render(float* out, unsigned frames);
+    // Called by the audio device (miniaudio's thread). render_at takes the callback's time (tests pass their own).
+    void render(float* out, unsigned frames) { render_at(out, frames, Clock::now()); }
+    void render_at(float* out, unsigned frames, Clock::time_point now);
 
 private:
     struct Device;
@@ -67,9 +73,15 @@ private:
     std::atomic<bool> muted_{false};
 
     mutable std::mutex tap_m_;
-    std::vector<float> tap_;  // mono ring of audible samples
+    std::vector<float> tap_;  // mono ring of what the device was sent
     size_t tap_at_ = 0;
-    uint64_t tap_written_ = 0;  // samples ever written to tap_
+    int64_t tap_written_ = 0;           // samples ever written to tap_
+    Clock::time_point sent_at_{};       // when the last device callback ran (tap_written_ was current then)
+    std::atomic<int64_t> latency_{0};   // frames queued in the device ahead of the one being heard
 };
+
+// Is Windows' default speaker a Bluetooth device? Its radio adds ~150–250 ms that WASAPI doesn't report, so the
+// visualizers draw that much later. Needs COM on the calling thread.
+bool default_output_is_bluetooth();
 
 }  // namespace wb::player

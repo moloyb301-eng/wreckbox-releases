@@ -386,10 +386,11 @@ bool View::player_key(WPARAM vk) {
 
 void View::update_timer() {
     UINT want = 0;
-    // Full screen: 60 fps, or 30 if frames are slow (WM_TIMER ticks every ~15.6 ms: 31 is every 2nd tick, 33 would wait
-    // for the 3rd). Paused and settled: a still frame, no timer.
-    if (fullscreen_ && (player_.playing() || vis_settling_)) want = frame_ms_ > 12 ? 31 : 15;
-    else if (player_.playing()) want = 250;  // the seek bar's clock
+    // Full screen and moving: no timer. The window paints again after each frame, and in full screen each frame waits for
+    // the display's refresh (Gfx::set_vsync), so frames land on it: 60 fps, or 30 when a frame takes longer than one
+    // refresh. (WM_TIMER ticks every 15.6 ms, which judders against 60 Hz.) Paused and settled: a still frame, nothing.
+    vsync_loop_ = fullscreen_ && (player_.playing() || vis_settling_);
+    if (!vsync_loop_ && player_.playing()) want = 250;  // the seek bar's clock
     if (want == timer_ms_) return;
     if (want) SetTimer(hwnd_, kPlayerTimer, want, nullptr);
     else KillTimer(hwnd_, kPlayerTimer);

@@ -170,6 +170,7 @@ void View::paint() {
     ui_.begin_frame();
     if (fullscreen_) {
         visualizer_screen();
+        draw_toast();
         if (const UINT due = ui_.draw_tooltip()) SetTimer(hwnd_, kTooltipTimer, due + 10, nullptr);
         hide_unused_edits();
         update_timer();

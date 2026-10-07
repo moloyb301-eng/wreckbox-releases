@@ -149,6 +149,7 @@ struct App {
         auto t1 = t0;
         PAINTSTRUCT ps;
         BeginPaint(hwnd, &ps);
+        gfx.set_vsync(view->fullscreen());  // the whole full-screen visit, so pausing doesn't rebuild the target
         if (gfx.begin()) {
             view->paint();
             t1 = clock::now();
@@ -174,6 +175,7 @@ struct App {
             first_paint = false;
             app_log(std::format("startup: first paint {:.0f} ms after process start", ms_since_process_start()));
         }
+        if (view->vsync_loop()) InvalidateRect(hwnd, nullptr, FALSE);  // the moving visualizer: the next frame (EndDraw paced it)
     }
 
     // What Windows' media flyout shows. Cheap when nothing changed; the cover is picked up once its file exists.

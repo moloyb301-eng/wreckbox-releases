@@ -158,8 +158,11 @@ struct MilkDrop::Impl {
         if (!pm) return fail("projectM failed to start");
         projectm_set_window_size(pm, size_t(w), size_t(h));
         projectm_set_soft_cut_duration(pm, 3);
-        projectm_set_hard_cut_enabled(pm, false);  // beat-triggered hard cuts are jarring; presets change by the timer
-        projectm_set_beat_sensitivity(pm, 1.0f);
+        // Hard cuts: on a big beat after a quiet part, a new preset at once (MilkDrop's "cut on the drop"), at most every
+        // 15 s; otherwise presets blend over 3 s on the timer.
+        projectm_set_hard_cut_enabled(pm, cfg.hard_cuts);
+        projectm_set_hard_cut_duration(pm, 15);
+        projectm_set_beat_sensitivity(pm, cfg.beat_sensitivity);
         if (!cfg.texture_dir.empty()) {
             std::string t = utf8(cfg.texture_dir);
             const char* paths[] = {t.c_str()};
@@ -304,6 +307,14 @@ void MilkDrop::lock(bool on) {
     if (!p_->failed) p_->apply_timing();
 }
 bool MilkDrop::locked() const { return p_->user_lock; }
+void MilkDrop::set_hard_cuts(bool on) {
+    p_->cfg.hard_cuts = on;
+    if (!p_->failed) projectm_set_hard_cut_enabled(p_->pm, on);
+}
+void MilkDrop::set_beat_sensitivity(float s) {
+    p_->cfg.beat_sensitivity = s;
+    if (!p_->failed) projectm_set_beat_sensitivity(p_->pm, s);
+}
 void MilkDrop::set_auto_advance(double seconds) {
     p_->auto_advance = seconds;
     if (!p_->failed) p_->apply_timing();

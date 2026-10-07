@@ -12,6 +12,7 @@
 #include <future>
 #include <mutex>
 #include <numbers>
+#include <random>
 #include <thread>
 #include <vector>
 
@@ -303,6 +304,16 @@ static void visualizer() {
     o.mode = VisOptions::Mode::both, o.bars = VisOptions::Bars::fire, o.scope = VisOptions::Scope::solid, o.peak_falloff = 4, o.classic = false;
     const VisOptions back = VisOptions::from_json(o.to_json());
     CHECK(back.mode == o.mode && back.bars == o.bars && back.scope == o.scope && back.peak_falloff == 4 && !back.classic && back.peaks);
+    // The beat options: strong pulse, cuts on drops, beat-heavy presets, normal sensitivity by default; they round-trip
+    // and out-of-range values are clamped.
+    const VisOptions def;
+    CHECK(def.pulse == 2 && def.hard_cuts && !def.all_presets && def.beat_sensitivity == 2 && def.sync_ms == 0);
+    VisOptions beat;
+    beat.pulse = 1, beat.hard_cuts = false, beat.all_presets = true, beat.beat_sensitivity = 3, beat.sync_ms = -75;
+    const VisOptions bb = VisOptions::from_json(beat.to_json());
+    CHECK(bb.pulse == 1 && !bb.hard_cuts && bb.all_presets && bb.beat_sensitivity == 3 && bb.sync_ms == -75);
+    const VisOptions clamped = VisOptions::from_json(wb::json{{"pulse", 9}, {"syncMs", 5000}, {"beatSensitivity", 0}});
+    CHECK(clamped.pulse == 2 && clamped.sync_ms == 300 && clamped.beat_sensitivity == 1);
     // MilkDrop is the default look; its options round-trip and a bad value falls back to the nearest choice.
     VisOptions d;
     CHECK(d.mode == VisOptions::Mode::milkdrop && d.quality == 720 && d.auto_advance == 30);
@@ -434,52 +445,148 @@ static void milkdrop() {
     fs::remove_all(one);
 }
 
-// The counted tap MilkDrop reads: every audible sample exactly once, in order. No device: the test plays and renders.
-static void tap_cursor() {
+// A 120 BPM kick drum (silence between kicks), mono at 48 kHz: one kick every 24,000 samples.
+static std::vector<float> kick_track(double seconds) {
+    std::vector<float> s(size_t(seconds * kRate));
+    for (size_t i = 0; i < s.size(); ++i) {
+        const double t = double(i % 24000) / kRate;  // time since the kick
+        if (t < 0.25) s[i] = float(0.9 * std::sin(2 * std::numbers::pi * (50 + 100 * std::exp(-t * 40)) * t) * std::exp(-t * 12));
+    }
+    return s;
+}
+
+// Beat sync, measured: the probe preset paints the screen with brightness = projectM's `bass`. Fed one frame of audio
+// per frame (what the app must do), every kick lights the screen within a couple of frames and it goes dark between
+// kicks. Fed the way the app used to (100 ms lumps from the sound device, nothing in between) most kicks are missed.
+// Returns the share of kicks that lit up.
+static double milk_beat_hits(bool lumps, bool print) {
+    char exe[MAX_PATH];
+    GetModuleFileNameA(nullptr, exe, MAX_PATH);
+    const fs::path base = fs::path(exe).parent_path() / "milkdrop";
+    const fs::path dir = fs::temp_directory_path() / "wb_milkdrop_beat";
+    fs::remove_all(dir);
+    fs::create_directories(dir);
+    fs::copy_file(fs::path(WB_FIXTURES) / "milkdrop" / "beat_probe.milk", dir / "beat_probe.milk");
+    MilkDropConfig cfg;
+    cfg.width = 160, cfg.height = 90, cfg.preset_dirs = {dir}, cfg.texture_dir = base / "textures";
+    MilkDrop md(cfg);
+    if (!md.ok()) {
+        fs::remove_all(dir);
+        return -1;
+    }
+    const auto track = kick_track(5);
+    constexpr size_t kPerFrame = 800, kFramesPerBeat = 24000 / kPerFrame;  // 60 fps
+    std::vector<double> bright;  // per rendered frame (the readback returns the previous one)
+    for (size_t f = 0; (f + 1) * kPerFrame <= track.size(); ++f) {
+        const float* chunk = track.data() + f * kPerFrame;
+        size_t n = kPerFrame;
+        if (lumps) {  // the sound device's 100 ms periods: 6 frames' audio at once, then nothing
+            n = f % 6 == 5 ? 6 * kPerFrame : 0;
+            chunk = track.data() + (f + 1) * kPerFrame - n;
+        }
+        const auto px = md.render(chunk, n);
+        if (px) {
+            double sum = 0;
+            for (size_t i = 1; i < size_t(px.width) * px.height * 4; i += 4) sum += px.bgra[i];
+            bright.push_back(sum / (double(px.width) * px.height));
+        }
+        Sleep(16);  // projectM times its averages by the wall clock: keep it near real time
+    }
+    fs::remove_all(dir);
+    int kicks = 0, hits = 0;
+    for (size_t k = 2 * kFramesPerBeat; k + kFramesPerBeat <= bright.size(); k += kFramesPerBeat) {  // skip warm-up
+        double peak = 0, valley = 0;
+        for (size_t i = k; i < k + 4; ++i) peak = std::max(peak, bright[i - 1]);  // frame k shows as bright[k-1]
+        for (size_t i = k + 15; i < k + 25; ++i) valley += bright[i - 1] / 10;
+        ++kicks;
+        hits += peak > valley + 25;
+        if (print) std::printf("    kick at frame %zu: peak %.0f, between kicks %.0f\n", k, peak, valley);
+    }
+    return kicks ? double(hits) / kicks : 0;
+}
+
+static void milkdrop_beat_sync() {
+    const double framed = milk_beat_hits(false, false);
+    if (framed < 0) return std::puts("  milkdrop beat sync: skipped (no OpenGL 3.3)"), void();
+    const double lumped = milk_beat_hits(true, false);
+    std::printf("  milkdrop beat sync: %.0f%% of kicks light the screen fed per frame, %.0f%% fed in 100 ms lumps\n", framed * 100, lumped * 100);
+    CHECK(framed >= 0.9, "only %.0f%% of kicks seen fed per frame", framed * 100);
+    if (framed < 0.9) milk_beat_hits(false, true);
+}
+
+// The heard clock: the tap records every frame sent to the device; heard_index is what's coming out of the speakers at
+// a given moment (sent minus what the device still holds, plus the time since), and tap_until reads the samples up to
+// there. No device: the test renders with its own timestamps.
+static void heard_clock() {
+    using Clock = AudioOutput::Clock;
     AudioOutput out(false);
     out.pause(false);
-    long next = 1;  // the stereo frame i has both channels = i, so the tap's mono mix is i
-    auto render = [&](unsigned frames) {
+    out.set_latency_frames(2880);  // 60 ms queued in the device
+    long next = 1;                 // the stereo frame i has both channels = i, so the tap's mono mix is i
+    const Clock::time_point t0 = Clock::now();
+    auto render = [&](unsigned frames, int at_ms, bool with_audio = true) {
         std::vector<float> in(size_t(frames) * kChannels), sink(in.size());
         for (unsigned i = 0; i < frames; ++i) in[i * 2] = in[i * 2 + 1] = float(next++);
-        out.play(in.data(), frames);
-        out.render(sink.data(), frames);
+        if (with_audio) out.play(in.data(), frames);
+        else next -= long(frames);  // an underrun: the device gets silence, the tap records it as such
+        out.render_at(sink.data(), frames, t0 + std::chrono::milliseconds(at_ms));
     };
-    uint64_t cur = 0;
-    std::vector<float> got(4096);
-    CHECK(out.take_tap(cur, got.data(), got.size()) == 0, "nothing rendered yet");
+    const auto at = [&](int ms) { return t0 + std::chrono::milliseconds(ms); };
+    CHECK(out.heard_index(at(0)) == 0, "nothing sent yet");
+    for (int k = 0; k < 4; ++k) render(960, 20 * k);  // 20 ms periods: 3,840 frames sent by t = 60 ms
+    CHECK(out.heard_index(at(60)) == 3840 - 2880, "at the last callback: %lld", out.heard_index(at(60)));
+    CHECK(out.heard_index(at(70)) == 3840 - 2880 + 480, "10 ms later: %lld", out.heard_index(at(70)));
+    CHECK(out.heard_index(at(500)) == 3840, "never past what was sent: %lld", out.heard_index(at(500)));
+    std::vector<float> got(480);
+    out.tap_until(1440, got.data(), got.size());
+    bool exact = true;
+    for (size_t i = 0; i < got.size(); ++i) exact &= got[i] == float(960 + i + 1);  // tap index j holds frame j+1
+    CHECK(exact, "tap_until(1440): %g … %g", got.front(), got.back());
+    out.tap_until(10, got.data(), 20);  // partly before the first frame: zeros there
+    CHECK(got[0] == 0.f && got[9] == 0.f && got[10] == 1.f && got[19] == 10.f, "before the start: %g %g %g", got[9], got[10], got[19]);
+    render(960, 80, false);  // underrun: silence is still frames of the device's clock
+    out.tap_until(4800, got.data(), 10);
+    CHECK(out.heard_index(at(80)) == 4800 - 2880 && got[9] == 0.f, "after an underrun: %lld", out.heard_index(at(80)));
+    for (int k = 0; k < 60; ++k) render(960, 100 + 20 * k);  // over a second more: the oldest fall out of the 1 s tap
+    out.tap_until(1440, got.data(), 10);
+    CHECK(got[0] == 0.f && got[9] == 0.f, "older than the tap: zeros");
+    CHECK(out.heard_index(t0 - std::chrono::seconds(5)) >= out.heard_index(at(0)) - 48000, "never older than the tap");
+}
 
-    long want = 1;
-    bool in_order = true;
-    auto drain = [&](size_t expect) {
-        const size_t n = out.take_tap(cur, got.data(), got.size());
-        CHECK(n == expect, "took %zu, expected %zu", n, expect);
-        for (size_t i = 0; i < n; ++i) in_order &= got[i] == float(want++);
-    };
-    render(500), drain(500);
-    render(100), render(200), drain(300);  // two chunks since the last call: no gap, no repeat
-    drain(0);                              // nothing new, nothing returned
-    CHECK(in_order, "samples out of order or repeated");
+// The beat pulse finds the kicks of a 120 BPM track fed a frame at a time, and nothing in hi-hats or silence.
+static void beat_pulse() {
+    const auto track = kick_track(8);
+    BeatPulse p;
+    std::vector<int> fired;  // frame numbers with a new kick
+    constexpr size_t kFrame = 800;
+    float min_after = 1;     // envelope 300 ms after each kick
+    for (size_t f = 0; (f + 1) * kFrame <= track.size(); ++f) {
+        const int before = p.kicks();
+        p.update(track.data() + f * kFrame, kFrame, kFrame / float(kRate));
+        if (p.kicks() > before) fired.push_back(int(f));
+        if (f % 30 == 18) min_after = std::min(min_after, p.envelope());
+    }
+    bool on_time = fired.size() == 16;
+    for (size_t i = 0; i < fired.size() && on_time; ++i) on_time = std::abs(fired[i] - int(i) * 30) <= 1;  // a kick every 30 frames
+    CHECK(on_time, "%zu kicks found (16 expected), first at frame %d", fired.size(), fired.empty() ? -1 : fired[0]);
+    CHECK(min_after < 0.05f, "envelope still %.2f 300 ms after a kick", min_after);
 
-    // A reader that's slower than `max` gets the rest next time.
-    render(1000);
-    std::vector<float> small(400);
-    size_t n = out.take_tap(cur, small.data(), small.size());
-    CHECK(n == 400 && small[0] == float(want) && small[399] == float(want + 399), "capped read: %zu", n);
-    want += 400;
-    n = out.take_tap(cur, small.data(), small.size());
-    CHECK(n == 400 && small[0] == float(want), "second capped read: %zu", n);
-    want += 400;
-    n = out.take_tap(cur, small.data(), small.size());
-    CHECK(n == 200 && small[0] == float(want) && small[199] == float(want + 199), "rest: %zu", n);
-
-    // A long pause (over the 4096-sample ring): only the newest 4096 come back, and the cursor catches up.
-    for (int i = 0; i < 20; ++i) render(1000);
-    n = out.take_tap(cur, got.data(), got.size());
-    CHECK(n == 4096 && got[4095] == float(next - 1) && got[0] == float(next - 4096), "after a pause: %zu", n);
-    CHECK(out.take_tap(cur, got.data(), got.size()) == 0, "caught up");
-    render(50);
-    CHECK(out.take_tap(cur, got.data(), 10) == 10 && got[0] == float(next - 50), "after catching up");
+    BeatPulse hats;  // high-frequency noise bursts on every 8th note: no bass, no kicks
+    std::mt19937 rng(7);
+    std::uniform_real_distribution<float> noise(-0.5f, 0.5f);
+    std::vector<float> h(size_t(4 * kRate));
+    float prev = 0;
+    for (size_t i = 0; i < h.size(); ++i) {
+        const float x = noise(rng) * std::exp(-float(i % 12000) / 600.f);
+        h[i] = x - prev;  // first difference: the energy sits up high
+        prev = x;
+    }
+    for (size_t f = 0; (f + 1) * kFrame <= h.size(); ++f) hats.update(h.data() + f * kFrame, kFrame, kFrame / float(kRate));
+    CHECK(hats.kicks() == 0, "%d kicks in hi-hats", hats.kicks());
+    BeatPulse quiet;
+    std::vector<float> zeros(kFrame);
+    for (int f = 0; f < 120; ++f) quiet.update(zeros.data(), kFrame, kFrame / float(kRate));
+    CHECK(quiet.kicks() == 0 && quiet.envelope() == 0.f, "silence");
 }
 
 int main() {
@@ -487,7 +594,9 @@ int main() {
     pacing();
     visualizer();
     milkdrop();
-    tap_cursor();
+    milkdrop_beat_sync();
+    heard_clock();
+    beat_pulse();
     queue_rules();
     engine_starts();
     formats();

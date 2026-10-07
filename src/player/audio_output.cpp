@@ -1,7 +1,10 @@
 #include "player/audio_output.h"
 
+#include <windows.h>
+#include <mmdeviceapi.h>
+#include <wrl/client.h>
+
 #include <algorithm>
-#include <chrono>
 #include <cstring>
 
 #define MINIAUDIO_IMPLEMENTATION
@@ -18,7 +21,7 @@ struct AudioOutput::Device {
 
 namespace {
 
-constexpr size_t kTapSize = 4096;
+constexpr size_t kTapSize = kRate;  // 1 s: the device's queue plus a Bluetooth delay, with room to spare
 
 void on_data(ma_device* d, void* out, const void*, ma_uint32 frames) {
     static_cast<AudioOutput*>(d->pUserData)->render(static_cast<float*>(out), frames);
@@ -33,7 +36,11 @@ AudioOutput::AudioOutput(bool open_device) : dev_(std::make_unique<Device>()), r
     cfg.sampleRate = kRate;  // miniaudio converts to the device's own rate if it differs
     cfg.dataCallback = on_data;
     cfg.pUserData = this;
-    cfg.performanceProfile = ma_performance_profile_conservative;  // larger periods: fewer wake-ups on weak PCs
+    // 20 ms periods: the visualizers get fresh audio every 20 ms and the device holds at most ~60 ms. (miniaudio's
+    // "conservative" profile is 100 ms × 3: the pictures saw audio in 100 ms lumps, up to 300 ms before it was heard,
+    // and missed most kicks.) 50 wake-ups a second is still nothing for a weak PC.
+    cfg.periodSizeInMilliseconds = 20;
+    cfg.periods = 3;
     // Started on first play and stopped while paused / stopped, so an idle WreckBox costs no CPU.
     device_ok_ = open_device && ma_device_init(nullptr, &cfg, &dev_->device) == MA_SUCCESS;
     paused_ = true;
@@ -72,8 +79,14 @@ void AudioOutput::pause(bool paused) {
     }
     space_.notify_all();
     if (!device_ok_) return;
-    if (paused) ma_device_stop(&dev_->device);
-    else ma_device_start(&dev_->device);
+    if (paused) {
+        ma_device_stop(&dev_->device);
+    } else if (ma_device_start(&dev_->device) == MA_SUCCESS) {
+        // What the device queues ahead of the frame being heard, in our 48 kHz frames (WASAPI may run at another rate).
+        const auto& pb = dev_->device.playback;
+        if (pb.internalSampleRate)
+            latency_ = int64_t(pb.internalPeriodSizeInFrames) * pb.internalPeriods * kRate / pb.internalSampleRate;
+    }
 }
 
 void AudioOutput::flush() {
@@ -93,7 +106,7 @@ void AudioOutput::drain() {
     space_.wait_for(lock, std::chrono::seconds(3), [&] { return fill_ == 0 || paused_; });
 }
 
-void AudioOutput::render(float* out, unsigned frames) {
+void AudioOutput::render_at(float* out, unsigned frames, Clock::time_point now) {
     const size_t n = size_t(frames) * kChannels;
     size_t got = 0;
     {
@@ -110,35 +123,57 @@ void AudioOutput::render(float* out, unsigned frames) {
     space_.notify_all();
     std::fill(out + got, out + n, 0.f);  // underrun / paused: silence
 
-    // Visualizer tap: what's actually heard, before volume, so the picture doesn't shrink when you turn it down.
+    // Visualizer tap: every frame sent (silence on an underrun too, so the tap keeps the device's time), before volume,
+    // so the picture doesn't shrink when you turn it down.
     {
         std::lock_guard t(tap_m_);
-        for (size_t f = 0; f < got / kChannels; ++f) {
+        for (size_t f = 0; f < frames; ++f) {
             tap_[tap_at_] = 0.5f * (out[f * 2] + out[f * 2 + 1]);
             tap_at_ = (tap_at_ + 1) % kTapSize;
         }
-        tap_written_ += got / kChannels;
+        tap_written_ += frames;
+        sent_at_ = now;
     }
     const float v = muted_ ? 0.f : volume_ * volume_ * volume_;  // perceptual volume curve
     if (v != 1.f)
         for (size_t i = 0; i < got; ++i) out[i] *= v;
 }
 
-size_t AudioOutput::take_tap(uint64_t& cursor, float* out, size_t max) const {
+int64_t AudioOutput::heard_index(Clock::time_point at) const {
     std::lock_guard t(tap_m_);
-    if (cursor > tap_written_) cursor = tap_written_;
-    size_t n = size_t(std::min<uint64_t>(tap_written_ - cursor, kTapSize + 1));
-    if (n > kTapSize) cursor = tap_written_ - (n = std::min(max, kTapSize));  // missed more than the ring: newest only
-    else n = std::min(n, max);
-    for (size_t i = 0; i < n; ++i) out[i] = tap_[(tap_at_ + kTapSize - size_t(tap_written_ - cursor) + i) % kTapSize];
-    cursor += n;
-    return n;
+    if (!tap_written_) return 0;
+    const double since = std::chrono::duration<double>(at - sent_at_).count();
+    const int64_t i = tap_written_ - latency_ + int64_t(since * kRate);
+    // Never past what was sent (paused: the device stopped, the clock with it), never older than the tap.
+    return std::clamp(i, std::max<int64_t>(0, tap_written_ - int64_t(kTapSize)), tap_written_);
 }
 
-void AudioOutput::tap(float* out, size_t n) const {
-    n = std::min(n, kTapSize);
+void AudioOutput::tap_until(int64_t end, float* out, size_t n) const {
     std::lock_guard t(tap_m_);
-    for (size_t i = 0; i < n; ++i) out[i] = tap_[(tap_at_ + kTapSize - n + i) % kTapSize];
+    const int64_t oldest = tap_written_ - int64_t(kTapSize);
+    for (size_t k = 0; k < n; ++k) {
+        const int64_t i = end - int64_t(n) + int64_t(k);
+        out[k] = i < 0 || i < oldest || i >= tap_written_ ? 0.f : tap_[(tap_at_ + kTapSize - size_t(tap_written_ - i)) % kTapSize];
+    }
+}
+
+bool default_output_is_bluetooth() {
+    using Microsoft::WRL::ComPtr;
+    ComPtr<IMMDeviceEnumerator> en;
+    ComPtr<IMMDevice> dev;
+    ComPtr<IPropertyStore> props;
+    if (FAILED(CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL, IID_PPV_ARGS(&en))) ||
+        FAILED(en->GetDefaultAudioEndpoint(eRender, eConsole, &dev)) || FAILED(dev->OpenPropertyStore(STGM_READ, &props)))
+        return false;
+    PROPVARIANT v;
+    PropVariantInit(&v);
+    bool bt = false;
+    // PKEY_Device_EnumeratorName (devpkey.h), spelled out to keep the device-property headers out of this file.
+    const PROPERTYKEY enumerator_name{{0xa45c254e, 0xdf1c, 0x4efd, {0x80, 0x20, 0x67, 0xd1, 0x46, 0xa8, 0x50, 0xe0}}, 24};
+    if (SUCCEEDED(props->GetValue(enumerator_name, &v)) && v.vt == VT_LPWSTR && v.pwszVal)
+        bt = std::wstring(v.pwszVal).starts_with(L"BTH");  // BTHENUM (A2DP), BTHHFENUM (hands-free)
+    PropVariantClear(&v);
+    return bt;
 }
 
 }  // namespace wb::player

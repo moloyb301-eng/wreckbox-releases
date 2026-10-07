@@ -42,7 +42,12 @@ json VisOptions::to_json() const {
             {"peaks", peaks},
             {"look", classic ? "classic" : "wreckbox"},
             {"quality", quality},
-            {"autoAdvance", auto_advance}};
+            {"autoAdvance", auto_advance},
+            {"pulse", pulse},
+            {"hardCuts", hard_cuts},
+            {"presets", all_presets ? "all" : "beat"},
+            {"beatSensitivity", beat_sensitivity},
+            {"syncMs", sync_ms}};
 }
 
 VisOptions VisOptions::from_json(const json& j) {
@@ -58,7 +63,34 @@ VisOptions VisOptions::from_json(const json& j) {
     const int q = j.value("quality", o.quality);
     o.quality = q <= 540 ? 540 : q <= 720 ? 720 : 1080;
     o.auto_advance = std::clamp(j.value("autoAdvance", o.auto_advance), 0, 600);
+    o.pulse = std::clamp(j.value("pulse", o.pulse), 0, 2);
+    o.hard_cuts = j.value("hardCuts", o.hard_cuts);
+    o.all_presets = j.value("presets", std::string("beat")) == "all";
+    o.beat_sensitivity = std::clamp(j.value("beatSensitivity", o.beat_sensitivity), 1, 3);
+    o.sync_ms = std::clamp(j.value("syncMs", o.sync_ms), -300, 300);
     return o;
+}
+
+float BeatPulse::update(const float* mono, size_t n, float dt) {
+    constexpr float kAlpha = 0.0194f;  // 1 - exp(-2π · 150 Hz / 48 kHz)
+    env_ *= std::exp(-std::max(dt, 0.f) / 0.06f);
+    since_ += std::max(dt, 0.f);
+    if (!n) return env_;
+    double e = 0;
+    for (size_t i = 0; i < n; ++i) {
+        lp1_ += kAlpha * (mono[i] - lp1_);
+        lp2_ += kAlpha * (lp1_ - lp2_);
+        e += double(lp2_) * lp2_;
+    }
+    const float energy = float(e / double(n));
+    if (energy > 1.6f * avg_ && energy > last_ && energy > 1e-4f && since_ > 0.15f) {
+        env_ = 1;
+        since_ = 0;
+        ++kicks_;
+    }
+    avg_ += (energy - avg_) * (1 - std::exp(-std::max(dt, 0.f) / 1.0f));  // ~1 s memory
+    last_ = energy;
+    return env_;
 }
 
 float Visualizer::band_hz(size_t i) const {
