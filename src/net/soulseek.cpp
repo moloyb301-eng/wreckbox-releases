@@ -302,14 +302,24 @@ std::string Sync::start() {
         return "";
     }
 
-    // The current environment plus what the sidecar reads.
+    // The current environment plus what the sidecar reads. Our own values replace any inherited ones: a block holding a
+    // name twice gives the child the first, so a PYTHONIOENCODING set on this PC would otherwise win over utf-8.
+    const std::wstring ours[] = {L"WRECKBOX_ROOT=" + paths::root().wstring(), L"WRECKBOX_SLSK_CONFIG=" + config_file().wstring(),
+                                 L"PYTHONIOENCODING=utf-8"};
+    auto overridden = [&](const wchar_t* e) {
+        for (const auto& o : ours) {
+            const size_t name = o.find(L'=') + 1;  // compare "NAME=" case-insensitively, as Windows does
+            if (wcslen(e) >= name && _wcsnicmp(e, o.c_str(), name) == 0) return true;
+        }
+        return false;
+    };
     std::wstring env;
     if (wchar_t* block = GetEnvironmentStringsW()) {
-        for (const wchar_t* e = block; *e; e += wcslen(e) + 1) env.append(e, wcslen(e) + 1);
+        for (const wchar_t* e = block; *e; e += wcslen(e) + 1)
+            if (!overridden(e)) env.append(e, wcslen(e) + 1);
         FreeEnvironmentStringsW(block);
     }
-    for (const std::wstring& add : {L"WRECKBOX_ROOT=" + paths::root().wstring(), L"WRECKBOX_SLSK_CONFIG=" + config_file().wstring(), std::wstring(L"PYTHONIOENCODING=utf-8")})
-        env.append(add.c_str(), add.size() + 1);
+    for (const std::wstring& add : ours) env.append(add.c_str(), add.size() + 1);
     env.push_back(L'\0');
 
     SECURITY_ATTRIBUTES sa{sizeof sa, nullptr, TRUE};
