@@ -1,6 +1,8 @@
 <div align="center">
 
-# 🎛️ WreckBox for Windows
+<img src="res/logo.svg" alt="WreckBox logo" width="96" height="96">
+
+# WreckBox for Windows
 
 ### The DJ library manager — rebuilt as one small native C++ app for weak Windows PCs
 
