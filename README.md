@@ -199,6 +199,7 @@ wreckbox-win/
     smoke.ps1           smoke test of a finished folder (engine, app window, Soulseek sidecar)
     bundle_soulseek.ps1 embedded Python + aioslsk for the Soulseek sidecar
     parity.py           C++ engine vs Rust engine on real files
+    make_icon.py        res/app_icon.ico from res/logo.svg (the app icon is the README logo)
   sidecar/              slsk_sync.py, the Soulseek helper (until the native client replaces it)
   downloads/            the latest release zip (this branch only)
   src/

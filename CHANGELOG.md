@@ -12,6 +12,7 @@ Day-to-day work goes on `main`; bigger features on a branch (`feature/<name>`), 
 
 ## Unreleased
 
+- **App icon**: the WreckBox logo from the README, instead of Flutter's default "F" (window, taskbar, Explorer)
 - **Full-screen player bar**: one bar across the bottom of the screen, with "Up next" inside it, and a button (or **H**)
   to hide it; remembered
 - **Delete from PC** in My folders, tucked away (right-click menu, and a small link at the bottom of the details panel
