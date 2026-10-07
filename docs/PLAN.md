@@ -437,69 +437,121 @@ local fake of the account service: the real cloudflared was downloaded, started,
 **Still to do by you:** the Android app, unchanged, on a real phone: pair by QR, list the crate, download with analysis,
 stream with seeking, and use it away from home through the tunnel with your real account.
 
-## Phase 7 — Extras
+## Phase 7 — Extras ✅ (pending a real bug report and a real newer release)
 
 Port of the update check and bug-report parts of `services.dart`, plus `ui/bug_report.dart`, `ui/settings_page.dart`
 and `ui/account_ui.dart`.
 
-- [ ] Update check and the "WreckBox x.y.z is available → Download" banner
-- [ ] Bug report:
-  - automatic app screenshot (`PrintWindow` → WIC PNG)
-  - up to 3 images
-  - reporter name and contact from settings
-  - last 40 log entries
-  - sent to the relay
-- [ ] Settings page:
-  - scan folders and extra scan folders
-  - organise Downloads toggle
-  - Spotify client ID
-  - reporter fields
-  - share remotely
-- [ ] First-run onboarding (the `onboarded` flag)
+- [x] **Update check** (`net/updates.*`): the latest release of the public releases repo is compared with this build's
+      version (from `CMakeLists.txt`); a "WreckBox x.y.z is available — Download / Later" banner shows above the page.
+      Runs once at startup on a worker (not for a `--root` test library, nor with `WRECKBOX_NO_UPDATE_CHECK=1`), and from
+      Settings → About → *Check for updates* (which also says "up to date" or why it couldn't check). "Later" hides that
+      version until the next one. It prefers an asset named `…win-native…`, then `…windows…`, then the release page.
+- [x] **Bug report** (`net/bug_report.*`, `ui/view_extras.cpp`): *Report a bug* at the bottom of the sidebar. Automatic
+      screenshot of the app (`PrintWindow` → WIC PNG, scaled to ≤ 1600 px, taken before the dialog opens), up to 2 more
+      images, title and description; sent with the version, Windows version, reporter name / contact from Settings and the
+      last 40 log entries (+ Soulseek's) to the relay, which files the GitHub issue. Shows "Sent — thank you! (report #n)".
+- [x] **Settings page:** *Library folders* (the scan folders, add / remove / reset, Scan now), *Organise new downloads
+      automatically* (on / off), the Spotify client ID, the reporter fields and *Use from anywhere* (the same switch as the
+      phone page) were there or are now; plus the Soulseek login (phase 8).
+- [x] **The Downloads organiser is running now.** `DownloadsWatcher` existed (phase 2) but nothing started it: it is
+      started after the library loads (every 30 s; not for a `--root` test library, which has no Downloads folder).
+- [x] **First-run onboarding:** the welcome screen ("Start by importing your playlists" → Settings) shows until there is a
+      library; the `onboarded` flag is set after the first import, as in Flutter.
 
-**Done when:** a bug report shows up as an issue in the bugs repo with its screenshot, and the update banner appears
-when a newer release exists.
+**Tests** (`tests/extras_tests.cpp`, against local fakes of GitHub and the relay): version comparison, the update check
+(newer / same / no Windows file / 403 / 500 / not JSON / unreachable; our own zip preferred), the report JSON (fields, 40
+newest log entries, newest first, at most 3 images, base64), sending and the relay's error messages, the folder list
+(add, add again with a slash, remove, reset; saved in settings.json and state.json).
 
-## Phase 8 — Soulseek (sidecar bridge)
+**Checked by hand:** the dialog and the Settings sections in the real window; a report sent to a local fake relay arrived
+with a real 218 KB screenshot of the app. **Not done:** a report to the real relay (it would file an issue in the original
+developer's bugs repo) and the banner against a real newer release — the releases repo's latest is the Flutter build's
+v0.3.1, so the banner will offer that until this build has its own releases.
 
-Port of `soulseek.dart`. Run `slsk_sync.py` with the bundled embedded Python, as the Flutter app does.
+## Phase 8 — Soulseek (sidecar bridge) ✅ (pending a real sync)
 
-- [ ] Bundle `soulseek\python\` (3.11 embeddable + `aioslsk`) and `slsk_sync.py` next to the exe. Same steps as the
-      original CI.
-- [ ] Bridge: start it with the same arguments, read its output, map it to queue, progress and results
-- [ ] UI: credentials, download queue and priority (`downloadPriority`, `priorityOnly`), sync results with retry
-- [ ] Downloads finish through `Store::organise`, the same as today
+Port of `soulseek.dart`. Runs `slsk_sync.py` with the bundled embedded Python, as the Flutter app does.
 
-**Done when:** a sync on a small playlist downloads, tags and files tracks, with the same results as the Flutter app
-on the same queue.
+- [x] **Sidecar bundle:** `sidecar/slsk_sync.py` (copied from the Flutter repo's sidecar, unmodified) and
+      `scripts/bundle_soulseek.ps1`: Python 3.11.9 embeddable (hash pinned in `scripts/python-embed.sha256`), `aioslsk`
+      wheels for 3.11 / win_amd64 fetched with any Python that has pip, the `_pth` fix, and a smoke test. 38.9 MB in
+      `soulseek\`.
+- [x] **Bridge** (`net/soulseek.*`): starts it with the same arguments and environment (`WRECKBOX_ROOT`,
+      `WRECKBOX_SLSK_CONFIG`, `PYTHONIOENCODING`) in a job object (it dies with WreckBox), notices a sync left over from an
+      earlier run (its pid file + a live python), reads `sync.json` / `overrides.json` / the tail of `sync.log` every 15 s,
+      files what lands in `_inbox` through `LibraryStore::organise` (by exact name or `Name (2)`), writes `queue.json`
+      (priorities, then everything else unless "priority only") and retry requests (`overrides.json`, with custom queries).
+- [x] **UI:** *Soulseek sync* (start / stop, Downloaded / Not found / Failed with counts, Retry all, retry, retry with your
+      own search words, ignore, the log with ✓ / ✗ colours), *Download queue* (priority list, up / down / remove, add a
+      playlist, "Then everything else"), Settings → Soulseek (login → `soulseek.toml`, the same file and format).
+- [x] Downloads finish through `LibraryStore::organise`, as in the Flutter app.
 
-## Phase 9 — Packaging and CI
+**Tests** (`tests/soulseek_tests.cpp`): the login file (quotes and backslashes), the queue order for every case, retry
+requests, reading results and the log, filing from `_inbox`, and a process run with a stand-in script (arguments,
+environment, results, stop, restart, a leftover sync noticed and stopped). The bundled sidecar itself was started with its
+own Python (`--help` imports aioslsk); it was **not** run against the Soulseek network: that needs a real account and the
+first login with a new name creates one.
 
-- [ ] `.github/workflows/build.yml`, Windows job:
-  - build and `ctest`
-  - bundle the Soulseek sidecar
-  - smoke test (generated click track, analyse, write tags, read them back)
-  - zip
-- [ ] App icon and version resource; version from one place (`CMakeLists.txt` `project(VERSION)`)
-- [ ] Release asset naming: `WreckBox-<v>-win-native-x64.zip` until cut-over, then take over `windows-x64`
-      (DESIGN §9)
-- [ ] Update the README, and a FRIENDS-style install note
+## Phase 9 — Packaging and CI ✅ (pending a pushed tag and a clean Windows 10 VM)
 
-**Done when:** pushing a tag produces a zip that runs on a clean Windows 10 VM with nothing else installed.
+- [x] `.github/workflows/build.yml`: Windows job (cached vcpkg → `build.ps1` build + every test suite → Soulseek bundle →
+      `smoke.ps1` on the build folder → `package.ps1` → `smoke.ps1` again on the unzipped zip → artifact); on `v*` tags a
+      release job attaches the zip to the releases repo (secret `RELEASES_TOKEN`, variable `RELEASES_REPO`).
+- [x] `scripts/smoke.ps1`: a generated click track is analysed (~120 BPM), tagged and read back; the app starts with a
+      throwaway library, draws its window, and **exits cleanly** when closed; the sidecar starts with its own Python.
+- [x] `scripts/package.ps1` → `dist\WreckBox-<version>-win-native-x64.zip` (the version is `project(VERSION)` in
+      `CMakeLists.txt`, the one place): `wreckbox.exe`, libVLC, `plugins\`, `milkdrop\`, `licenses\`, `soulseek\`,
+      `README.md`. 69.9 MB (a third of it the MilkDrop presets, half the Soulseek Python).
+- [x] App icon and version resource were already in (`res/app.rc`); the version resource follows `project(VERSION)`.
+- [x] Asset naming: `win-native` until cut-over (DESIGN §9); the update check prefers it.
+- [x] `docs/INSTALL.md` (shipped as the zip's `README.md`) and a README update.
 
-## Phase 10 — Native Soulseek client
+**Checked here:** the zip, unzipped to a new folder with only `System32` on `PATH` (no VC runtime, no Python, no Visual
+Studio), passes the smoke test; `wreckbox.exe` imports only Windows DLLs and the bundled libVLC. **Not done:** pushing a tag
+(the workflow has never run) and a real clean Windows 10 VM.
 
-Replace the sidecar with C++ that covers what `slsk_sync.py` uses from `aioslsk`:
+**Bugs found by the smoke test and fixed:** the app crashed on every exit (an access violation after the window was gone):
+the media-controls object touched its window while being destroyed, and COM was shut down before the Direct2D / WIC objects
+were released. Both are fixed; this also affected the earlier builds.
 
-- server login
-- search
-- peer connections, including the firewall-piercing indirect connect
-- the transfer queue and file download
+## Phase 10 — Native Soulseek client ✅ built and tested against stand-ins; the Python sidecar stays until it has run for real
 
-Remove bundled Python.
+Replaces the sidecar with C++ that does what `slsk_sync.py` uses from `aioslsk`. It is **opt-in** (Settings → Soulseek →
+*Use the built-in client (beta)*, or `WRECKBOX_SLSK_NATIVE=1`) and is used automatically when the sidecar isn't installed.
 
-**Done when:** the same sync runs without Python, with equal or better results than the sidecar over a week of real
-use.
+- [x] **Matching and ranking** (`net/slsk/match.*`): `norm`, `clean_title`, the search queries, `quality_of`, `file_matches`
+      and `rank`, a line-for-line port. `tests/fixtures/slsk_golden.json` is recorded from the real Python
+      (`make_slsk_golden.py`): all 262 cases (22 norm, 19 clean, 14 query, 108 quality, 91 match, 8 whole rankings with
+      labels) agree.
+- [x] **Wire protocol** (`net/slsk/protocol.*`): server login (version 175.1, MD5), listen port, status, share counts, ping,
+      file search, peer address, ConnectToPeer / CantConnectToPeer; peer init and pierce-firewall; queue upload, transfer
+      request / reply, place in queue, upload failed / denied; the zlib search reply. 28 messages are compared **byte for
+      byte** with what aioslsk puts on the wire (`make_slsk_wire_golden.py` → `slsk_wire.json`), in both directions; garbage
+      input never crashes a parser.
+- [x] **Client** (`net/slsk/client.*`): logs in, listens for peers, searches (answers from peers that connect to us *and* from
+      peers the server relays to us), downloads — directly, through the server's relay when the peer can't be reached,
+      with the file connection either way — with a queue timeout ("still queued (place 4)"), a stall timeout, cancel, and a
+      clean `close()`. Tested over real sockets against a stand-in server and peers (`tests/slsk_net_tests.cpp`): 8 download
+      scenarios, search, login failures, cancelling, closing mid-download.
+- [x] **Sync loop** (`net/slsk/sync.*`): the sidecar's `Syncer`: due tracks (retries first, the app's queue and priorities,
+      attempts, wait times, the inbox), searches spaced out, up to 4 sources per track, `_inbox` delivery with the 90 % size
+      check, and the same `sync.json` / `sync.log` / `sync.pid` / lock, so the Soulseek page, queue and retries are unchanged;
+      one pass or `run` with the sleep that wakes when you ask for a retry (`tests/slsk_sync_tests.cpp`, and one end-to-end
+      test through the real client).
+- [ ] **Remove the bundled Python** — **not done, on purpose.** The "done when" is a week of real use with equal or better
+      results than the sidecar. Nothing here has talked to the real Soulseek network: that needs a real account (the first
+      login with a new name creates one) and other people's computers. Until it has, the zip keeps the sidecar (38.9 MB of the
+      69.9 MB). To drop it: delete `soulseek\` from the install (or `scripts/package.ps1 -NoSoulseek`), and the built-in client
+      runs by itself.
+
+**Known limits** (also listed in Settings): it **does not upload** — it shares nothing, so peers that refuse users with no
+shared files will refuse it (the sidecar shares your Tracks folder); no obfuscated connections; it doesn't join the
+distributed network (searches still work through the server); no resume of a partial download; no UPnP. The wire details
+come from aioslsk's code and the protocol notes, so a real server may still differ in ways the stand-ins can't show.
+
+**To check with a real account:** *Start sync* on a small playlist, then compare `sync.json` / `sync.log` with the sidecar's on
+the same queue.
 
 ---
 

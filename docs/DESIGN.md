@@ -162,6 +162,17 @@ libVLC (decode, resample to 48 kHz, equalizer, normvol)
 - **Threads:** libVLC's events and Windows' media-control button presses arrive on other threads and are posted to
   the window (`WM_APP_DONE`, `WM_APP_MEDIA`); everything in `Player` runs on the UI thread.
 
+### Soulseek
+
+Two ways to run the sync, with the same files (`_soulseek\sync.json`, `sync.log`, `queue.json`, `overrides.json`,
+`sync.pid`) and the same loop. **The sidecar:** `soulseek\python\python.exe slsk_sync.py run` in a job object (it dies with
+WreckBox), from `soulseek::Sync`. **The built-in client** (`net/slsk/`, a thread in WreckBox): `match` (pure; tested against
+recorded runs of the Python), `protocol` (codec; tested against bytes made by aioslsk), `client` (sockets: one connection
+to the server, a listener for peers, the relay for peers that can't be reached, file connections) and `sync` (the loop,
+behind a `Backend` interface so it is tested without a network). `soulseek::Sync` picks one: the built-in client when asked
+for or when there is no sidecar. Downloads of either end in `_inbox`, and `Sync::import_inbox` files them through
+`LibraryStore::organise`.
+
 ### Memory
 
 The Rust engine keeps every FFT frame in memory: about 55 MB for the tempo pass on a 5-minute track. The C++ port

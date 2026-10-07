@@ -34,7 +34,10 @@ Work happens in phases — see [docs/PLAN.md](docs/PLAN.md) for the full list wi
 | 5 | Player on VLC's engine: 18+ formats, radio / streams, files outside the library, equalizer, normalizer, Winamp-style full-screen visualizer, media keys | ✅ tested (formats, EQ, pacing, visualizer maths). Needs your ears. |
 | 5b | MilkDrop visualizer + player panel (projectM) | ✅ tested and measured; needs your look with real music |
 | 6 | Phone sync (QR pairing, LAN server), WreckBox account, "Use from anywhere" tunnel | ✅ tested against fakes; needs the Android app on a real phone |
-| 7–10 | Extras, Soulseek, packaging | planned |
+| 7 | Update check, bug reports, Settings (library folders, organiser), Downloads organiser running | ✅ tested against fakes |
+| 8 | Soulseek sync through the bundled sidecar (queue, results, retry) | ✅ bridge tested; needs a real Soulseek account to run |
+| 9 | Packaging: zip, smoke test, CI workflow | ✅ zip verified on a clean folder; CI not run yet |
+| 10 | Native Soulseek client (replaces the sidecar) | ✅ built, protocol checked against aioslsk's bytes, sync tested against stand-ins; opt-in until it has run on the real network |
 
 ## Build
 
