@@ -51,6 +51,19 @@ build and this one freely.
 
 The latest build of this branch — includes the file-type column and the "My folders" list.
 
+### ⚡ One command
+
+Press **Win + R**, type `cmd`, press Enter, then paste this (the copy button is on the right of the box) and press
+Enter. It downloads WreckBox, unzips it into `%LOCALAPPDATA%\Programs\WreckBox` and starts it. Run it again to update.
+
+```cmd
+curl -fL -o "%TEMP%\WreckBox.zip" https://github.com/moloyb301-eng/wreckbox-releases/raw/windows-native/downloads/WreckBox-0.1.0-win-native-x64.zip && (if not exist "%LOCALAPPDATA%\Programs\WreckBox" mkdir "%LOCALAPPDATA%\Programs\WreckBox") && tar -xf "%TEMP%\WreckBox.zip" -C "%LOCALAPPDATA%\Programs\WreckBox" && del "%TEMP%\WreckBox.zip" && start "" "%LOCALAPPDATA%\Programs\WreckBox\wreckbox.exe"
+```
+
+Close WreckBox before updating. It uses `curl` and `tar`, which come with Windows 10 and 11.
+
+### Or by hand
+
 1. **Unzip** into a folder of its own (e.g. `C:\WreckBox`). The app needs the files next to it, so don't move
    `wreckbox.exe` out on its own.
 2. **Run `wreckbox.exe`.** Windows SmartScreen may warn that the app is unrecognised (it isn't signed) — choose
