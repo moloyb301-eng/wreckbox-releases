@@ -73,11 +73,12 @@ static void updates_tests() {
                    {"body", "Faster everything."},
                    {"html_url", "https://example.test/release"},
                    {"assets", json::array({{{"name", "wreckbox-android.apk"}, {"browser_download_url", "https://example.test/a.apk"}},
-                                           {{"name", "WreckBox-Windows-x64.zip"}, {"browser_download_url", "https://example.test/win.zip"}}})}}
+                                           {{"name", "WreckBox-0.3.1-windows-x64.zip"}, {"browser_download_url", "https://example.test/flutter.zip"}},
+                                           {{"name", "WreckBox-0.3.1-win-native-x64.zip"}, {"browser_download_url", "https://example.test/win.zip"}}})}}
                   .dump();
     auto r = wb::updates::check("0.1.0");
     CHECK(r.error.empty() && r.newer && r.newer->version == "0.3.1" && r.newer->notes == "Faster everything." && r.newer->url == "https://example.test/win.zip",
-          "%s", r.error.c_str());
+          "our own zip is preferred: %s", r.newer ? r.newer->url.c_str() : r.error.c_str());
     CHECK(gh.last.get_header_value("accept") == "application/vnd.github+json");
     r = wb::updates::check("0.3.1");
     CHECK(r.error.empty() && !r.newer, "up to date");

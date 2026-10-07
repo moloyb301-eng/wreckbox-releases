@@ -54,15 +54,21 @@ Result check(const std::string& current_version) {
     if (!latest.empty() && (latest[0] == 'v' || latest[0] == 'V')) latest.erase(0, 1);
     if (!is_newer(latest, current_version)) return {};
     Info info{latest, j.value("body", ""), j.value("html_url", "")};
-    if (j.contains("assets") && j["assets"].is_array())
-        for (const auto& a : j["assets"]) {
-            std::string name = a.value("name", "");
-            std::transform(name.begin(), name.end(), name.begin(), ::tolower);
-            if (name.find("windows") != std::string::npos && a.contains("browser_download_url") && a["browser_download_url"].is_string()) {
-                info.url = a["browser_download_url"].get<std::string>();
-                break;
+    // This build's own zip is "WreckBox-<v>-win-native-x64.zip"; once it takes over the plain "windows" name, that.
+    for (const char* want : {"win-native", "windows"}) {
+        bool found = false;
+        if (j.contains("assets") && j["assets"].is_array())
+            for (const auto& a : j["assets"]) {
+                std::string name = a.value("name", "");
+                std::transform(name.begin(), name.end(), name.begin(), ::tolower);
+                if (name.find(want) != std::string::npos && a.contains("browser_download_url") && a["browser_download_url"].is_string()) {
+                    info.url = a["browser_download_url"].get<std::string>();
+                    found = true;
+                    break;
+                }
             }
-        }
+        if (found) break;
+    }
     return {info, ""};
 }
 

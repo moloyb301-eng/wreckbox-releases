@@ -1,0 +1,84 @@
+# Builds WreckBox for Windows, runs the tests and a smoke test of the finished folder, and zips it as
+# WreckBox-<version>-win-native-x64.zip (the version comes from CMakeLists.txt). For tags like v0.2.0 the zip is also
+# attached to a release in the public releases repo, where the apps' update check finds it.
+#
+# Secrets / variables (repo Settings → Secrets and variables → Actions):
+#   RELEASES_TOKEN   fine-grained token with Contents: read & write on the public releases repo   (secret)
+#   RELEASES_REPO    e.g. yourname/wreckbox-releases                                                (variable)
+
+name: build
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+    paths-ignore: ["docs/**", "**.md"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # vcpkg's binary cache: the first build compiles ~15 libraries (projectM, TagLib, httplib…), later ones restore them.
+      - uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}\vcpkg-cache
+          key: vcpkg-${{ hashFiles('vcpkg.json') }}
+          restore-keys: vcpkg-
+      - name: Build and test
+        shell: pwsh
+        env:
+          VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}\vcpkg-cache
+        run: |
+          New-Item -ItemType Directory -Force $env:VCPKG_DEFAULT_BINARY_CACHE | Out-Null
+          .\scripts\build.ps1      # configure, build Release, run every test suite (no sound device or GL 3.3 here: those checks skip)
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Bundle the Soulseek sidecar (embedded Python + aioslsk)
+        shell: pwsh
+        run: .\scripts\bundle_soulseek.ps1
+
+      - name: Smoke test
+        shell: pwsh
+        run: .\scripts\smoke.ps1 -Dir build\Release
+
+      - name: Zip
+        id: zip
+        shell: pwsh
+        run: |
+          $zip = .\scripts\package.ps1
+          "path=$(($zip -split ' \(')[0])" >> $env:GITHUB_OUTPUT
+      # What a clean PC gets: unzip into a new folder and run the same smoke test on that.
+      - name: Smoke test the zip
+        shell: pwsh
+        run: |
+          Expand-Archive "${{ steps.zip.outputs.path }}" -DestinationPath clean
+          .\scripts\smoke.ps1 -Dir clean -WbCore build\Release\wbcore.exe
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: dist/WreckBox-*-win-native-x64.zip
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: windows
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows
+      - name: Publish to the releases repo
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+          REPO: ${{ vars.RELEASES_REPO }}
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          # The zip is named win-native until the Flutter build is retired: its update check takes the first asset whose
+          # name contains "windows", so a native zip must not match that.
+          gh release view "$tag" --repo "$REPO" >/dev/null 2>&1 || gh release create "$tag" --repo "$REPO" --title "$tag" --notes "WreckBox $tag"
+          gh release upload "$tag" WreckBox-*-win-native-x64.zip --repo "$REPO" --clobber
