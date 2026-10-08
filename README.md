@@ -31,9 +31,9 @@ build and this one freely.
 
 ### 📊 How it compares
 
-| | Flutter build (v0.2.0) | **This build** (native C++) |
+| | Flutter build (v0.6.1) | **This build** (native C++, v0.2.0) |
 |---|---|---|
-| 📦 **Download** | 38 MB zip *(Flutter, Rust DLL, embedded Python)* | **71 MB** zip *(VLC engine + 9,795 MilkDrop presets + Soulseek sidecar; ~53 MB without the sidecar, 19 MB without presets)* |
+| 📦 **Download** | 38 MB zip *(Flutter, Rust DLL, embedded Python; measured on v0.2.0)* | **71 MB** zip *(VLC engine + 9,795 MilkDrop presets + Soulseek sidecar; ~53 MB without the sidecar, 19 MB without presets)* |
 | 🧠 **RAM** browsing 5,000 tracks | not measured | **38 MB** at rest → 69 MB after heavy scroll *(target < 60 MB)* |
 | ⚡ **Cold start** | not measured | **~0.12 s** to first paint *(target < 0.3 s)* |
 | 💤 **Idle CPU** | Flutter frame scheduler | **0 %** — draws only on change |
