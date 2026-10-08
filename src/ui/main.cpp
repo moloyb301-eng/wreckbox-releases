@@ -224,7 +224,12 @@ struct App {
                 if (perf) app_log(std::format("WM_SYSCOMMAND {:#x}", wp & 0xFFF0));
                 break;
             case WM_ERASEBKGND: return 1;  // Direct2D paints everything
-            case WM_SIZE: gfx.resize(LOWORD(lp), HIWORD(lp)); ++why_size; repaint(); return 0;
+            case WM_SIZE:
+                if (wp == SIZE_MINIMIZED) return trim_memory(), 0;  // nothing to draw until it's back
+                gfx.resize(LOWORD(lp), HIWORD(lp));
+                ++why_size;
+                repaint();
+                return 0;
             case WM_DPICHANGED: {
                 gfx.set_dpi(float(HIWORD(wp)));
                 view->dpi_changed();
@@ -292,6 +297,7 @@ struct App {
             case WM_TIMER:
                 ++why_timer;
                 if (wp != kPlayerTimer) KillTimer(hwnd, wp);  // one-shots; the player's tick repeats
+                if (wp == kTrimTimer) return trim_memory(), 0;
                 repaint();
                 return 0;
             case WM_APP_CHANGED:

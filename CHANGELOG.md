@@ -13,6 +13,13 @@ Day-to-day work goes on `main`; bigger features on a branch (`feature/<name>`), 
 
 ## Unreleased
 
+- **Less memory**: about half after scrolling a library with covers (~92 → ~50 MB private on a 287-track library;
+  ~103 → ~56 MB on 5,166 tracks), with the same features and paint times
+  - covers and album colours no longer pile up on the graphics card while you scroll (one shared brush, a small
+    gradient cache)
+  - the Windows segment heap gives freed memory back instead of keeping it
+  - idle memory pages go back to Windows when the window is minimized and after the full-screen visualizer
+
 ## 0.2.0 — 2026-10-08
 
 - **App icon**: the WreckBox logo (window, taskbar, Explorer)

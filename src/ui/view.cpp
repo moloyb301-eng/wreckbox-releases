@@ -166,6 +166,7 @@ void View::paint() {
         if (!store_.busy() || GetTickCount64() - refreshed_at_ > 750) refresh();
         else SetTimer(hwnd_, kRefreshTimer, 800, nullptr);
     }
+    log_memory();
     const float W = g_.width(), H = g_.height();
     ui_.begin_frame();
     if (fullscreen_) {

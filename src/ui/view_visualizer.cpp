@@ -14,6 +14,8 @@
 #include "model/settings.h"
 #include "ui/view.h"
 
+#include <psapi.h>
+
 namespace wb::ui {
 
 using namespace theme;
@@ -40,6 +42,31 @@ void perf_log(const std::string& line) {
     std::ofstream(paths::app_log(), std::ios::app) << iso_seconds_now() << " " << line << "\n";
 }
 
+// WRECKBOX_PERF=1: every 2 s, where the memory is — private bytes, and the C++ heaps' committed vs in-use bytes (the gap is
+// freed memory the heap keeps), so a report from a weak PC says what grew.
+void perf_memory() {
+    static ULONGLONG last = 0;
+    wchar_t v[4]{};
+    if (GetTickCount64() - last < 2000 || !GetEnvironmentVariableW(L"WRECKBOX_PERF", v, 4) || v[0] != L'1') return;
+    last = GetTickCount64();
+    PROCESS_MEMORY_COUNTERS_EX pm{};
+    pm.cb = sizeof pm;
+    GetProcessMemoryInfo(GetCurrentProcess(), reinterpret_cast<PROCESS_MEMORY_COUNTERS*>(&pm), sizeof pm);
+    HANDLE heaps[64];
+    const DWORD n = std::min<DWORD>(GetProcessHeaps(64, heaps), 64);
+    double committed = 0, allocated = 0;
+    std::string each;
+    for (DWORD i = 0; i < n; ++i) {
+        HEAP_SUMMARY s{};
+        s.cb = sizeof s;
+        if (!HeapSummary(heaps[i], 0, &s)) continue;
+        committed += s.cbCommitted, allocated += s.cbAllocated;
+        if (s.cbCommitted > 1 << 20) each += std::format(" [{:.1f}/{:.1f}]", s.cbAllocated / 1048576.0, s.cbCommitted / 1048576.0);
+    }
+    perf_log(std::format("mem: private {:.1f} MB, working set {:.1f} MB; {} heaps: {:.1f} MB in use of {:.1f} MB committed{}", pm.PrivateUsage / 1048576.0,
+                         pm.WorkingSetSize / 1048576.0, n, allocated / 1048576.0, committed / 1048576.0, each));
+}
+
 constexpr int kQualities[] = {540, 720, 1080};
 constexpr int kAdvances[] = {0, 15, 30, 60};
 
@@ -51,6 +78,8 @@ std::wstring clock_text(int64_t ms) {
 }  // namespace
 
 // MARK: Window
+
+void View::log_memory() { perf_memory(); }
 
 void View::set_fullscreen(bool on) {
     if (on == fullscreen_) return;
@@ -83,6 +112,7 @@ void View::set_fullscreen(bool on) {
         milk_pending_ = {};
         milk_.reset();  // free the GPU and its memory
         g_.clear_stream();
+        SetTimer(hwnd_, kTrimTimer, 8000, nullptr);  // once the OpenGL driver has let go too
         milk_heard_ = -1;
         SetWindowLongW(hwnd_, GWL_STYLE, saved_style_);
         SetWindowPlacement(hwnd_, &saved_place_);

@@ -629,6 +629,30 @@ small *Show player* button; that choice is remembered (`VisOptions::panel`, `"pa
 
 ---
 
+## Memory pass ✅ (2026-10-08)
+
+You asked for the RAM to come down as far as possible without losing features. Measured with `build/dev/memtest.ps1`
+(a fixed walk: home, All tracks, 40 pages of scrolling, details, full-screen MilkDrop, idle, back in use) on copies of
+your library made by `build/dev/make_bench.py`; private MB:
+
+| Step | 287 tracks, before → after | 5,166 tracks, before → after |
+|---|---|---|
+| Home, playing | 46 → 43 | 53 → 49 |
+| Right after scrolling | 98 → 65 | 109 → 73 |
+| Scrolled back / details open | 92–94 → 50–53 | 103–105 → 56–59 |
+| Full-screen MilkDrop | 118 → 115 | 132 → 117 |
+| Idle after full screen | 49 → 43 (in RAM 89 → 23 once used again) | 63 → 49 (97 → 28) |
+
+- [x] One bitmap brush for every cover (the brush cache kept old covers alive on the GPU) and a 48-entry gradient cache
+- [x] Segment heap (manifest)
+- [x] Working-set trim when minimized and after full screen
+- [x] `mem:` line in the `WRECKBOX_PERF` log
+- Paint times unchanged (3.0–3.9 ms average while scrolling, against 3.1–4.65 ms before); all tests pass.
+- Looked at and left: VLC's read-ahead (not the cost), the text-layout cache (a cap didn't change memory), VLC's
+  ~15 MB while playing (its decoding pipeline).
+
+---
+
 ## Cross-cutting
 
 - Before calling a phase done, compare its visible behaviour with the original app side by side on the same library

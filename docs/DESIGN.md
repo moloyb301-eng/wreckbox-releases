@@ -98,7 +98,9 @@ would have made the port hard to check against the original. So instead:
   ~125 gradient brushes and ~200 text layouts and drew the pixel logo as 800 rectangles. Now:
   - gradient brushes are kept per colour set and only moved
   - text layouts are kept per (string, style, box size), up to 800
-  - bitmap brushes are kept per cover; stroke styles per dash length
+  - **one** bitmap brush, re-pointed at each cover with `SetBitmap` (a brush per cover kept 300 covers alive on the
+    GPU after the cover cache let them go: +45 MB after a scroll); stroke styles per dash length
+  - gradient brushes: at most 48 (each is a small GPU texture, and album placeholders bring a colour per album)
   - the logo is rendered once into a bitmap (`Gfx::cached`)
 
   Result: a 4.9 ms average frame.
@@ -186,6 +188,22 @@ for or when there is no sidecar. Downloads of either end in `_inbox`, and `Sync:
 `LibraryStore::organise`.
 
 ### Memory
+
+**The app (2026-10-08 pass).** Measured with `build/dev/memtest.ps1` on copies of a real library (287 tracks with
+covers, and the same repeated to 5,166): ~43 / 49 MB private at rest while playing, ~50 / 56 MB after scrolling,
+~115 MB during full-screen MilkDrop. Where it goes:
+- without anything playing, ~26 MB; libVLC's playback pipeline adds ~15 MB of heap while a song plays (a fixed cost,
+  not the song's size; its read-ahead buffer isn't it)
+- the render target (~12 MB at 1440×900) and the Intel driver's own allocations
+- library data: ~1 KB a track
+- **`heapType` = SegmentHeap** in the manifest (Windows 10 2004+): the old NT heap kept ~24 MB it had freed after
+  loading 5,000 tracks; the segment heap keeps ~3 MB
+- **working-set trim** (`trim_memory`, `SetProcessWorkingSetSize(-1, -1)`) when minimized and 8 s after leaving full
+  screen, when the OpenGL driver's pages are no longer needed (~89 → ~23 MB in RAM once back in use); pages that are
+  needed come back on their own
+- `WRECKBOX_PERF=1` logs a `mem:` line every 2 s: private bytes, working set, and each heap's in-use / committed MB
+
+**The engine.**
 
 The Rust engine keeps every FFT frame in memory: about 55 MB for the tempo pass on a 5-minute track. The C++ port
 computes the onset envelope and pitch profile **frame by frame** with the same math, so analysis needs only the

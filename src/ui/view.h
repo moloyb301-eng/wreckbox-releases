@@ -39,6 +39,11 @@ inline constexpr int kUrlBox = 201;            // Open URL…
 inline constexpr int kBugTitle = 401, kBugBody = 402;  // Report a bug
 inline constexpr int kSlskQuery = 403;                  // Soulseek: custom search words
 inline constexpr UINT_PTR kRefreshTimer = 1, kPlayerTimer = 2, kTooltipTimer = 3;
+inline constexpr UINT_PTR kTrimTimer = 4;  // releases idle memory pages once full screen has been torn down
+
+// Hands the pages this process isn't using back to Windows (they return by themselves if needed). For moments when a lot
+// was just let go: minimized, or after the full-screen visualizer (the OpenGL driver's pages).
+inline void trim_memory() { SetProcessWorkingSetSize(GetCurrentProcess(), SIZE_T(-1), SIZE_T(-1)); }
 
 class View {
 public:
@@ -252,6 +257,7 @@ private:
     void vis_overlay(const Rect& r, float alpha);
     void vis_menu();
     void save_vis();
+    void log_memory();  // WRECKBOX_PERF=1: where the memory is, every 2 s
     void set_vis_panel(bool on);  // show / hide the full-screen player bar (remembered)
     bool vis_key(WPARAM vk);
     float overlay_alpha() const;

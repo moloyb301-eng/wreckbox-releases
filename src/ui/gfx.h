@@ -123,7 +123,7 @@ private:
     // repositioned. Cleared when the render target is recreated.
     std::unordered_map<std::wstring, ComPtr<IDWriteTextLayout>> layouts_;
     std::unordered_map<std::wstring, ComPtr<ID2D1LinearGradientBrush>> gradients_;
-    std::unordered_map<ID2D1Bitmap*, ComPtr<ID2D1BitmapBrush>> bitmap_brushes_;
+    ComPtr<ID2D1BitmapBrush> bitmap_brush_;  // image(): re-pointed at each bitmap
     std::unordered_map<std::wstring, ComPtr<ID2D1Bitmap>> bitmaps_;
     std::unordered_map<int, ComPtr<ID2D1StrokeStyle>> dashes_;
     ComPtr<ID2D1RadialGradientBrush> radial_;

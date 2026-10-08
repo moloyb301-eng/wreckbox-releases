@@ -111,7 +111,9 @@ Measured on the developer's PC:
 
 | | |
 |---|---|
-| Memory while browsing 5,000 tracks | ~38 MB at rest, up to ~69 MB after heavy scrolling |
+| Memory (private), a real 287-track library with covers | ~43 MB playing at rest, ~50 MB after scrolling through it (was ~92 MB before 2026-10-08) |
+| Memory, the same library repeated to 5,166 tracks | ~49 MB playing at rest, ~56 MB after scrolling |
+| Memory, full-screen MilkDrop | ~115 MB while it runs; given back when you leave |
 | Startup | ~0.12 s to the first paint |
 | CPU when idle | 0 %: the window only redraws when something changes |
 | Playing | ~1.4 % of one core with the player bar; ~42 % with the full-screen MilkDrop visualizer at 720p, 60 fps |

@@ -76,7 +76,7 @@ bool Gfx::create_target() {
 void Gfx::drop_target() {
     layouts_.clear();
     gradients_.clear();
-    bitmap_brushes_.clear();
+    bitmap_brush_.Reset();
     bitmaps_.clear();
     dashes_.clear();
     radial_.Reset();
@@ -178,6 +178,8 @@ void Gfx::line(float x0, float y0, float x1, float y1, D2D1_COLOR_F c, float wid
 }
 
 ID2D1LinearGradientBrush* Gfx::gradient(std::initializer_list<D2D1_COLOR_F> colors) {
+    // Each gradient is a small texture on the GPU; album placeholders bring a new colour per album, so keep only a few.
+    if (gradients_.size() > 48) gradients_.clear();
     auto& b = gradients_[color_key(colors)];
     if (!b) {
         std::vector<D2D1_GRADIENT_STOP> stops;
@@ -250,16 +252,15 @@ void Gfx::image(ID2D1Bitmap* bmp, const Rect& r, float radius, float opacity) {
     // Cover-fit: scale to fill the rect, centred, then clip to the rounded shape via a bitmap brush.
     const float scale = std::max(r.w() / size.width, r.h() / size.height);
     const float dx = r.l + (r.w() - size.width * scale) / 2, dy = r.t + (r.h() - size.height * scale) / 2;
-    auto& brush = bitmap_brushes_[bmp];
-    if (!brush) {
-        if (bitmap_brushes_.size() > 300) {  // covers come and go while scrolling; drop the brushes of old ones
-            bitmap_brushes_.clear();
-            return image(bmp, r, radius, opacity);
-        }
+    // One brush, pointed at each bitmap as it's drawn: a brush per cover would keep covers alive (on the GPU) after the
+    // artwork cache let them go.
+    auto& brush = bitmap_brush_;
+    if (!brush)
         rt_->CreateBitmapBrush(bmp, D2D1::BitmapBrushProperties(D2D1_EXTEND_MODE_CLAMP, D2D1_EXTEND_MODE_CLAMP,
                                                                 D2D1_BITMAP_INTERPOLATION_MODE_LINEAR),
                                &brush);
-    }
+    else
+        brush->SetBitmap(bmp);
     brush->SetTransform(D2D1::Matrix3x2F::Scale(scale, scale) * D2D1::Matrix3x2F::Translation(dx, dy));
     brush->SetOpacity(opacity);
     target_->FillRoundedRectangle(D2D1::RoundedRect(r.d2d(), radius, radius), brush.Get());
