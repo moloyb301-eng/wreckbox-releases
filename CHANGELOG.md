@@ -4,7 +4,8 @@ Versions follow [semantic versioning](https://semver.org): MAJOR.MINOR.PATCH.
 
 **Making a release**
 1. Set the version in `CMakeLists.txt` (`project(wreckbox VERSION x.y.z)`); the exe's version resource and the zip's
-   name follow it. Also `res/app.manifest`, `vcpkg.json` and the README's download links (badge and one-line command).
+   name follow it. Also `res/app.manifest`, `vcpkg.json` and the README's download links (badge and one-line command; both point at raw.githubusercontent.com — GitHub's own
+   `/raw/` and `?raw=1` links fail with "Not Found" for signed-in visitors on a file this big).
 2. Add a section for it below.
 3. Commit, then tag the commit: `git tag -a vx.y.z -m "WreckBox x.y.z"`.
 4. Pushing the tag runs CI, which builds and tests the zip and refuses a tag that doesn't match `CMakeLists.txt`.
