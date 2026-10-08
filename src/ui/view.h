@@ -1,4 +1,4 @@
-// The desktop screens (port of app/lib/ui/desktop.dart and tracks.dart): sidebar | page | inspector.
+// The desktop screens: sidebar | page | inspector.
 #pragma once
 #include <windows.h>
 #include <shellapi.h>
@@ -196,7 +196,7 @@ private:
     float settings_scroll_ = 0;
     bool importing_ = false;
     mutable std::mutex status_m_;
-    std::string status_;  // last progress / result line of an import, shared by the import buttons (as in Flutter)
+    std::string status_;  // last progress / result line of an import, shared by the import buttons (as in the original app)
 
     Page page_ = Page::home;
     std::optional<std::string> playlist_;

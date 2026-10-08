@@ -69,10 +69,10 @@ static void updates_tests() {
     Fake gh;
     _putenv_s("WRECKBOX_UPDATE_URL", gh.url().c_str());
     CHECK(wb::updates::releases_url() == gh.url());
-    // The shared releases repo: the Flutter app's newer release (no win-native zip), a pre-release, then ours.
-    const json flutter = {{"tag_name", "v0.6.0"},
-                          {"body", "Flutter."},
-                          {"assets", json::array({{{"name", "WreckBox-0.6.0-windows-x64.zip"}, {"browser_download_url", "https://example.test/flutter.zip"}}})}};
+    // The shared releases repo: the original app's newer release (no win-native zip), a pre-release, then ours.
+    const json other = {{"tag_name", "v0.6.0"},
+                          {"body", "original."},
+                          {"assets", json::array({{{"name", "WreckBox-0.6.0-windows-x64.zip"}, {"browser_download_url", "https://example.test/other.zip"}}})}};
     const json pre = {{"tag_name", "v0.5.0"},
                       {"prerelease", true},
                       {"assets", json::array({{{"name", "WreckBox-0.5.0-win-native-x64.zip"}, {"browser_download_url", "https://example.test/pre.zip"}}})}};
@@ -80,16 +80,16 @@ static void updates_tests() {
                        {"body", "Faster everything."},
                        {"assets", json::array({{{"name", "wreckbox-android.apk"}, {"browser_download_url", "https://example.test/a.apk"}},
                                                {{"name", "WreckBox-0.3.1-win-native-x64.zip"}, {"browser_download_url", "https://example.test/win.zip"}}})}};
-    gh.body = json::array({flutter, pre, ours}).dump();
+    gh.body = json::array({other, pre, ours}).dump();
     auto r = wb::updates::check("0.1.0");
     CHECK(r.error.empty() && r.newer && r.newer->version == "0.3.1" && r.newer->notes == "Faster everything." && r.newer->url == "https://example.test/win.zip",
-          "the newest release with our zip, not the Flutter app's: %s", r.newer ? r.newer->version.c_str() : r.error.c_str());
+          "the newest release with our zip, not the original app's: %s", r.newer ? r.newer->version.c_str() : r.error.c_str());
     CHECK(gh.last.get_header_value("accept") == "application/vnd.github+json");
     r = wb::updates::check("0.3.1");
     CHECK(r.error.empty() && !r.newer, "up to date");
-    gh.body = json::array({flutter, pre}).dump();
+    gh.body = json::array({other, pre}).dump();
     r = wb::updates::check("0.1.0");
-    CHECK(r.error.empty() && !r.newer, "only the Flutter app's releases (and a pre-release): nothing to announce");
+    CHECK(r.error.empty() && !r.newer, "only the original app's releases (and a pre-release): nothing to announce");
     gh.status = 403;
     r = wb::updates::check("0.1.0");
     CHECK(!r.newer && r.error == "GitHub is busy — try again in a few minutes.", "%s", r.error.c_str());

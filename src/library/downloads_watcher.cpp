@@ -18,7 +18,7 @@ std::string to_utf8(const fs::path& p) {
 
 }  // namespace
 
-std::string dart_iso(const std::string& iso) {
+std::string iso_millis(const std::string& iso) {
     static const std::regex whole_seconds(R"(^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$)");
     return std::regex_match(iso, whole_seconds) ? iso.substr(0, 19) + ".000Z" : iso;
 }
@@ -73,7 +73,7 @@ int DownloadsWatcher::run_once() {
          it.increment(ec))
         if (it->is_regular_file(ec) && paths::is_audio(it->path()) && it->path().filename().wstring()[0] != L'.') files.push_back(it->path());
 
-    const std::string built = dart_iso(lib->built_at);
+    const std::string built = iso_millis(lib->built_at);
     int filed = 0;
     for (const auto& f : files) {
         const auto size1 = fs::file_size(f, ec);

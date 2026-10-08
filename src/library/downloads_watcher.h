@@ -1,4 +1,4 @@
-// Watches the Downloads folder (port of DownloadsOrganiser in app/lib/services.dart): each new audio file that belongs
+// Watches the Downloads folder: each new audio file that belongs
 // to your library is analysed, tagged with the Spotify data, renamed and moved into Tracks\. Files that don't match
 // are remembered and left alone — and retried after the next playlist import.
 #pragma once
@@ -39,8 +39,8 @@ private:
     std::mutex wake_m_;
 };
 
-// Dart's DateTime.toIso8601String() for a UTC time read from library.json ("…:05Z" → "…:05.000Z"), so seen-file keys
-// written by the Flutter build still match.
-std::string dart_iso(const std::string& iso);
+// the original app's DateTime.toIso8601String() for a UTC time read from library.json ("…:05Z" → "…:05.000Z"), so seen-file keys
+// written by the original build still match.
+std::string iso_millis(const std::string& iso);
 
 }  // namespace wb

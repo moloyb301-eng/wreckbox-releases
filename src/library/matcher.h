@@ -1,4 +1,4 @@
-// Matching audio files to library tracks (port of app/lib/matcher.dart): ISRC first, then artist + title from tags
+// Matching audio files to library tracks: ISRC first, then artist + title from tags
 // or "Artist - Title" file names, with a duration check.
 #pragma once
 #include <optional>

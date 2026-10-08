@@ -1,4 +1,4 @@
-// YouTube import (port of app/lib/youtube.dart): the user's YouTube / YouTube Music playlists and liked music videos
+// YouTube import: the user's YouTube / YouTube Music playlists and liked music videos
 // become library playlists ("YT: …"). Video titles are cleaned into artist + title and, when Spotify is connected,
 // matched to the Spotify track for proper metadata so they merge with the same song from Spotify.
 //

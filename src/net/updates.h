@@ -1,5 +1,5 @@
-// Update check (port of Updates in app/lib/services.dart): asks GitHub for the releases of the public releases repo and says
-// whether the newest one with this build's zip ("win-native") is newer than this build. The Flutter app's releases in the same
+// Update check: asks GitHub for the releases of the public releases repo and says
+// whether the newest one with this build's zip ("win-native") is newer than this build. The original app's releases in the same
 // repo are never offered. Blocking (a worker calls it); never throws.
 #pragma once
 #include <optional>

@@ -277,7 +277,7 @@ static void account_tests(wb::LibraryStore& store) {
     // PBKDF2-HMAC-SHA256 against the published test vectors.
     CHECK(wb::account::pbkdf2_hex("password", "salt", 1) == "120fb6cffcf8b32c43e7225256c4f837a86548c92ccc35480805987cb70be17b");
     CHECK(wb::account::pbkdf2_hex("password", "salt", 4096) == "c5e478d59288c841aa530db6845c4c8d962893a001ce4e11a4963873aa98134a");
-    // The salt is "wreckbox:" + the trimmed, lower-cased email (what the Flutter build and the server expect).
+    // The salt is "wreckbox:" + the trimmed, lower-cased email (what the original build and the server expect).
     CHECK(wb::account::derive_key("  Me@Example.COM ", "hunter22", 7) == wb::account::pbkdf2_hex("hunter22", "wreckbox:me@example.com", 7));
     CHECK(wb::account::derive_key("a@b.co", "x").size() == 64);
 

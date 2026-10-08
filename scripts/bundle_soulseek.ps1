@@ -1,4 +1,4 @@
-# Builds the Soulseek sidecar folder: embedded Python 3.11 + aioslsk + slsk_sync.py, as the Flutter build's CI does.
+# Builds the Soulseek sidecar folder: embedded Python 3.11 + aioslsk + slsk_sync.py, as the original build's CI does.
 #   .\scripts\bundle_soulseek.ps1 [-OutDir build\Release\soulseek]
 # Needs a Python 3 with pip on PATH (only to download aioslsk's wheels for 3.11 / win_amd64) and internet.
 param([string]$OutDir = 'build\Release\soulseek')

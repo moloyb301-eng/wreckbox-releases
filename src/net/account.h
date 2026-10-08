@@ -1,4 +1,4 @@
-// WreckBox account (port of app/lib/account.dart): email + password sign-in, library sync through the account, and
+// WreckBox account: email + password sign-in, library sync through the account, and
 // finding your computers from anywhere (they register their tunnel address; see tunnel.h).
 //
 // The password never leaves the device: it's turned into a key with PBKDF2-HMAC-SHA256 (200,000 rounds, salted with the

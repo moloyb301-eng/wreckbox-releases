@@ -39,7 +39,7 @@ std::wstring folded(const std::string& p) {
     return w;
 }
 
-// Analysis-cache timestamps are compared at whole-second resolution, like isoSeconds() in Dart.
+// Analysis-cache timestamps are compared at whole-second resolution, like isoSeconds() in the original app.
 std::string iso_trim(const std::string& s) { return s.size() >= 19 ? s.substr(0, 19) + "Z" : s; }
 
 std::optional<double> num(const json& j, const char* k) {

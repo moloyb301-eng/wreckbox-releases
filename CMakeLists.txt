@@ -29,7 +29,7 @@ add_library(wbengine STATIC
 target_include_directories(wbengine PUBLIC src PRIVATE ${DRLIBS_INCLUDE_DIR})
 target_link_libraries(wbengine PUBLIC nlohmann_json::nlohmann_json PRIVATE TagLib::tag mfplat mfreadwrite mfuuid)
 
-# Model: library / state / analysis / settings JSON, paths. Same file formats as the Flutter build.
+# Model: library / state / analysis / settings JSON, paths. Same file formats as the original build.
 add_library(wbmodel STATIC
   src/model/model.cpp
   src/model/paths.cpp

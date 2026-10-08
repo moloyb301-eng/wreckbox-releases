@@ -1,4 +1,4 @@
-// Settings and first-run setup (port of app/lib/ui/settings_page.dart): CSV import, Spotify and YouTube direct import,
+// Settings and first-run setup: CSV import, Spotify and YouTube direct import,
 // bug-report details, about. Soulseek login arrives with phase 8, update checks with phase 7.
 #include <shobjidl.h>
 

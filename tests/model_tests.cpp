@@ -1,4 +1,4 @@
-// Model tests: helper functions behave like models.dart, and JSON round trips keep every field (including ones this
+// Model tests: helper functions behave like the original source, and JSON round trips keep every field (including ones this
 // build doesn't model). With WRECKBOX_TEST_LIBRARY set, also round-trips a COPY of a real library folder.
 #include <cstdio>
 #include <cstdlib>
@@ -66,7 +66,7 @@ static void state_round_trip() {
     };
     const auto s = wb::AppState::from_json(in);
     CHECK(s.tracks.at("USRC1").status == wb::TrackStatus::downloaded);
-    CHECK(s.tracks.at("USRC2").status == wb::TrackStatus::missing);  // unknown status reads as missing, like Dart
+    CHECK(s.tracks.at("USRC2").status == wb::TrackStatus::missing);  // unknown status reads as missing, like the original app
     json expected = in;
     expected["tracks"]["USRC2"]["status"] = "missing";
     CHECK(s.to_json() == expected, "\n%s", s.to_json().dump().c_str());
@@ -133,7 +133,7 @@ static void real_library() {
             out = json::object();
             for (const auto& [k, v] : in.items()) out[k] = wb::FileAnalysis::from_json(v).to_json();
         }
-        // Everything except fields the Dart code also rewrites (analyzedAt, the alias names, trimmed log) survives.
+        // Everything except fields the original source also rewrites (analyzedAt, the alias names, trimmed log) survives.
         size_t lost = 0;
         if (in.is_object() && std::string(name) != "_cache/analysis.json")
             for (const auto& [k, v] : in.items())

@@ -1,4 +1,4 @@
-// Data model (port of app/lib/models.dart). JSON shapes match the Flutter and Mac apps exactly
+// Data model. JSON shapes match the original and Mac apps exactly
 // (library.json, state.json, _cache/analysis.json), so the same library folder works with every build.
 //
 // Each record keeps the JSON object it was read from (`extra`) and writes its known fields over it, so fields
@@ -124,7 +124,7 @@ struct FileAnalysis {
 std::string iso_seconds_now();
 std::string iso_seconds(int64_t unix_seconds);
 
-// Lower-case, accent-free, words separated by single spaces (same as models.dart `normalized`).
+// Lower-case, accent-free, words separated by single spaces (same as the original source `normalized`).
 std::string normalized(const std::string& s);
 
 // File-name-safe stem: no path separators / reserved characters, no trailing dots or spaces, ≤ 180 UTF-16 units.

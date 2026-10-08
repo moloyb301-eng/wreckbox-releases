@@ -1,4 +1,4 @@
-// Import tests: ports of the Dart csv_test / app_test cases (same fixtures), plus checks for the pieces of the Spotify
+// Import tests: ports of the original csv_test / app_test cases (same fixtures), plus checks for the pieces of the Spotify
 // and YouTube sign-in that can run without anyone's developer keys (PKCE, the loopback redirect, response parsing).
 // Live catalogue lookups only run with WRECKBOX_NET_TESTS=1.
 #include <algorithm>
@@ -88,7 +88,7 @@ static wb::SourceTrack st(std::optional<std::string> sp, std::optional<std::stri
 }
 
 static void merging() {
-    // Dart: "a song in both Spotify and YouTube playlists becomes one library entry".
+    // original: "a song in both Spotify and YouTube playlists becomes one library entry".
     const auto lib = wb::sources::build("me", {
         wb::SourcePlaylist{"Bangers", "sp1", false, {st("abc", std::nullopt, "USRC1", "Selecta", {"Skrillex", "BEAM"}, 190000)}},
         wb::SourcePlaylist{"YT: Gym", "yt1", false, {st(std::nullopt, "v1", std::nullopt, "Selecta", {"Skrillex"}, 201000),
@@ -111,7 +111,7 @@ static void merging() {
 }
 
 static void legacy_library_survives() {
-    // Dart: "importing YouTube into a library made before sources keeps the Spotify playlists".
+    // original: "importing YouTube into a library made before sources keeps the Spotify playlists".
     const fs::path root = fs::temp_directory_path() / L"wreckbox-sources-tests";
     fs::remove_all(root);
     wb::paths::init(root);
@@ -175,7 +175,7 @@ static void spotify_parsing() {
     CHECK(!wb::spotify::parse_track(json()));
 }
 
-// Opt-in (WRECKBOX_NET_TESTS=1): the Dart "full import with Deezer + YouTube lookups" test.
+// Opt-in (WRECKBOX_NET_TESTS=1): the original "full import with Deezer + YouTube lookups" test.
 static void network_import() {
     const char* on = std::getenv("WRECKBOX_NET_TESTS");
     if (!on || std::string(on) != "1") {

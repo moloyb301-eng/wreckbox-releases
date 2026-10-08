@@ -34,7 +34,7 @@ void init(std::optional<fs::path> override_root) {
         g_settings = *override_root / L"_settings";
         g_downloads.reset();
     } else {
-        // USERPROFILE\Music rather than FOLDERID_Music: the Flutter build uses the former, and the two differ when
+        // USERPROFILE\Music rather than FOLDERID_Music: the original build uses the former, and the two differ when
         // Music is redirected (e.g. into OneDrive).
         const fs::path home = known_folder(FOLDERID_Profile);
         g_root = home / L"Music" / L"WreckBox";

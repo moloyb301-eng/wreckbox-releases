@@ -1,4 +1,4 @@
-// "Use from anywhere" (port of app/lib/tunnel.dart): a Cloudflare quick tunnel gives this computer's phone-sync server a
+// "Use from anywhere": a Cloudflare quick tunnel gives this computer's phone-sync server a
 // temporary https address, which is registered in the account so the account's phones can stream and download from
 // anywhere. Requests still need the phone-sync token, which only the account's devices receive.
 //

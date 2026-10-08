@@ -1,4 +1,4 @@
-// WreckBox design tokens (port of app/lib/ui/theme.dart): dark glass surfaces, Urbanist for UI text, Doto dot-matrix
+// WreckBox design tokens: dark glass surfaces, Urbanist for UI text, Doto dot-matrix
 // for labels and readouts, pastel gradient for smart features.
 #pragma once
 #include <cmath>
@@ -65,7 +65,7 @@ inline D2D1_COLOR_F tint(const std::string& seed) {
     return hsv(float(h % 360), 0.35f, 0.75f);
 }
 
-// Segoe MDL2 Assets glyphs standing in for the Material icons the Flutter build uses.
+// Segoe MDL2 Assets glyphs standing in for the Material icons the original build uses.
 namespace icon {
 inline constexpr const wchar_t* home = L"";
 inline constexpr const wchar_t* list = L"";

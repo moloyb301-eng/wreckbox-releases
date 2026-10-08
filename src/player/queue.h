@@ -1,4 +1,4 @@
-// The play queue's rules (from app/lib/player.dart), kept apart from playback so they can be tested on their own.
+// The play queue's rules (from the original source), kept apart from playback so they can be tested on their own.
 #pragma once
 #include <optional>
 #include <string>

@@ -1,4 +1,4 @@
-// Track list pages and the inspector (port of app/lib/ui/tracks.dart).
+// Track list pages and the inspector.
 #include <shlobj.h>
 
 #include <algorithm>

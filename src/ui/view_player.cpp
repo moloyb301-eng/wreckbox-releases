@@ -1,4 +1,4 @@
-// The player bar (port of app/lib/ui/player_bar.dart, plus volume, VLC's equalizer, Open and the visualizer), the
+// The player bar, the
 // equalizer pop-over, Open files / folder / URL, drag & drop, media keys and the repaint ticks while playing.
 #include <windows.h>
 #include <shellapi.h>
@@ -86,7 +86,7 @@ void View::player_bar(const Rect& r) {
     volume(vol);
     const float right_l = vol.l - 12;
 
-    // Middle: previous / play / next, then the seek bar (Flutter: info 3 : seek 4 around the controls).
+    // Middle: previous / play / next, then the seek bar (original: info 3 : seek 4 around the controls).
     const float controls_w = 124, avail = std::max(0.f, right_l - in.l - controls_w - 24);
     const float info_r = in.l + avail * 3 / 7, ctl = info_r + 12;
     transport(Rect::xywh(ctl, cy - 20, controls_w, 40));
@@ -101,7 +101,7 @@ void View::player_bar(const Rect& r) {
         g_.icon(cur && player::is_url(cur->location) ? icon::globe : icon::music, cover.l + 22, cover.t + 22, 16, argb(0x80FFFFFF));
     }
     float text_r = info_r;
-    if (row && info_r - in.l > 300) {  // room for the readouts, as in Flutter's wide bar
+    if (row && info_r - in.l > 300) {  // room for the readouts, as in the original app's wide bar
         text_r = info_r - 104;
         ui_.bpm_readout(text_r + 8, cy, row->bpm(), false, 15);
         ui_.key_badge(text_r + 50, cy, row->camelot());

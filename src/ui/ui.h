@@ -46,7 +46,7 @@ public:
     bool wheel(float x, float y, float delta_dips);
     int hit_index(float x, float y) const;  // which region is under the mouse (to repaint when it changes)
 
-    // MARK: Widgets (Flutter equivalents in reference/wreckbox/app/lib/ui/theme.dart)
+    // MARK: Widgets (original equivalents in the original source)
     enum class Pill { glass, primary, smart };
     void glass(const Rect& r, float radius = 24, bool smart = false, bool solid = false);
     float dot_label(const std::wstring& s, float x, float cy, D2D1_COLOR_F c = theme::text3, float size = 11);  // returns width

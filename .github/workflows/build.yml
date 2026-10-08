@@ -80,7 +80,7 @@ jobs:
           tag="${GITHUB_REF_NAME}"
           # The zip carries the version from CMakeLists.txt: a tag that disagrees is a mistake, so stop before publishing.
           [ -f "WreckBox-${tag#v}-win-native-x64.zip" ] || { echo "tag $tag doesn't match the version in CMakeLists.txt"; exit 1; }
-          # The zip is named win-native until the Flutter build is retired: its update check takes the first asset whose
+          # The zip is named win-native until the original build is retired: its update check takes the first asset whose
           # name contains "windows", so a native zip must not match that.
           gh release view "$tag" --repo "$REPO" >/dev/null 2>&1 || gh release create "$tag" --repo "$REPO" --title "$tag" --notes "WreckBox $tag"
           gh release upload "$tag" WreckBox-*-win-native-x64.zip --repo "$REPO" --clobber

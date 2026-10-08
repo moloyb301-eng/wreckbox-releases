@@ -1,4 +1,4 @@
-// "Report a bug" (port of BugReport in app/lib/services.dart): title, description, up to 3 images, who is reporting and the
+// "Report a bug": title, description, up to 3 images, who is reporting and the
 // last 40 log entries go to the bug-report relay, which files a GitHub issue. Blocking: a worker calls send().
 #pragma once
 #include <stdexcept>

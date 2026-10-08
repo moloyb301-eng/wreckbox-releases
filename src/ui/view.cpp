@@ -185,7 +185,7 @@ void View::paint() {
     const bool tools = page_ == Page::queue || page_ == Page::soulseek || page_ == Page::phone || page_ == Page::settings;
     const bool inspect = focus && !tools && lib_;
     const bool overlay = W < 1320;
-    // The page column: the page, and the player bar under it (Flutter: Column(page, PlayerBar)).
+    // The page column: the page, and the player bar under it (original: Column(page, PlayerBar)).
     const float column_r = inspect && !overlay ? W - 340 : W, bar_h = 66;
     const bool banner = update_visible();
     if (banner) update_banner(Rect{252 + 22, 10, column_r - 10, 54});
@@ -284,7 +284,7 @@ float View::header(const Rect& r, const std::wstring& eyebrow, const std::wstrin
         y += 18;
     }
     float x = right + 10;
-    for (const auto& a : actions) {  // bottom-aligned with the title block, like the Flutter Row(crossAxisAlignment.end)
+    for (const auto& a : actions) {  // bottom-aligned with the title block, like the original Row(crossAxisAlignment.end)
         a.draw(x, y - 36);
         x += a.w + 10;
     }
@@ -354,7 +354,7 @@ void View::placeholder(const Rect& r, const std::wstring& title, const std::wstr
     const Rect box{r.l, r.t + h, r.r, r.t + h + 110};
     ui_.glass(box);
     g_.text(L"Not built yet", Rect{box.l + 22, box.t + 22, box.r - 22, box.t + 48}, {Font::ui, 17, 600, text});
-    g_.text(L"This screen arrives in " + phase + L" of the plan (docs/PLAN.md). The Flutter build still has it meanwhile.",
+    g_.text(L"This screen arrives in " + phase + L" of the plan (docs/PLAN.md). The original build still has it meanwhile.",
             Rect{box.l + 22, box.t + 52, box.r - 22, box.t + 80}, {Font::ui, 13, 400, text2});
 }
 
@@ -442,7 +442,7 @@ void View::go(Page p, std::optional<std::string> playlist) {
     page_ = p;
     playlist_ = std::move(playlist);
     if (!same_list) {
-        // A new list starts fresh, like the Flutter TrackListView getting a new key.
+        // A new list starts fresh, like the original TrackListView getting a new key.
         SetWindowTextW(search_, L"");
         search_text_.clear();
         mix_ = {};

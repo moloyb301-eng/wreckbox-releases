@@ -1,4 +1,4 @@
-// Spotify import (port of app/lib/spotify.dart): PKCE sign-in with the user's own client id (Spotify limits each
+// Spotify import: PKCE sign-in with the user's own client id (Spotify limits each
 // developer app to a few users, so every WreckBox user registers their own), then Liked Songs + their playlists.
 #pragma once
 #include <functional>

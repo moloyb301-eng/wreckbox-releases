@@ -191,7 +191,7 @@ int Ui::hit_index(float x, float y) const {
 // MARK: Widgets
 
 void Ui::glass(const Rect& r, float radius, bool smart, bool solid) {
-    if (solid) g.fill_round(r, radius, bg_raised);  // opaque: without Flutter's backdrop blur, 96 % would show ghosting
+    if (solid) g.fill_round(r, radius, bg_raised);  // opaque: without the original app's backdrop blur, 96 % would show ghosting
     else if (smart) g.fill_gradient(r, radius, {with_alpha(light_blue, 0.16f), with_alpha(peach, 0.14f), with_alpha(lilac, 0.18f)});
     else g.fill_round(r, radius, glass_fill);
     g.stroke_round(r, radius, smart ? with_alpha(lilac, 0.45f) : glass_border);
@@ -304,7 +304,7 @@ void Ui::status_dot(float cx, float cy, TrackStatus s, float size) {
             break;
         case TrackStatus::missing: {
             const float r = size / 2 - 1;
-            g.stroke_circle(cx, cy, r, text3, 1.3f, float(2 * std::numbers::pi * r / 24));  // 12 dashes, like the Flutter painter
+            g.stroke_circle(cx, cy, r, text3, 1.3f, float(2 * std::numbers::pi * r / 24));  // 12 dashes, like the original painter
             break;
         }
         case TrackStatus::ignored: g.icon(icon::block, cx, cy, size * 0.9f, text3); break;

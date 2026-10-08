@@ -1,5 +1,5 @@
-// Soulseek sync (port of app/lib/soulseek.dart): runs the bundled slsk_sync.py sidecar (embedded Python + aioslsk), imports
-// what it drops in _inbox through the organiser, and reads its results. The files are the Mac / Flutter apps' own:
+// Soulseek sync: runs the bundled slsk_sync.py sidecar (embedded Python + aioslsk), imports
+// what it drops in _inbox through the organiser, and reads its results. The files are the Mac / original apps' own:
 // _soulseek/sync.json, sync.log, queue.json, overrides.json (+ sync.pid), and soulseek.toml next to settings.json.
 // Phase 10 replaces the sidecar with a native client; this class then keeps only the files and the queue.
 #pragma once

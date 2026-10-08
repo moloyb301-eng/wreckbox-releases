@@ -1,7 +1,7 @@
-// Where WreckBox keeps things (port of app/lib/paths.dart, desktop part).
+// Where WreckBox keeps things.
 //
 //   <USERPROFILE>\Music\WreckBox              library.json, state.json, Tracks\, _inbox\, _cache\, _soulseek\
-//   %APPDATA%\local.wreckbox\wreckbox          settings.json, wreckbox.log  (the Flutter build's folder)
+//   %APPDATA%\local.wreckbox\wreckbox          settings.json, wreckbox.log  (the original build's folder)
 #pragma once
 #include <filesystem>
 #include <optional>
@@ -11,7 +11,7 @@ namespace wb::paths {
 
 namespace fs = std::filesystem;
 
-// Call once at startup. `override_root` (tests) puts settings in <root>\_settings like the Dart tests do.
+// Call once at startup. `override_root` (tests) puts settings in <root>\_settings like the original tests do.
 void init(std::optional<fs::path> override_root = std::nullopt);
 
 const fs::path& root();

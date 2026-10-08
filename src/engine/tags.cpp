@@ -91,7 +91,7 @@ void apply(TagLib::File* file, const TrackTags& t, const TagLib::ByteVector* cov
     if (t.key && !t.key->empty()) p.replace("INITIALKEY", TagLib::StringList(tl(short_key(*t.key))));
     set_text(p, "ISRC", t.isrc);
     file->setProperties(p);
-    // MP4: TagLib writes the standard 2-byte `tmpo`; the Rust engine (Flutter build) reads BPM from the
+    // MP4: TagLib writes the standard 2-byte `tmpo`; the Rust engine (original build) reads BPM from the
     // ----:com.apple.iTunes:BPM text atom instead, so write that too.
     if (auto* mp4 = dynamic_cast<TagLib::MP4::File*>(file); mp4 && t.bpm && *t.bpm > 0.0)
         mp4->tag()->setItem(kMp4TextBpm, TagLib::StringList(tl(std::to_string(std::llround(*t.bpm)))));

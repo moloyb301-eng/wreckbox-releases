@@ -1,4 +1,4 @@
-// Sync to phone (port of _PhonePage and AccountSection in the Flutter build): start / stop sharing, the pairing QR code and
+// Sync to phone: start / stop sharing, the pairing QR code and
 // link, unpairing, the WreckBox account (sign in / create / sync / sign out) and "Use from anywhere" (the tunnel).
 // The servers themselves are net/sync_server, net/account and net/tunnel; this file is the screen.
 #include <qrcodegen.hpp>

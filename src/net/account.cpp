@@ -46,7 +46,7 @@ json call(const std::string& method, const std::string& path, const std::optiona
     if (r.status == 0) throw Error(r.error);
     const json j = r.body.empty() ? json::object() : json::parse(r.body, nullptr, false);
     // 401 means the session ended (password changed elsewhere, or signed out) -- except where it means a wrong password.
-    // (The Flutter build signs you out on a wrong "current password" too; that is not ported.)
+    // (The original build signs you out on a wrong "current password" too; that is not ported.)
     if (r.status == 401 && path != "/v1/login" && path != "/v1/password") {
         Settings::current().account_token.reset();
         save_quietly();

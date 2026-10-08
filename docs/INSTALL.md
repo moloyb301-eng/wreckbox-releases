@@ -12,7 +12,7 @@ a player, and sync to your phone. This is the **native Windows build**: one smal
 4. When Windows asks, allow **private networks** (only needed to send tracks to your phone).
 
 Works on Windows 10 and 11 (64-bit). Your music and library live in `Music\WreckBox`; your settings in
-`%APPDATA%\local.wreckbox\wreckbox`. It uses the same folders as the older Flutter build, so you can switch between them.
+`%APPDATA%\local.wreckbox\wreckbox`. It uses the same folders as the older WreckBox build, so you can switch between them.
 
 ## Import your playlists (no accounts or keys needed)
 

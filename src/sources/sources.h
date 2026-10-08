@@ -1,4 +1,4 @@
-// Library sources (port of app/lib/sources.dart). Each importer (Spotify, YouTube, CSV) saves its playlists to
+// Library sources. Each importer (Spotify, YouTube, CSV) saves its playlists to
 // _sources/<kind>.json; library.json is rebuilt from all of them, so re-importing one source never drops the others.
 // One library entry per recording (ISRC → Spotify id → YouTube id → artist/title/duration), tagged with every
 // playlist it appears in.

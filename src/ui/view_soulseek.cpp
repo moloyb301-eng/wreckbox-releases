@@ -1,4 +1,4 @@
-// Soulseek sync and Download queue (port of _SoulseekPage and _QueuePage in the Flutter build): start / stop the sync, what it
+// Soulseek sync and Download queue: start / stop the sync, what it
 // downloaded / couldn't find / failed with retry (also with your own search words) and ignore, its log; and the priority list
 // that decides what it downloads first. The work is in net/soulseek.
 #include <format>

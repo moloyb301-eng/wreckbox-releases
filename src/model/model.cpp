@@ -22,7 +22,7 @@ std::optional<double> opt_num(const json& j, const char* k) {
 std::optional<int64_t> opt_int(const json& j, const char* k) {
     const auto it = j.find(k);
     if (it == j.end() || !it->is_number()) return std::nullopt;
-    return it->is_number_float() ? int64_t(it->get<double>()) : it->get<int64_t>();  // Dart num.toInt() truncates
+    return it->is_number_float() ? int64_t(it->get<double>()) : it->get<int64_t>();  // original num.toInt() truncates
 }
 bool boolean(const json& j, const char* k, bool fallback) {
     const auto it = j.find(k);
@@ -45,7 +45,7 @@ json unknown_fields(const json& j, std::initializer_list<const char*> known) {
     return out;
 }
 
-// Writes `v` under `k`, or removes `k` when absent — mirroring Dart's `if (x != null) 'k': x`.
+// Writes `v` under `k`, or removes `k` when absent — mirroring the original app's `if (x != null) 'k': x`.
 template <class T>
 void put(json& j, const char* k, const std::optional<T>& v) {
     if (v) j[k] = *v;
@@ -183,7 +183,7 @@ json TrackState::to_json() const {
 // MARK: LogEntry
 
 LogEntry LogEntry::make(std::string event, std::string detail, std::optional<std::string> track_id) {
-    // Same id shape as models.dart: microseconds since the epoch in hex, then a counter.
+    // Same id shape as the original source: microseconds since the epoch in hex, then a counter.
     static std::atomic<unsigned> counter{0};
     const auto us = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
     return LogEntry{std::format("{:012x}-{:04x}", us, counter++ & 0xffff), iso_seconds_now(), std::move(event), std::move(track_id),
@@ -238,7 +238,7 @@ json AppState::to_json() const {
 
 FileAnalysis FileAnalysis::from_json(const json& j) {
     FileAnalysis a;
-    // analyzedAt and bpmAmbiguous are recomputed on save, as in models.dart.
+    // analyzedAt and bpmAmbiguous are recomputed on save, as in the original source.
     a.extra = unknown_fields(j, {"path", "sizeBytes", "modified", "artist", "title", "durationSec", "bpm", "bpmAmbiguous", "bpmConfidence",
                                  "bpmAlternate", "bpmCandidates", "key", "camelot", "keyStrength", "keyConfidence", "keyAgreement", "energy",
                                  "loudnessLUFS", "loudnessLufs", "libraryTrackID", "analyzedAt", "engine"});
@@ -297,7 +297,7 @@ json FileAnalysis::to_json() const {
     put(j, "energy", energy);
     put(j, "loudnessLUFS", loudness_lufs);
     put(j, "libraryTrackID", library_track_id);
-    j["analyzedAt"] = iso_seconds_now();  // as models.dart does on every save
+    j["analyzedAt"] = iso_seconds_now();  // as the original source does on every save
     j["engine"] = engine;
     return j;
 }
@@ -335,7 +335,7 @@ std::string normalized(const std::string& s) {
         lower.resize(n > 0 ? size_t(n) : 0);
         w = std::move(lower);
     }
-    // Same accent table as models.dart; combining marks (U+0300–U+036F) are dropped first.
+    // Same accent table as the original source; combining marks (U+0300–U+036F) are dropped first.
     static const std::pair<std::wstring_view, wchar_t> accents[] = {
         {L"áàâäãå", L'a'}, {L"éèêë", L'e'}, {L"íìîï", L'i'}, {L"óòôöõø", L'o'}, {L"úùûü", L'u'}, {L"ñ", L'n'}, {L"ç", L'c'}, {L"ýÿ", L'y'}};
     std::string out;
@@ -355,7 +355,7 @@ std::string normalized(const std::string& s) {
 }
 
 std::string safe_file_name(const std::string& s) {
-    // Dart's String.trim() whitespace set.
+    // the original app's String.trim() whitespace set.
     auto ws = [](wchar_t c) {
         return (c >= 0x09 && c <= 0x0d) || c == 0x20 || c == 0x85 || c == 0xa0 || c == 0x1680 || (c >= 0x2000 && c <= 0x200a) || c == 0x2028 ||
                c == 0x2029 || c == 0x202f || c == 0x205f || c == 0x3000 || c == 0xfeff;

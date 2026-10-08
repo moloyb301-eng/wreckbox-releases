@@ -145,7 +145,7 @@ void Gfx::fill_round(const Rect& r, float radius, D2D1_COLOR_F c) {
 
 void Gfx::stroke_round(const Rect& r, float radius, D2D1_COLOR_F c, float width) {
     brush_->SetColor(c);
-    // Half-pixel inset keeps a 1-DIP border crisp and inside the shape, like Flutter's Border.all.
+    // Half-pixel inset keeps a 1-DIP border crisp and inside the shape, like the original app's Border.all.
     const Rect in = r.inset(width / 2, width / 2);
     target_->DrawRoundedRectangle(D2D1::RoundedRect(in.d2d(), radius, radius), brush_.Get(), width);
 }

@@ -1,4 +1,4 @@
-// Computer → phone sync over the local network (port of the server side of app/lib/phone_sync.dart). Serves the crate
+// Computer → phone sync over the local network. Serves the crate
 // (the tracks you have, with their analysis) over HTTP on port 47390; every request must carry the pairing token shown
 // in the QR code (header `x-wreckbox-token` or `?t=`), so only phones you paired can browse or download. The endpoints
 // are in docs/DESIGN.md §4; the Android app uses them unchanged.

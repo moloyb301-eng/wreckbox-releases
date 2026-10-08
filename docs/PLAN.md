@@ -60,8 +60,8 @@ with the same key and BPM (within ±0.1) on almost every track, with the differe
 
 ## Phase 2 — Model and Store
 
-Port of `models.dart`, `paths.dart`, `settings.dart`, `store.dart`, `matcher.dart`, and the organiser part of
-`services.dart`.
+Based on the original module, the original module, the original module, the original module, the original module, and the organiser part of
+the original module.
 
 - [x] `model/`: `LibraryTrack`, `LibraryPlaylist`, `Library`, `TrackState`, `LogEntry`, `AppState`, `FileAnalysis`,
       `Settings`. JSON read/write keeps unknown fields (DESIGN §4). Add `isoSeconds`, `normalized`, `safeFileName`.
@@ -80,17 +80,17 @@ Port of `models.dart`, `paths.dart`, `settings.dart`, `store.dart`, `matcher.dar
   - Deezer BPM reconcile
   - `rescan` (parallel), `organise`, `write_tags`
 - [x] `library/downloads_watcher.*`: port of `DownloadsOrganiser`, including `organiser_seen.json` (keys stay
-      compatible with the Flutter build) and the "still being written" check
+      compatible with the original build) and the "still being written" check
 - [x] Tests:
   - `normalized` / `safe_file_name` cases
   - JSON round trips keeping unknown fields
   - matcher cases
   - a full organise → tag → file → rescan → watcher flow on a throwaway library (`tests/library_tests.cpp`)
 - [ ] **Needs your library:** load + save round trip on a copy of a real `Music\WreckBox`
-      (`WRECKBOX_TEST_LIBRARY=<copy> build\Release\model_tests.exe`), then open the re-saved copy in the Flutter app.
+      (`WRECKBOX_TEST_LIBRARY=<copy> build\Release\model_tests.exe`), then open the re-saved copy in the original app.
 - Moved to phase 3: the "run on a worker, post the result to the window" helper. It belongs with the window.
 
-**Done when:** a real `Music\WreckBox` folder (copied) loads, re-saves with the same JSON meaning, and the Flutter app
+**Done when:** a real `Music\WreckBox` folder (copied) loads, re-saves with the same JSON meaning, and the original app
 opens the re-saved copy without complaint. Loading 5,000 tracks takes under 400 ms.
 
 **Result so far (2026-10-06):** the code is done and tested. Measured on a synthetic 5,000-track library
@@ -106,7 +106,7 @@ Only the real-library round trip is left.
 
 ## Phase 3 — UI shell ✅ (pending a weak-PC check)
 
-Port of the layout in `ui/desktop.dart`, `ui/tracks.dart` and `ui/theme.dart`.
+Port of the layout in the original module, the original module and the original module.
 
 - [x] `ui/main.cpp`:
   - Win32 window, per-monitor DPI v2 (manifest + `WM_DPICHANGED`), dark title bar
@@ -118,7 +118,7 @@ Port of the layout in `ui/desktop.dart`, `ui/tracks.dart` and `ui/theme.dart`.
   - Urbanist and Doto embedded as resources (variable fonts; named weights work)
   - caches for text layouts, gradients, bitmap brushes, stroke styles and pre-rendered bitmaps
   - software fallback (`WRECKBOX_SOFTWARE=1`)
-- [x] `ui/theme.h`: tokens, Camelot colours and tints from `theme.dart`; Segoe MDL2 glyphs for the icons
+- [x] `ui/theme.h`: tokens, Camelot colours and tints from the original module; Segoe MDL2 glyphs for the icons
 - [x] `ui/ui.*` (immediate-mode layer):
   - click and scroll regions, hover
   - draggable scrollbars, wheel
@@ -140,8 +140,8 @@ Port of the layout in `ui/desktop.dart`, `ui/tracks.dart` and `ui/theme.dart`.
 - [x] Startup timing in `wreckbox.log`; `WRECKBOX_PERF=1` logs paint times and repaint causes
 - Moved to the phase that needs them: toggle and slider (phases 5 and 7), tabs (phase 8), dialog and toast (phase 7)
 - Dropped:
-  - multi-select: the Flutter app has none either
-  - activity-log view: the Flutter desktop doesn't show one; the log is in `state.json` and in bug reports
+  - multi-select: the original app has none either
+  - activity-log view: the original desktop app doesn't show one; the log is in `state.json` and in bug reports
 
 **Done when:** browsing a 5,000-track library meets the DESIGN §5 budget on a weak machine (or a VM limited to 2
 cores and 4 GB), and the app has 0 % idle CPU.
@@ -168,8 +168,8 @@ The first scroll test averaged 49 ms. The fixes that brought it down are in DESI
 
 ## Phase 4 — Imports and sources ✅ (pending a live Spotify / YouTube sign-in with your keys)
 
-Port of `csv_import.dart`, `sources.dart`, `youtube.dart` and `spotify.dart`, plus the import parts of
-`ui/settings_page.dart`.
+Based on the original module, the original module, the original module and the original module, plus the import parts of
+the original module.
 
 - [x] `sources/sources.*`:
   - each importer saves `_sources/<kind>.json`, and `library.json` is rebuilt from all of them
@@ -189,7 +189,7 @@ Port of `csv_import.dart`, `sources.dart`, `youtube.dart` and `spotify.dart`, pl
 - [x] `sources/youtube.*`: title clean-up into artist + title, ISO durations, Google sign-in (loopback on any port +
       PKCE + client secret), playlists + liked music (category Music only), Spotify matching when connected
 - [x] `sources/spotify.*`:
-  - PKCE sign-in via `127.0.0.1:8888/callback`, the same redirect the Flutter build uses
+  - PKCE sign-in via `127.0.0.1:8888/callback`, the same redirect the original build uses
   - refresh token in settings
   - `Retry-After`-aware rate-limit retries
   - Liked Songs + own / collaborative playlists
@@ -208,21 +208,21 @@ Port of `csv_import.dart`, `sources.dart`, `youtube.dart` and `spotify.dart`, pl
   - Save settings with a confirmation
 - [x] Text boxes generalised: any number of native `EDIT`s over drawn fields. Each box has its own background so it
       blends with its field; Tab / Shift+Tab move between fields, Esc leaves.
-- [x] Tests (`tests/sources_tests.cpp`, using the Dart fixtures copied to `tests/fixtures`):
-  - the Dart `csv_test` and merge / legacy tests
+- [x] Tests (`tests/sources_tests.cpp`, using the original fixtures copied to `tests/fixtures`):
+  - the original `csv_test` and merge / legacy tests
   - PKCE against FIPS SHA-256 vectors
   - the loopback redirect (a simulated browser hits it; 404 for other paths; a busy port gives a readable error)
   - Spotify track parsing
   - `WRECKBOX_NET_TESTS=1`: a live import against MusicBrainz, Deezer and YouTube. It passed: ISRCs from the right
     labels, covers found, no length trusted without an ISRC, about 3 s for 3 tracks.
-- Not on Windows: Dropbox. It's phone-only in the Flutter app too. The Soulseek login comes with phase 8, the update
+- Not on Windows: Dropbox. It's phone-only in the original app too. The Soulseek login comes with phase 8, the update
   check with phase 7.
 
-**Done when:** the same CSV files give the same `library.json` content as the Flutter app (compare playlists, track
+**Done when:** the same CSV files give the same `library.json` content as the original app (compare playlists, track
 ids and order).
 
 **Status (2026-10-06):**
-- **Done:** the parsing and merge rules are ported line by line, and the Dart tests pass with the same expectations.
+- **Done:** the parsing and merge rules are ported line by line, and the original tests pass with the same expectations.
   A CSV import, opened in the app, shows its playlists and covers; settings save correctly.
 - **Still to do by you:**
   - import the same CSVs in both builds and compare `library.json`
@@ -250,7 +250,7 @@ track states are never touched.
 
 ## Phase 5 — Player ✅ (pending your listening check)
 
-Port of `player.dart` and `ui/player_bar.dart`, **on VLC's engine** (libVLC) rather than the planned Media
+Based on the original module and the original module, **on VLC's engine** (libVLC) rather than the planned Media
 Foundation, so that it plays anything VLC plays. It adds VLC's equalizer, the volume normalizer, internet radio,
 files outside the library, and a Winamp-style visualizer. How it fits together: DESIGN.md §3 "Player".
 
@@ -266,7 +266,7 @@ files outside the library, and a Winamp-style visualizer. How it fits together: 
 - [x] `player/audio_output.*`: a 0.25 s ring buffer → **miniaudio** on WASAPI (follows the default device), volume
       (cubed) and mute, and a 4,096-sample tap of what's audible for the visualizer. The device runs only while
       playing.
-- [x] `player/player.*`: the port of `player.dart`:
+- [x] `player/player.*`: the port of the original module:
   - queue = the playable tracks of the list on screen; previous restarts after 3 s; ended → next; unplayable → skip
   - files, folders (searched recursively) and URLs; `.m3u` / `.m3u8` / `.pls` / `.xspf` / `.asx` expanded by
     `player/playlist.*`, including radio playlists over HTTP; HLS streams go to VLC as they are
@@ -426,7 +426,7 @@ frames); 42% of one core playing (was 26–30%: the frame rate is now really 60)
 
 ## Phase 6 — Phone sync, account, tunnel ✅ (pending the Android app on a real phone)
 
-Port of `phone_sync.dart` (server side), `account.dart` and `tunnel.dart`.
+Based on the original module (server side), the original module and the original module.
 
 - [x] `net/sync_server.*`: cpp-httplib on a worker thread; the token check runs first, for every route (header
       `x-wreckbox-token` or `?t=`, compared without early exit); endpoints and Range handling as in DESIGN §4. Port 47390,
@@ -457,11 +457,11 @@ the PC's real Wi-Fi address (403 without the token, `/info` and `/crate` with it
 local fake of the account service: the real cloudflared was downloaded, started, and registered an address with it. I did
 **not** call the public tunnel address from outside, and never touched the real account service.
 
-**Differences from the Flutter build (on purpose):**
-- A wrong "current password" in `change_password` no longer signs you out (Flutter treats every 401 but login's as an
+**Differences from the original build (on purpose):**
+- A wrong "current password" in `change_password` no longer signs you out (original treats every 401 but login's as an
   ended session).
-- `find_tunnel_url` ignores `api.trycloudflare.com`, which Flutter's regex would take for the tunnel on a failed start.
-- The library is also uploaded 2 minutes after changes settle while signed in (Flutter has the function but never calls it).
+- `find_tunnel_url` ignores `api.trycloudflare.com`, which the original app's regex would take for the tunnel on a failed start.
+- The library is also uploaded 2 minutes after changes settle while signed in (original has the function but never calls it).
 - Stopping the tunnel never waits for the network: the account is told from the worker thread.
 
 **Known limits:**
@@ -474,11 +474,11 @@ stream with seeking, and use it away from home through the tunnel with your real
 
 ## Phase 7 — Extras ✅ (pending a real bug report and a real newer release)
 
-Port of the update check and bug-report parts of `services.dart`, plus `ui/bug_report.dart`, `ui/settings_page.dart`
-and `ui/account_ui.dart`.
+Port of the update check and bug-report parts of the original module, plus the original module, the original module
+and the original module.
 
 - [x] **Update check** (`net/updates.*`): the newest release of the public releases repo **that carries this build's
-      `win-native` zip** is compared with this build's version (2026-10-08: the repo's latest release is the Flutter app's
+      `win-native` zip** is compared with this build's version (2026-10-08: the repo's latest release is the original app's
       0.6.0, which this build used to announce; drafts and pre-releases are skipped too) (from `CMakeLists.txt`); a "WreckBox x.y.z is available — Download / Later" banner shows above the page.
       Runs once at startup on a worker (not for a `--root` test library, nor with `WRECKBOX_NO_UPDATE_CHECK=1`), and from
       Settings → About → *Check for updates* (which also says "up to date" or why it couldn't check). "Later" hides that
@@ -493,7 +493,7 @@ and `ui/account_ui.dart`.
 - [x] **The Downloads organiser is running now.** `DownloadsWatcher` existed (phase 2) but nothing started it: it is
       started after the library loads (every 30 s; not for a `--root` test library, which has no Downloads folder).
 - [x] **First-run onboarding:** the welcome screen ("Start by importing your playlists" → Settings) shows until there is a
-      library; the `onboarded` flag is set after the first import, as in Flutter.
+      library; the `onboarded` flag is set after the first import, as in the original app.
 
 **Tests** (`tests/extras_tests.cpp`, against local fakes of GitHub and the relay): version comparison, the update check
 (newer / same / no Windows file / 403 / 500 / not JSON / unreachable; our own zip preferred), the report JSON (fields, 40
@@ -502,14 +502,14 @@ newest log entries, newest first, at most 3 images, base64), sending and the rel
 
 **Checked by hand:** the dialog and the Settings sections in the real window; a report sent to a local fake relay arrived
 with a real 218 KB screenshot of the app. **Not done:** a report to the real relay (it would file an issue in the original
-developer's bugs repo) and the banner against a real newer release — the releases repo's latest is the Flutter build's
+developer's bugs repo) and the banner against a real newer release — the releases repo's latest is the original build's
 v0.3.1, so the banner will offer that until this build has its own releases.
 
 ## Phase 8 — Soulseek (sidecar bridge) ✅ (pending a real sync)
 
-Port of `soulseek.dart`. Runs `slsk_sync.py` with the bundled embedded Python, as the Flutter app does.
+Based on the original module. Runs `slsk_sync.py` with the bundled embedded Python, as the original app does.
 
-- [x] **Sidecar bundle:** `sidecar/slsk_sync.py` (copied from the Flutter repo's sidecar, unmodified) and
+- [x] **Sidecar bundle:** `sidecar/slsk_sync.py` (copied from the original repo's sidecar, unmodified) and
       `scripts/bundle_soulseek.ps1`: Python 3.11.9 embeddable (hash pinned in `scripts/python-embed.sha256`), `aioslsk`
       wheels for 3.11 / win_amd64 fetched with any Python that has pip, the `_pth` fix, and a smoke test. 38.9 MB in
       `soulseek\`.
@@ -521,7 +521,7 @@ Port of `soulseek.dart`. Runs `slsk_sync.py` with the bundled embedded Python, a
 - [x] **UI:** *Soulseek sync* (start / stop, Downloaded / Not found / Failed with counts, Retry all, retry, retry with your
       own search words, ignore, the log with ✓ / ✗ colours), *Download queue* (priority list, up / down / remove, add a
       playlist, "Then everything else"), Settings → Soulseek (login → `soulseek.toml`, the same file and format).
-- [x] Downloads finish through `LibraryStore::organise`, as in the Flutter app.
+- [x] Downloads finish through `LibraryStore::organise`, as in the original app.
 
 **Tests** (`tests/soulseek_tests.cpp`): the login file (quotes and backslashes), the queue order for every case, retry
 requests, reading results and the log, filing from `_inbox`, and a process run with a stand-in script (arguments,
@@ -631,7 +631,7 @@ small *Show player* button; that choice is remembered (`VisOptions::panel`, `"pa
 
 ## Cross-cutting
 
-- Before calling a phase done, compare its visible behaviour with the Flutter app side by side on the same library
+- Before calling a phase done, compare its visible behaviour with the original app side by side on the same library
   copy.
 - Every deliberate shortcut gets a `ponytail:` comment naming its limit and how to upgrade it.
 - Never test against the real `Music\WreckBox`. Use a copy (`WRECKBOX_TEST_LIBRARY`).

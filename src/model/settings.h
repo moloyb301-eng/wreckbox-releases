@@ -1,5 +1,5 @@
-// Per-user settings (port of app/lib/settings.dart). settings.json lives in the app's own folder, never inside the
-// shared library folder. Same keys as the Flutter build, so both builds share one file.
+// Per-user settings. settings.json lives in the app's own folder, never inside the
+// shared library folder. Same keys as the original build, so both builds share one file.
 #pragma once
 #include <optional>
 #include <string>
@@ -29,7 +29,7 @@ struct Settings {
     nlohmann::json extra = nlohmann::json::object();  // keys this build doesn't know (e.g. window position later)
 
     static Settings& current();
-    static void load();  // missing / unreadable file → defaults, like the Dart code
+    static void load();  // missing / unreadable file → defaults, like the original source
     void save() const;   // atomic; throws on failure
 };
 

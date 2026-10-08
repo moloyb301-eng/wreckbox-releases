@@ -6,19 +6,19 @@ still to check.
 ## 1. Goal
 
 A native C++ Windows version of WreckBox that **feels fast and runs well on weak PCs**, with **the same features as
-today's desktop app**, as a **drop-in replacement** for the Flutter Windows build.
+today's desktop app**, as a **drop-in replacement** for the original Windows build.
 
 **Success means:**
 
 - Cold start to first paint under 0.3 s with a 5,000-track library on an old dual-core with a hard disk.
 - Scrolling the track list stays smooth on integrated graphics; idle CPU is 0 %.
 - RAM while browsing stays under ~60 MB (analysis jobs add their buffers while running).
-- A library folder, settings file and paired phone used by the Flutter build work unchanged with this build, and the
+- A library folder, settings file and paired phone used by the original build work unchanged with this build, and the
   other way round.
 - Analysis results match the Rust engine: same key, BPM within 0.1 on WAV/AIFF (bit-identical input), and within
   normal decoder tolerance on MP3/AAC (see §8).
 
-**Out of scope:** macOS, Android (they keep the Flutter app), Windows 7/8, 32-bit Windows, Dropbox import (phone
+**Out of scope:** macOS, Android (they keep the original app), Windows 7/8, 32-bit Windows, Dropbox import (phone
 only today).
 
 ## 2. Decisions
@@ -47,7 +47,7 @@ One process, one executable. Modules have one job each and only `ui/` touches th
 ```
 src/
   engine/     decode (MF / dr_wav → mono float @ 22,050 Hz), analysis (BPM/key/energy), tags (TagLib)
-  model/      Library, AppState, FileAnalysis, Settings — JSON in the exact shapes of models.dart / settings.dart
+  model/      Library, AppState, FileAnalysis, Settings — JSON in the exact shapes of the original source / the original source
   library/    Store (rows, filters, search, "mixes with"), Matcher, Rescan, Organise, DownloadsWatcher
   sources/    CSV import (Exportify, Google Takeout, TuneMyMusic), catalogue lookups (ISRC, cover, Deezer BPM),
               YouTube, Spotify direct (PKCE + loopback redirect on 127.0.0.1:8888)
@@ -66,7 +66,7 @@ engine has no globals and no knowledge of the library, so `wbcore.exe` and the t
 ### Store and threading
 
 *Changed during phase 2.* The first plan was "the UI thread owns the Store and workers post results back". But
-`rescan`, `organise` and `write_tags` are long sequences of `await`s in Dart, and splitting them into posted callbacks
+`rescan`, `organise` and `write_tags` are long sequences of `await`s in the original app, and splitting them into posted callbacks
 would have made the port hard to check against the original. So instead:
 
 - **One mutex guards the Store's in-memory state.** It is held only for in-memory reads and writes, **never during
@@ -74,7 +74,7 @@ would have made the port hard to check against the original. So instead:
 - File saves have their own small lock, so two saves never race on the same `.tmp` file.
 - **Long operations run on worker threads** at below-normal priority, so the UI wins on a dual-core. These are
   `rescan`, `organise`, `write_tags` and the Downloads watcher's 30-second timer.
-- **Rescan analyses in parallel**, with `max(1, cores − 1)` workers; the Flutter app does one file at a time. Results
+- **Rescan analyses in parallel**, with `max(1, cores − 1)` workers; the original app does one file at a time. Results
   are applied in file order afterwards, so the outcome doesn't depend on timing.
 - `Store::on_changed` fires on any thread. The window turns it into a single
   `PostMessage(hwnd, WM_APP_CHANGED)` → repaint, like `notifyListeners()`.
@@ -111,7 +111,7 @@ would have made the port hard to check against the original. So instead:
 - **Fonts**: Urbanist (UI) and Doto (numbers) are embedded as resources and loaded as a DirectWrite in-memory font
   set. Both are variable fonts, and the named weights (SemiBold, Bold…) work. GDI gets its own copy through
   `AddFontMemResourceEx`, for the native search box.
-- **No backdrop blur.** Flutter's glass panels blur what's behind them; that is expensive and pointless over a
+- **No backdrop blur.** the original app's glass panels blur what's behind them; that is expensive and pointless over a
   near-black background. The plain translucent fills look the same. The one visible place, the floating inspector, is
   drawn opaque instead.
 - Icons are Segoe MDL2 Assets glyphs, built into Windows 10 and 11, standing in for the Material icons.
@@ -193,8 +193,8 @@ decoded mono signal (~26 MB for 5 minutes) plus one frame.
 
 ## 4. Compatibility contract
 
-These must stay byte-compatible in meaning (field names, value formats) with the Flutter app. The source of truth is
-the reference code. When in doubt, read `reference/wreckbox/app/lib/models.dart`.
+These must stay byte-compatible in meaning (field names, value formats) with the original app. The source of truth is
+the reference code. When in doubt, read the original module.
 
 ### Folders
 
@@ -209,7 +209,7 @@ the reference code. When in doubt, read `reference/wreckbox/app/lib/models.dart`
 | Import sources | `_sources\spotify.json`, `youtube.json`, `csv.json`, `library-legacy.json`. `library.json` is rebuilt from all of them, Spotify first |
 | Inbox | `_inbox\` |
 | Soulseek | `_soulseek\` |
-| Settings | `%APPDATA%\local.wreckbox\wreckbox\settings.json` (outside the library folder; Flutter derives this path from Runner.rc) |
+| Settings | `%APPDATA%\local.wreckbox\wreckbox\settings.json` (outside the library folder; original derives this path from Runner.rc) |
 | Downloads watched | `%USERPROFILE%\Downloads\` |
 | Audio extensions | `mp3 wav aif aiff flac m4a alac aac ogg opus` |
 
@@ -221,7 +221,7 @@ the reference code. When in doubt, read `reference/wreckbox/app/lib/models.dart`
 - Unknown JSON fields are ignored on read. Fields we don't model must survive a load/save round trip, so the C++ app
   keeps the original object and only changes the fields it knows.
 - `FileAnalysis` writes `keyConfidence` (from `keyStrength`) and `loudnessLUFS`, and reads both spellings, exactly
-  as `models.dart` does.
+  as the original module does.
 
 ### Engine JSON (`wbcore` and the analysis cache)
 
@@ -300,10 +300,10 @@ gets a 403.
 
 - **Updates**: `GET https://api.github.com/repos/moloyb301-eng/wreckbox-releases/releases?per_page=30` (newest first),
   take the first release, not a draft or pre-release, with a `win-native` asset, and compare its tag with our version.
-  (The Flutter build reads `/releases/latest`; the native build can't, because that is usually the Flutter app's.)
+  (The original build reads `/releases/latest`; the native build can't, because that is usually the original app's.)
 - **Bug reports**: `POST` to the relay URL with header `X-WreckBox-Key`, sending JSON with `title, description, app,
   version, platform, reporter, contact, logs` and up to 3 screenshots (base64).
-- Both constants live in one `config.h`, mirroring `config.dart`.
+- Both constants live in one `config.h`, mirroring the original module.
 
 ## 5. Performance budget (reference machine: dual-core, 4 GB, HDD, Intel HD graphics)
 
@@ -333,8 +333,8 @@ marked done.
   functions (`engine.h`) catch everything and return `{"error": "..."}`, like the Rust `guarded` FFI wrapper. Nothing
   throws past that boundary.
 - Every failure the user would care about goes into the activity log (`state.log`), using the same event names as
-  the Flutter app (`analysis failed`, `tag failed`, `organise failed`, …).
-- Network calls time out like the Dart code does (4–60 s depending on the call) and report readable messages
+  the original app (`analysis failed`, `tag failed`, `organise failed`, …).
+- Network calls time out like the original source does (4–60 s depending on the call) and report readable messages
   ("No internet connection.").
 - A crash in a worker job is caught at the job boundary, logged, and the job reports an error. The app keeps running.
 
@@ -357,7 +357,7 @@ marked done.
 | Engine unit | Camelot codes, BPM folding, 128 BPM click track, A-minor chord, short key form | `tests/engine_tests.cpp`, plain asserts, run by `ctest` (ports of the Rust tests) |
 | Engine parity | C++ vs Rust `wbcore analyze` on real files | `scripts/parity.py <folder>`: WAV/AIFF must match exactly (±0.1 BPM, same key). Compressed formats may differ slightly because Media Foundation and Symphonia handle encoder delay and padding differently; any key or BPM difference is listed for review. |
 | Tag round trip | write → read for MP3, FLAC, M4A, WAV, AIFF | test + `wbcore write-tags` / `wbcore tags`, the same as the CI smoke test in the original repo |
-| Model round trip | load + save a copy of a real library folder and compare the JSON meaning | test (phase 2), using `WRECKBOX_TEST_LIBRARY` like the Flutter tests do. **Always on a copy.** |
+| Model round trip | load + save a copy of a real library folder and compare the JSON meaning | test (phase 2), using `WRECKBOX_TEST_LIBRARY` like the original tests do. **Always on a copy.** |
 | Protocol | the current Android app pairs, lists, downloads and streams | manual checklist (phase 6) |
 | Player | 18 formats play in full with real audio and the right length; seek; equalizer effect and unity gain; playlists; queue rules; visualizer maths; real-time pacing and clock on the real device (muted) | `tests/player_tests.cpp`, through the shipped plugin subset into a capturing sink (nothing audible) |
 | Performance | the §5 budget | timer log + manual check on a weak machine (phase 3 onward) |
@@ -374,4 +374,4 @@ marked done.
 | Soulseek protocol port | Keep the sidecar until the native client passes the same sync results on a real queue. |
 | libVLC: some shipped plugins (and the FFmpeg inside them) are GPL | They're separate, unmodified DLLs, and the GPL / LGPL texts and source link ship with the app. If WreckBox is ever distributed closed-source, review which GPL plugins can be dropped (`cmake/vlc_plugins.txt`). |
 | VLC 3 can't decode DSD; it misjudges the length of TTA and ADPCM WAV | DSD isn't offered in Open. *Upgrade path: our own DSD → PCM decimation fed through `libvlc_media_new_callbacks`, or VLC 4 when it's released.* |
-| Releases: the Flutter update check picks the first asset whose name contains `windows` | Until cut-over, name the native zip `WreckBox-<v>-win-native-x64.zip` so Flutter users aren't switched by accident. At cut-over, the native zip takes the `windows` name (phase 9). |
+| Releases: the original update check picks the first asset whose name contains `windows` | Until cut-over, name the native zip `WreckBox-<v>-win-native-x64.zip` so original users aren't switched by accident. At cut-over, the native zip takes the `windows` name (phase 9). |

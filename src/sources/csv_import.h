@@ -1,4 +1,4 @@
-// Playlist import from CSV files — no Spotify / Google developer keys needed (port of app/lib/csv_import.dart).
+// Playlist import from CSV files — no Spotify / Google developer keys needed.
 //
 // Understands the common export formats (column names are matched loosely):
 //   • Exportify (Spotify):        Track URI, Track Name, Artist Name(s), Album Name, Release Date, Duration (ms), Added At

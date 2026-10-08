@@ -1,4 +1,4 @@
-// Library tests: the matcher (cases mirror the Dart behaviour) and the store's organise + rescan flow on a throwaway
+// Library tests: the matcher (cases mirror the original behaviour) and the store's organise + rescan flow on a throwaway
 // library folder. No network: test tracks have no artwork URL and no ISRC lookup is needed for the checks.
 #include <chrono>
 #include <cmath>
@@ -209,7 +209,7 @@ static void organise_and_rescan() {
     CHECK(watcher.recent().size() == 2, "%zu", watcher.recent().size());
     CHECK(watcher.run_once() == 0 && watcher.recent().size() == 2);
     CHECK(fs::exists(wb::paths::cache() / L"organiser_seen.json"));
-    CHECK(wb::dart_iso("2026-01-02T03:04:05Z") == "2026-01-02T03:04:05.000Z" && wb::dart_iso("2026-01-02T03:04:05.123Z") == "2026-01-02T03:04:05.123Z");
+    CHECK(wb::iso_millis("2026-01-02T03:04:05Z") == "2026-01-02T03:04:05.000Z" && wb::iso_millis("2026-01-02T03:04:05.123Z") == "2026-01-02T03:04:05.123Z");
     fs::remove_all(root);
     fs::remove_all(mine);
 }

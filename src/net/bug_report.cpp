@@ -13,7 +13,7 @@
 namespace wb::bugs {
 namespace {
 
-// The relay's shared key: it only deters casual spam and is not a secret (the Flutter build ships the same one).
+// The relay's shared key: it only deters casual spam and is not a secret (the original build ships the same one).
 constexpr const char* kRelayUrl = "https://wreckbox-bug-relay.moloyb301.workers.dev";
 constexpr const char* kRelayKey = "5f0221703ec26d88c14ba5578325fa57";
 

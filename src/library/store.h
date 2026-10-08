@@ -1,5 +1,5 @@
 // LibraryStore: the app's state (library, per-track status, analysis cache, activity log) and the operations on it —
-// scanning, analysing, organising new files and writing tags. Port of app/lib/store.dart.
+// scanning, analysing, organising new files and writing tags. Based on the original source.
 //
 // Threading: one mutex guards the in-memory state and is held only for in-memory reads and writes — never during
 // disk, network or analysis work — so the UI thread can always read promptly. Long operations (rescan, organise,

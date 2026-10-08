@@ -10,7 +10,7 @@
 namespace wb::updates {
 namespace {
 
-constexpr const char* kReleasesRepo = "moloyb301-eng/wreckbox-releases";  // the same public repo the Flutter build checks
+constexpr const char* kReleasesRepo = "moloyb301-eng/wreckbox-releases";  // the same public repo the original build checks
 
 std::vector<int> parse(std::string v) {
     if (!v.empty() && (v[0] == 'v' || v[0] == 'V')) v.erase(0, 1);
@@ -50,7 +50,7 @@ Result check(const std::string& current_version) {
                                                                        : "the update server answered " + std::to_string(res.status) + "."};
     const json j = json::parse(res.body, nullptr, false);
     if (!j.is_array()) return {std::nullopt, "the update server sent something unexpected."};
-    // The releases repo also carries the Flutter app's releases (its own version numbers, a "windows" zip). Only a
+    // The releases repo also carries the original app's releases (its own version numbers, a "windows" zip). Only a
     // release with this build's zip, "WreckBox-<v>-win-native-x64.zip", is an update for it: the newest such one counts.
     // Drafts and pre-releases aren't offered.
     for (const auto& rel : j) {

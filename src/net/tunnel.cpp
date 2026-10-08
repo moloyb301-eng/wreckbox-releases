@@ -194,7 +194,7 @@ struct Tunnel::Impl {
             if (!ok) {
                 finish();
                 if (!run->stop) say("Couldn't connect: the tunnel tool gave no address");
-                return;  // like the Flutter build: no automatic retry before the first address
+                return;  // like the original build: no automatic retry before the first address
             }
             const std::string address = [&] {
                 std::lock_guard lock(fm);

@@ -1,4 +1,4 @@
-// The player (port of app/lib/player.dart, plus files outside the library, internet radio, volume, VLC's equalizer and
+// The player (port of the original source, plus files outside the library, internet radio, volume, VLC's equalizer and
 // normalizer). Lives on the UI thread: every method is called from there; libVLC's events are brought back to it
 // through `post`.
 #pragma once
