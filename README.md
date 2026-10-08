@@ -4,40 +4,22 @@
 
 # WreckBox for Windows
 
-### The DJ library manager — rebuilt as one small native C++ app for weak Windows PCs
+### Your music, sorted.
 
-*Turns your Spotify & YouTube playlists into one library, analyses every track (BPM · key · energy), tags it and files it so Rekordbox and other DJ software read the right data.*
+*Bring in your Spotify and YouTube playlists, your music folder and your CSV lists. WreckBox keeps them in one library, works out the BPM, key and energy of each track, tags the files and tidies them up so your DJ software can read them.*
 
 <br>
 
 [![Platform](https://img.shields.io/badge/Windows%2010%20%2F%2011-x64-A9C8F0?style=for-the-badge&logo=windows&logoColor=08080A&labelColor=08080A)](#-download--install)
 [![Language](https://img.shields.io/badge/C%2B%2B20-native-BB96DA?style=for-the-badge&logo=cplusplus&logoColor=08080A&labelColor=08080A)](#-tech-stack)
-[![UI](https://img.shields.io/badge/Direct2D-no_framework-EFAF86?style=for-the-badge&labelColor=08080A)](#-architecture)
 [![Audio](https://img.shields.io/badge/libVLC-18%2B_formats-EFAF86?style=for-the-badge&logo=vlcmediaplayer&logoColor=08080A&labelColor=08080A)](#-features)
+[![Visualizer](https://img.shields.io/badge/MilkDrop-9%2C795_presets-EFAF86?style=for-the-badge&labelColor=08080A)](#-using-it)
 
-[**⬇️ Download**](#-download--install) · [**✨ Features**](#-features) · [**🏗️ Architecture**](#-architecture) · [**🔨 Build**](#-build-it-yourself) · [**📖 Docs**](#-documentation)
+[**⬇️ Download**](#-download--install) · [**✨ Features**](#-features) · [**🎹 Using it**](#-using-it) · [**🔨 Build**](#-build-it-yourself) · [**📝 Changelog**](CHANGELOG.md)
 
 </div>
 
 ---
-
-A native Windows rewrite of [WreckBox](https://github.com/moloyb301-eng/wreckbox). The Flutter + Rust + embedded-Python
-desktop build works, but it is heavy on old machines. This version is **one small C++ executable** built for weak
-Windows 10/11 PCs — old dual-core, ~4 GB RAM, integrated or no GPU.
-
-It is a **drop-in replacement**: it reads and writes the same `Music\WreckBox` folder and settings file, and speaks the
-same phone-sync protocol, so the existing Android app and existing libraries keep working. Switch between the Flutter
-build and this one freely.
-
-### 📊 How it compares
-
-| | Flutter build (v0.6.1) | **This build** (native C++, v0.2.0) |
-|---|---|---|
-| 📦 **Download** | 38 MB zip *(Flutter, Rust DLL, embedded Python; measured on v0.2.0)* | **71 MB** zip *(VLC engine + 9,795 MilkDrop presets + Soulseek sidecar; ~53 MB without the sidecar, 19 MB without presets)* |
-| 🧠 **RAM** browsing 5,000 tracks | not measured | **38 MB** at rest → 69 MB after heavy scroll *(target < 60 MB)* |
-| ⚡ **Cold start** | not measured | **~0.12 s** to first paint *(target < 0.3 s)* |
-| 💤 **Idle CPU** | Flutter frame scheduler | **0 %** — draws only on change |
-| ▶️ **Playing** | media_kit (libmpv) | **1.4 %** of one core *(player bar)* → ~42 % *(full-screen MilkDrop @ 720p/60fps)*; Winamp bars 3.3 % |
 
 <br>
 
@@ -49,7 +31,7 @@ build and this one freely.
 
 </div>
 
-The latest build of this branch — includes the file-type column and the "My folders" list.
+The latest build. It includes the file-type column, the FLAC filter and the *My folders* list.
 
 ### ⚡ One command
 
@@ -60,18 +42,19 @@ Enter. It downloads WreckBox, unzips it into `%LOCALAPPDATA%\Programs\WreckBox` 
 curl -fL -o "%TEMP%\WreckBox.zip" https://github.com/moloyb301-eng/wreckbox-releases/raw/windows-native/downloads/WreckBox-0.2.0-win-native-x64.zip && (if not exist "%LOCALAPPDATA%\Programs\WreckBox" mkdir "%LOCALAPPDATA%\Programs\WreckBox") && tar -xf "%TEMP%\WreckBox.zip" -C "%LOCALAPPDATA%\Programs\WreckBox" && del "%TEMP%\WreckBox.zip" && start "" "%LOCALAPPDATA%\Programs\WreckBox\wreckbox.exe"
 ```
 
-Close WreckBox before updating. It uses `curl` and `tar`, which come with Windows 10 and 11.
+Close WreckBox before updating. The command uses `curl` and `tar`, which come with Windows 10 and 11.
 
-### Or by hand
+### 📦 Or by hand
 
-1. **Unzip** into a folder of its own (e.g. `C:\WreckBox`). The app needs the files next to it, so don't move
-   `wreckbox.exe` out on its own.
-2. **Run `wreckbox.exe`.** Windows SmartScreen may warn that the app is unrecognised (it isn't signed) — choose
+1. **Unzip** the download into a folder of its own, e.g. `C:\WreckBox`. Keep everything together: `wreckbox.exe` needs
+   the files next to it.
+2. **Run `wreckbox.exe`.** Windows SmartScreen may say the app isn't recognised, because it isn't signed. Choose
    *More info → Run anyway*.
 
-> Windows 10 or 11, 64-bit. Uses the same `Music\WreckBox` library as the original app.
+> Windows 10 or 11, 64-bit. It uses your existing `Music\WreckBox` library, so nothing needs moving.
 
-> **Known:** the account and bug reports still use the original WreckBox services. The update check only announces releases of this build (not the original app's). See [CHANGELOG.md](CHANGELOG.md).
+> **Good to know:** the account and bug reports still go to the original WreckBox services. The update check only
+> looks at releases of this build. See the [changelog](CHANGELOG.md).
 
 <br>
 
@@ -79,93 +62,62 @@ Close WreckBox before updating. It uses `curl` and `tar`, which come with Window
 
 | | Feature | What it does |
 |---|---|---|
-| 🎚️ | **Analysis engine** | Decode → BPM, key, energy, tags — identical results to the original Rust engine, same speed or faster |
-| 🗂️ | **Library store** | Same JSON files as the Flutter build. Loads 5,000 tracks in ~189 ms, searches in 0.8 ms |
-| 📥 | **Imports** | CSV (Exportify / TuneMyMusic / Takeout) with MusicBrainz + Deezer lookups, plus direct Spotify & YouTube |
-| 🔄 | **Playlist Sync** | A *Sync* button on every playlist mirrors it from its source (Spotify, YouTube or CSV) |
-| ▶️ | **Player** | libVLC engine — 18+ formats, internet radio, files outside the library, 10-band EQ, volume normalizer, media keys |
-| 🌈 | **MilkDrop visualizer** | Full-screen projectM presets (9,795 of them) with a glass player panel — swirls, seek, EQ, "Up next" |
-| 🥁 | **Beat sync** | Fed exactly what you hear, every frame — kicks pulse the picture, presets cut on drops, `[` / `]` nudge ±25 ms |
-| 📊 | **Winamp bars** | Classic spectrum / oscilloscope fallback — and the automatic choice on a PC without OpenGL 3.3 |
-| 📱 | **Phone sync** | QR pairing + LAN server, WreckBox account, "Use from anywhere" tunnel (via Cloudflare `cloudflared`) |
-| 🔍 | **Soulseek** | Sync through the bundled sidecar, plus a built-in native client (beta, opt-in) |
-| 📁 | **My folders** | The songs already on your PC in folders you pick — same search, filters, sort, playback and inspector |
-| 🩹 | **Housekeeping** | Update check, bug reports, Downloads organiser, onboarding |
+| 🗂️ | **Library** | Every track in one list, with search (Ctrl+F), filters, sorting, a details panel and a file-type column |
+| 🎚️ | **Analysis** | BPM, musical key (shown in Camelot colours) and energy for every track, written back into the tags |
+| 🎧 | **FLAC filter** | FLAC shows up in purple. *FLAC* and *Not FLAC* filters help you find the lower-quality files |
+| 📥 | **Imports** | CSV files from Exportify, TuneMyMusic and Google Takeout, plus Spotify and YouTube sign-in with your own client ID |
+| 🔄 | **Playlist Sync** | A *Sync* button on every playlist pulls it up to date from where it came from |
+| 📁 | **My folders** | The songs already on your PC, in the folders you pick. WreckBox's own downloads are left out |
+| ⬇️ | **Downloads organiser** | Watches your Downloads folder and files new songs into the library |
+| ▶️ | **Player** | 18+ formats, internet radio and `.m3u` / `.pls` links, files from outside the library, media keys |
+| 🎛️ | **Equalizer & normalizer** | 10-band EQ with presets and preamp, plus a volume normalizer |
+| 🌈 | **MilkDrop visualizer** | Full-screen MilkDrop presets (9,795 of them) with a player bar: song, transport, seek, volume, EQ and "Up next" |
+| 🥁 | **Beat sync** | Kicks pulse the picture, presets change on drops, and you can nudge the timing by 25 ms |
+| 📊 | **Winamp bars** | Classic spectrum and oscilloscope modes. Used automatically on a PC without OpenGL 3.3 |
+| 📱 | **Phone sync** | Pair the WreckBox Android app with a QR code, then sync over your Wi-Fi |
+| ☁️ | **Use from anywhere** | Reach your library from your phone away from home, through a Cloudflare tunnel |
+| 🔍 | **Soulseek** | Sync from Soulseek, through a bundled helper, or through a built-in client (beta, opt-in) |
+| 🧾 | **Account** | Sign in to save your library to your WreckBox account |
+| 🩹 | **Housekeeping** | Update check, bug reports, onboarding and a Settings page |
 
 <br>
 
-## 🚦 Phase status
-
-Work happens in phases — see [docs/PLAN.md](docs/PLAN.md) for the full list with checkboxes.
-
-| Phase | What | State |
-|:---:|---|---|
-| 0 | Project skeleton, build, tests | ✅ done |
-| 1 | Engine: decode, BPM/key/energy, tags, `wbcore.exe` | ✅ identical results to the Rust engine; same speed or faster except M4A |
-| 2 | Data model + library store (same JSON files) | ✅ tested — load 5,000 in 189 ms, search 0.8 ms *(awaiting a real-library round trip)* |
-| 3 | Win32 + Direct2D UI: sidebar, Home, track lists, inspector | ✅ on dev PC: ~130 ms first paint, 5 ms frames, 0 % idle, 2.7 MB exe *(weak-PC check to do)* |
-| 4 | Imports (CSV + lookups, Spotify, YouTube), Settings | ✅ CSV tested live; Spotify/YouTube sign-in needs your client IDs |
-| 4+ | Playlist Sync | ✅ tested offline; a live Sync needs your keys |
-| 5 | Player on libVLC: formats, radio, EQ, normalizer, media keys | ✅ tested *(needs your ears)* |
-| 5b | MilkDrop visualizer + player panel (projectM) | ✅ tested & measured *(needs your look with real music)* |
-| 5c | MilkDrop beat sync: beat pulse, preset cuts on drops | ✅ tested — kick probe 100 % vs 0 % before *(needs your ears)* |
-| 6 | Phone sync (QR pairing, LAN server), account, tunnel | ✅ tested against fakes *(needs the Android app on a real phone)* |
-| 7 | Update check, bug reports, Settings, Downloads organiser | ✅ tested against fakes |
-| 8 | Soulseek sync through the bundled sidecar | ✅ bridge tested *(needs a real Soulseek account)* |
-| 9 | Packaging: zip, smoke test, CI workflow | ✅ zip verified on a clean folder; CI not run yet |
-| 10 | Native Soulseek client (replaces the sidecar) | ✅ built, protocol checked against aioslsk; opt-in until it runs on the real network |
-| 11 | File-type column + FLAC filter; "My folders" | ✅ tested; Windows first |
-
+<details>
+<summary><b>📁 Library details</b></summary>
 <br>
 
-## 🏗️ Architecture
+**Types & FLAC.** Every track list has a **Type** column. FLAC stands out in purple. The **FLAC** and **Not FLAC**
+filters work together with search and sorting. *Not FLAC* shows the songs in another format, which are the ones worth
+replacing.
 
-One executable, no framework. The UI draws straight to Direct2D and drives everything else; nothing draws unless
-something changed.
+**My folders** (sidebar, under Library) lists the songs already on your PC: your `Downloads` and `Music` folders, plus
+any folder you add with **Add folder…**. The header names the folders. A song that matches your library shows the
+library's names and cover. The details panel shows the type and size, and says "Not in your library" when it isn't.
+*Write tags* is hidden there, so your own files keep their tags. A file WreckBox can't analyse doesn't appear.
 
-```mermaid
-flowchart TD
-    UI["🖥️ ui/<br>Win32 window · Direct2D · immediate-mode widgets"]
+**Deleting a song from the PC.** Right-click it and choose *Move to Recycle Bin*, or use the small *Delete from PC* link
+at the bottom of its details panel (click twice). It goes to the Recycle Bin, so you can get it back.
 
-    subgraph core [" "]
-        MODEL["📄 model/<br>library · state · settings JSON"]
-        LIB["🗂️ library/<br>store · matcher · Downloads watcher"]
-        ENGINE["🎚️ engine/<br>decode · BPM / key / energy · tags"]
-    end
+**Imports.** CSV files from Exportify, TuneMyMusic or Google Takeout are matched with MusicBrainz and Deezer for the
+details. Spotify and YouTube need your own client ID, and then import your playlists and liked music.
 
-    subgraph io [" "]
-        SOURCES["📥 sources/<br>CSV · Spotify · YouTube · Playlist Sync"]
-        PLAYER["▶️ player/<br>libVLC · miniaudio · MilkDrop (projectM)"]
-        NET["🌐 net/<br>WinHTTP · OAuth (PKCE)"]
-        PHONE["📱 phone sync<br>QR pairing · LAN server · tunnel"]
-    end
+</details>
 
-    WBCORE["⌨️ wbcore.exe<br>engine CLI"]
+<details>
+<summary><b>📊 Resource use</b></summary>
+<br>
 
-    UI --> MODEL
-    UI --> LIB
-    UI --> SOURCES
-    UI --> PLAYER
-    UI --> PHONE
-    LIB --> ENGINE
-    LIB --> MODEL
-    SOURCES --> NET
-    SOURCES --> MODEL
-    PHONE --> MODEL
-    WBCORE --> ENGINE
+Measured on the developer's PC:
 
-    classDef ui fill:#BB96DA,stroke:#BB96DA,color:#08080A;
-    classDef data fill:#A9C8F0,stroke:#A9C8F0,color:#08080A;
-    classDef media fill:#EFAF86,stroke:#EFAF86,color:#08080A;
-    classDef cli fill:#111115,stroke:#555555,color:#FFFFFF;
-    class UI ui;
-    class MODEL,LIB,ENGINE data;
-    class SOURCES,PLAYER,NET,PHONE media;
-    class WBCORE cli;
-```
+| | |
+|---|---|
+| Memory while browsing 5,000 tracks | ~38 MB at rest, up to ~69 MB after heavy scrolling |
+| Startup | ~0.12 s to the first paint |
+| CPU when idle | 0 %: the window only redraws when something changes |
+| Playing | ~1.4 % of one core with the player bar; ~42 % with the full-screen MilkDrop visualizer at 720p, 60 fps |
+| Download | 71 MB zip, including VLC's engine, the MilkDrop presets and the Soulseek helper |
 
-Full write-up in [docs/DESIGN.md](docs/DESIGN.md) — threading, the file & protocol formats we stay compatible with,
-library choices, performance budget, testing.
+</details>
 
 <br>
 
@@ -173,189 +125,132 @@ library choices, performance budget, testing.
 
 | Area | Choice |
 |---|---|
-| **Language** | C++20, built with MSVC / CMake / Ninja |
-| **UI** | Win32 + Direct2D, immediate-mode widgets — no UI framework |
-| **Fonts** | Urbanist (UI) · Doto dot-matrix (labels & readouts) · Segoe MDL2 glyphs (icons) |
-| **Audio** | libVLC engine + miniaudio output; projectM for MilkDrop |
-| **Tags & decode** | TagLib · dr_libs |
-| **Data & net** | nlohmann-json · cpp-httplib · WinHTTP · nayuki QR generator |
-| **Deps** | vcpkg (`builtin-baseline` pinned); VLC & MilkDrop packs fetched by CMake at pinned commits |
-
-<br>
-
-## 🗃️ Repository layout
-
-```
-wreckbox-win/
-  CMakeLists.txt        build definition (one exe + wbcore + tests); the version lives here only
-  CHANGELOG.md          versions, what landed in each, how to make a release
-  vcpkg.json            third-party libs, pinned with builtin-baseline
-  cmake/                vlc.cmake (download + verify + deploy libVLC), vlc_plugins.txt, milkdrop.cmake
-  .github/workflows/    CI: build, test, smoke-test and zip on Windows; publish on v* tags
-  scripts/
-    build.ps1           find VS Build Tools, configure, build, test
-    package.ps1         the release zip in dist\
-    smoke.ps1           smoke test of a finished folder (engine, app window, Soulseek sidecar)
-    bundle_soulseek.ps1 embedded Python + aioslsk for the Soulseek sidecar
-    parity.py           C++ engine vs Rust engine on real files
-    make_icon.py        res/app_icon.ico from res/logo.svg (the app icon is the README logo)
-  sidecar/              slsk_sync.py, the Soulseek helper (until the native client replaces it)
-  downloads/            the latest release zip (this branch only)
-  src/
-    engine/             decoding, analysis, tags — no UI, no globals
-    model/              library / state / analysis / settings JSON, paths
-    library/            store (scan, analyse, organise, tag), matcher, Downloads watcher
-    sources/            playlist importers + catalogue lookups; merge into library.json; Playlist Sync
-    player/             libVLC engine, miniaudio output, queue, playlist files, visualizer maths, MilkDrop
-    net/                WinHTTP client, OAuth (PKCE + loopback sign-in), phone sync, account, Soulseek (slsk/)
-    ui/                 window (main.cpp), gfx, widgets, screens, cover cache, media controls, jobs, theme
-    tools/wbcore.cpp    command-line front end to the engine
-  res/                  icon, embedded fonts (Urbanist, Doto — OFL), manifest, version info, licenses/
-  tests/                11 suites (engine, model, library, sources, player, sync, extras, Soulseek ×4) — plain
-                        asserts, no framework; audio fixtures in tests/fixtures
-  docs/                 DESIGN.md · PLAN.md · INSTALL.md · MILKDROP-PLAN.md
-  reference/wreckbox/   the original repo, for porting (git-ignored, not built)
-```
-
-### 🌿 Branches
-
-| Branch | Where | Meaning |
-|---|---|---|
-| `main` | the developer's PC | Day-to-day work; every commit is pushed to `windows-native`. |
-| `feature/<name>` | the developer's PC | Bigger features, merged into `main` when the tests pass. |
-| `windows-native` | [wreckbox-releases](https://github.com/moloyb301-eng/wreckbox-releases/tree/windows-native) | The public copy of `main`, with the downloadable zip. The repo's own `main`, tags and releases belong to the original app and aren't touched. |
-
-<br>
-
-## 🔨 Build it yourself
-
-<details>
-<summary><b>Requirements & build commands</b></summary>
-<br>
-
-Needs **Visual Studio 2022 Build Tools** (or VS 2022) with the *Desktop development with C++* workload — that includes
-MSVC, CMake, Ninja and vcpkg. Nothing else to install; dependencies come from vcpkg on first build.
-
-```powershell
-.\scripts\build.ps1            # configure + build Release + run tests
-.\scripts\build.ps1 -Debug     # Debug build
-```
-
-Output lands in `build\Release\` (or `build\Debug\`):
-
-- **`wreckbox.exe`** — the app. Opens your `Music\WreckBox` library (same folder the Flutter build uses).
-  - `--root <folder>` — open a different library folder (settings go in `<folder>\_settings`). Use a **copy** or a demo.
-  - `--background` — open behind other windows without taking focus (for automated checks).
-  - any other arguments — files, folders or URLs to play, as if dropped on the window.
-  - `WRECKBOX_PERF=1` — log paint times to `wreckbox.log`. `WRECKBOX_SOFTWARE=1` — draw on the CPU for bad drivers.
-- Next to it: `libvlc.dll`, `libvlccore.dll`, `plugins\` (keep together), `milkdrop\` (presets/textures), `licenses\`.
-- **`wbcore.exe`** — engine CLI (same commands as the Rust `wbcore`):
-  ```powershell
-  build\Release\wbcore.exe analyze "C:\Music\track.mp3"      # one JSON line per file
-  build\Release\wbcore.exe tags    "C:\Music\track.mp3"      # read tags as JSON
-  '[{"path":"t.wav","title":"T","bpm":120,"key":"A minor"}]' | build\Release\wbcore.exe write-tags
-  ```
-  Also `wbcore bench FILE…` — where the time goes (decode / tempo / key, in ms).
-- Tests: 11 suites (`engine_tests.exe`, `library_tests.exe`, `player_tests.exe`, `slsk_tests.exe`…), all run by
-  `build.ps1` through `ctest`; the player tests play muted. Optional extras:
-  - `WRECKBOX_TEST_LIBRARY=<a COPY of Music\WreckBox>` — round-trip a real library
-  - `WRECKBOX_NET_TESTS=1` — call the real Deezer / MusicBrainz / YouTube services
-  - `WRECKBOX_BENCH=1` — time load & search on 5,000 tracks
-
-</details>
-
-<details>
-<summary><b>Checking the engine against the original</b></summary>
-<br>
-
-`scripts/parity.py` runs both engines on the same files and reports any differences. It needs the original Rust engine
-built once from the reference checkout:
-
-```powershell
-git clone --depth 1 https://github.com/moloyb301-eng/wreckbox reference/wreckbox
-cargo build --release --manifest-path reference/wreckbox/core/Cargo.toml
-python scripts/parity.py "C:\Users\you\Music\WreckBox\Tracks"
-```
-
-</details>
+| **Language** | C++20, built with MSVC, CMake and vcpkg |
+| **Interface** | Win32 with Direct2D. Urbanist for text, Doto for labels and readouts |
+| **Audio** | libVLC engine, with miniaudio for output |
+| **Visualizer** | projectM (MilkDrop presets) |
+| **Tags & decoding** | TagLib, dr_libs |
+| **Network** | WinHTTP, nlohmann-json, cpp-httplib, nayuki QR code generator |
 
 <br>
 
 ## 🎹 Using it
 
 <details>
-<summary><b>Keys & playing music</b></summary>
+<summary><b>⌨️ Keys & playing music</b></summary>
 <br>
 
-**List:** ↑/↓ move · Esc closes the details panel · Ctrl+F searches · F5 rescans · right-click a track for more.
+| Key | What it does |
+|---|---|
+| ↑ / ↓ | Move through the list |
+| Enter | Play the selected track |
+| Space | Play / pause |
+| Esc | Close the details panel |
+| Ctrl+F | Search |
+| Ctrl+O | Open files |
+| Ctrl+U | Open a URL (radio, `.m3u` or `.pls`) |
+| F5 | Rescan the library |
+| F11 | Visualizer, full screen |
+| H | Hide or show the player bar (in full screen) |
 
-**Play:** click a track's cover (or Enter, or *Play* in the details panel) — the queue is the list on screen. Drop
-files/folders on the window, or use **+** in the player bar: Open files (Ctrl+O), Open folder, Open URL (Ctrl+U, for
-radio and `.m3u` / `.pls`). **Space** plays / pauses; media keys work even in the background. The sliders button opens
-VLC's **equalizer** (presets, 10 bands, preamp) and the **volume normalizer**.
+Click a track's cover to play it. The queue is the list on screen. You can also drop files or folders onto the window,
+or use **+** in the player bar. Media keys work even when WreckBox is in the background.
+
+The sliders button opens the **equalizer** (presets, 10 bands, preamp) and the **volume normalizer**.
 
 </details>
 
 <details>
-<summary><b>File type & My folders</b></summary>
+<summary><b>🌈 Visualizer</b></summary>
 <br>
 
-Every track list has a **Type** column (FLAC stands out in purple) and **FLAC / Not FLAC** filters: *Not FLAC* shows
-the songs you have in another format, the ones worth replacing.
+The visualizer button, or **F11**, goes full screen. The MilkDrop presets run under a player bar across the bottom of
+the screen. The bar fades when the mouse is still. Its ⌄ button, or **H**, hides it, and *Show player* brings it back.
 
-**My folders** (sidebar, under Library) lists the songs that were already on your PC — not the ones WreckBox
-downloaded (its own `Music\WreckBox` folder is always left out). It looks in your `Downloads` and `Music` folders and
-any folder you add with **Add folder…**; the header names them. A song that matches your library shows the library's
-names and cover; the details panel shows the type and size and says "Not in your library" when it isn't. *Write tags*
-is hidden there, so your own files keep their tags. A file WreckBox can't analyse doesn't appear.
-
-To delete a song from the PC: right-click it → *Move to Recycle Bin*, or the small *Delete from PC* link at the bottom
-of its details panel (click twice). It goes to the Recycle Bin, so you can restore it.
+- **N / P** next / previous preset · **R** random · **L** lock the preset · click = next preset · **M** switch between
+  MilkDrop and the Winamp bars · **Space** pauses · **Esc**, **F11** or double-click leaves.
+- The picture follows the beat. Each kick pulses it and presets change on drops. **[** and **]** move the picture
+  earlier or later by 25 ms if it's out of step. Bluetooth speakers are allowed for automatically.
+- Right-click for the options: beat pulse (off / subtle / strong), preset change on drops, beat sensitivity, preset set
+  (beat-heavy or all), beat sync, quality (540p / 720p / 1080p), how often presets change, lock, and *Open presets
+  folder*.
+- Your own presets: drop `.milk` files into `%APPDATA%\local.wreckbox\wreckbox\milkdrop\presets`.
+- In the bars mode, a click steps through spectrum → oscilloscope → both → off. Right-click has every Winamp option.
+  **V** switches between the Classic Winamp and WreckBox colours.
+- A PC without OpenGL 3.3 gets the bars automatically. `WRECKBOX_NO_MILKDROP=1` forces them.
 
 </details>
 
 <details>
-<summary><b>Visualizer</b></summary>
+<summary><b>📱 Sync to phone</b></summary>
 <br>
 
-The visualizer button (or **F11**) goes full screen: **MilkDrop** presets under a player bar across the bottom of the
-screen (song, transport, seek, volume, EQ, "Up next") that fades when the mouse is still. Its ⌄ button (or **H**) hides
-it; *Show player* brings it back.
+Open *Sync to phone* in the sidebar. *Start sharing* shows a QR code and a link for the WreckBox Android app. Only phones
+that scanned the code can connect, and *Unpair all phones* revokes them all.
 
-- **N / P** next / previous preset · **R** random · **L** lock · click = next · **M** switch MilkDrop ↔ Winamp bars ·
-  Space pauses · Esc / F11 / double-click leave.
-- Follows the beat: each kick pulses the picture, presets change on drops, **[** / **]** nudge ±25 ms if they don't sit
-  on the beat (Bluetooth latency handled automatically).
-- Right-click for beat pulse (off / subtle / strong), preset-on-drop, sensitivity, preset set, sync, quality
-  (540p / 720p / 1080p), change interval, lock, and *Open presets folder* — drop your own `.milk` files in
-  `%APPDATA%\local.wreckbox\wreckbox\milkdrop\presets`.
-- In bars mode: click steps spectrum → oscilloscope → both → off; **V** switches Classic Winamp ↔ WreckBox colours.
-  A PC without OpenGL 3.3 gets the bars automatically (`WRECKBOX_NO_MILKDROP=1` forces it).
+Sign in to your WreckBox account to save your library to it. Turn on *Use from anywhere* to reach this computer away
+from home. The first time, WreckBox downloads Cloudflare's `cloudflared` (about 55 MB).
+
+Environment settings: `WRECKBOX_SYNC_PORT` changes the port (default 47390). `WRECKBOX_API` points the account at another
+service, for testing.
 
 </details>
 
 <details>
-<summary><b>Sync to phone</b></summary>
+<summary><b>🔍 Soulseek</b></summary>
 <br>
 
-The sidebar's *Sync to phone* page. *Start sharing* shows a QR code (and a link) for the WreckBox Android app; only
-phones that scanned it can connect, *Unpair all phones* revokes them. Sign in to your WreckBox account to save the
-library to it, and turn on *Use from anywhere* so the phone reaches this computer away from home (downloads
-Cloudflare's `cloudflared` the first time, ~55 MB). `WRECKBOX_SYNC_PORT` changes the port (default 47390),
-`WRECKBOX_API` the account service (for testing). `WRECKBOX_VLC_LOG=1` prints VLC's own log (why a stream won't play).
+Soulseek sync runs through a bundled helper, which you sign in to with your own Soulseek account. Songs land in your
+library through the Downloads organiser. There's also a built-in client in beta. It's opt-in until it has been tried on
+the live network.
 
 </details>
 
 <br>
 
-## 📖 Documentation
+## 🔨 Build it yourself
 
-- [docs/DESIGN.md](docs/DESIGN.md) — goals, architecture, threading, the file & protocol formats we stay compatible
-  with, library choices, performance budget, testing.
-- [docs/PLAN.md](docs/PLAN.md) — what gets built in which order, and how each phase is verified.
-- [docs/INSTALL.md](docs/INSTALL.md) — getting started · [docs/MILKDROP-PLAN.md](docs/MILKDROP-PLAN.md) — the
-  visualizer's design.
-- [CHANGELOG.md](CHANGELOG.md) — versions and what landed in each.
+<details>
+<summary><b>Requirements & commands</b></summary>
+<br>
+
+You need **Visual Studio 2022 Build Tools** (or Visual Studio 2022) with the *Desktop development with C++* workload.
+That includes MSVC, CMake, Ninja and vcpkg. Dependencies come from vcpkg on the first build.
+
+```powershell
+.\scripts\build.ps1            # configure, build Release and run the tests
+.\scripts\build.ps1 -Debug     # Debug build
+```
+
+The output goes to `build\Release\` (or `build\Debug\`):
+
+- **`wreckbox.exe`**: the app. It opens your `Music\WreckBox` library.
+  - `--root <folder>` opens a different library folder. Settings go in `<folder>\_settings`. Use a **copy** of your
+    library, or a demo.
+  - `--background` opens the window behind the others without taking focus.
+  - Any other arguments are files, folders or URLs to play, as if you'd dropped them on the window.
+  - `WRECKBOX_PERF=1` logs paint times to `wreckbox.log`. `WRECKBOX_SOFTWARE=1` draws on the CPU, for drivers that misbehave.
+- Next to it: `libvlc.dll`, `libvlccore.dll`, `plugins\` (keep these together), `milkdrop\` (presets and textures) and
+  `licenses\`.
+- **`wbcore.exe`**: the engine's command line.
+  ```powershell
+  build\Release\wbcore.exe analyze "C:\Music\track.mp3"      # one JSON line per file
+  build\Release\wbcore.exe tags    "C:\Music\track.mp3"      # read tags as JSON
+  '[{"path":"t.wav","title":"T","bpm":120,"key":"A minor"}]' | build\Release\wbcore.exe write-tags
+  ```
+  `wbcore bench FILE…` shows where the time goes (decode, tempo, key) in milliseconds.
+- **Tests:** 11 suites, run by `build.ps1` through `ctest`. The player tests play muted. Optional extras:
+  - `WRECKBOX_TEST_LIBRARY=<a COPY of Music\WreckBox>`: round-trip a real library
+  - `WRECKBOX_NET_TESTS=1`: call the real Deezer, MusicBrainz and YouTube services
+  - `WRECKBOX_BENCH=1`: time loading and searching 5,000 tracks
+
+</details>
+
+<br>
+
+## 📝 Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for what changed in each version and how releases are made.
 
 <br>
 
@@ -363,9 +258,8 @@ Cloudflare's `cloudflared` the first time, ~55 MB). `WRECKBOX_SYNC_PORT` changes
 
 <div align="center">
 
-**WreckBox for Windows** · native C++ rewrite of [WreckBox](https://github.com/moloyb301-eng/wreckbox) ·
-[releases mirror](https://github.com/moloyb301-eng/wreckbox-releases/tree/windows-native)
+**WreckBox for Windows** · [releases](https://github.com/moloyb301-eng/wreckbox-releases/tree/windows-native)
 
-*Built for the PCs everyone else gave up on.* 🎛️
+🎛️
 
 </div>
