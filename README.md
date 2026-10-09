@@ -31,7 +31,7 @@
 
 </div>
 
-The latest build. You choose exactly what Soulseek downloads (single songs or whole playlists), and you can delete songs to free up space.
+The latest build (0.7.2). You choose exactly what Soulseek downloads (single songs or whole playlists), can cancel the song that's downloading right now, and can delete songs to free up space.
 
 ### ⚡ One command
 
@@ -76,7 +76,7 @@ Close WreckBox before updating. The command uses `curl` and `tar`, which come wi
 | 📊 | **Winamp bars** | Classic spectrum and oscilloscope modes. Used automatically on a PC without OpenGL 3.3 |
 | 📱 | **Phone sync** | Pair the WreckBox Android app with a QR code, then sync over your Wi-Fi |
 | ☁️ | **Use from anywhere** | Reach your library from your phone away from home, through a Cloudflare tunnel |
-| 🔍 | **Soulseek** | Downloads only the songs and playlists you pick, in best or smaller quality, through a bundled helper or a built-in client (beta) |
+| 🔍 | **Soulseek** | Downloads only the songs and playlists you pick, in best or smaller quality, with a queue you can reorder and cancel (even mid-download), through a bundled helper or a built-in client (beta) |
 | 🧹 | **Free up space** | Delete songs one at a time, a selection, or a whole playlist's downloads (to the Recycle Bin), and see how much space they use |
 | 🧾 | **Account** | Sign in to save your library to your WreckBox account |
 | 🩹 | **Housekeeping** | Update check, bug reports, onboarding and a Settings page |
