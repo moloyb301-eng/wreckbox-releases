@@ -160,6 +160,11 @@ int main() {
     CHECK(sl.retry_pending("t1") && sl.retry_pending("t2") && !sl.retry_pending("t3"));
     sl.retry({"t1"}, std::string("   "));  // an empty search clears the custom words
     CHECK(!json::parse(read_all(wb::paths::soulseek_dir() / L"overrides.json"))["t1"].contains("query") && sl.retry_pending("t1"));
+    // Cancel: a cancelAt for the runner; a later retry lifts it. Nothing is active while the sync isn't running.
+    sl.cancel({"t1"});
+    CHECK(json::parse(read_all(wb::paths::soulseek_dir() / L"overrides.json"))["t1"]["cancelAt"].is_string() && sl.active().empty());
+    sl.retry({"t1"});
+    CHECK(!json::parse(read_all(wb::paths::soulseek_dir() / L"overrides.json"))["t1"].contains("cancelAt"));
     // A newer attempt than the request means it was handled.
     wb::paths::write_atomic(wb::paths::soulseek_dir() / L"sync.json",
                             json{{"t1", {{"status", "not_found"}, {"last_try", "2999-01-01T00:00:00Z"}, {"attempts", 2}, {"reason", "no good match"}, {"format", "flac"}, {"queries", {"a", "b"}}}},

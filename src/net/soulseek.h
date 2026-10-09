@@ -81,6 +81,10 @@ public:
     // Ask the sidecar to retry these tracks on its next pass (it wakes within ~10 s), optionally with a custom search.
     void retry(const std::vector<std::string>& ids, const std::optional<std::string>& query = std::nullopt);
     bool retry_pending(const std::string& id) const;
+    // Stop these tracks now if the sync is on them (searching or downloading; it checks every second or two). It doesn't
+    // count as a failed try; Ignore keeps them from coming back. A later retry() lifts it.
+    void cancel(const std::vector<std::string>& ids);
+    std::set<std::string> active() const;  // the tracks the sync is on right now (active.json; empty when it isn't running)
     // The download order for the runner: picked songs / playlists / genres, then everything else unless "only what I
     // pick" (priority_only). Rewrites queue.json only when it changes (it runs on every refresh, so later playlist
     // additions are picked up).
@@ -100,6 +104,8 @@ private:
     std::optional<unsigned long> external_;
     std::set<std::string> inbox_seen_;
     std::vector<std::string> wanted_;
+    mutable std::set<std::string> active_;  // active() reads the file at most once a second
+    mutable std::chrono::steady_clock::time_point active_read_{};
     json last_queue_;
     std::mutex refresh_m_;
 

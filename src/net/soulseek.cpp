@@ -435,6 +435,7 @@ void Sync::retry(const std::vector<std::string>& ids, const std::optional<std::s
     for (const auto& id : ids) {
         json o = all.contains(id) && all[id].is_object() ? all[id] : json::object();
         o["retryAt"] = now;
+        o.erase("cancelAt");
         if (query) {
             std::string q = *query;
             q.erase(0, q.find_first_not_of(" \t\r\n"));
@@ -448,6 +449,34 @@ void Sync::retry(const std::vector<std::string>& ids, const std::optional<std::s
     fs::create_directories(paths::soulseek_dir(), ec);
     paths::write_atomic(file, all.dump(2));
     refresh();
+}
+
+void Sync::cancel(const std::vector<std::string>& ids) {
+    const fs::path file = paths::soulseek_dir() / L"overrides.json";
+    json all = read_json(file);
+    if (!all.is_object()) all = json::object();
+    const std::string now = iso_seconds_now();
+    for (const auto& id : ids) {
+        json o = all.contains(id) && all[id].is_object() ? all[id] : json::object();
+        o["cancelAt"] = now;
+        all[id] = o;
+    }
+    std::error_code ec;
+    fs::create_directories(paths::soulseek_dir(), ec);
+    paths::write_atomic(file, all.dump(2));
+    refresh();
+}
+
+std::set<std::string> Sync::active() const {
+    if (!running()) return {};
+    std::lock_guard lock(m_);
+    if (std::chrono::steady_clock::now() - active_read_ > std::chrono::seconds(1)) {
+        active_read_ = std::chrono::steady_clock::now();
+        active_.clear();
+        if (const json j = read_json(paths::soulseek_dir() / L"active.json"); j.is_object())
+            for (const auto& [k, v] : j.items()) active_.insert(k);
+    }
+    return active_;
 }
 
 bool Sync::retry_pending(const std::string& id) const {

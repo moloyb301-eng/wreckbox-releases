@@ -306,7 +306,29 @@ std::pair<std::vector<Candidate>, json> Runner::find(const LibraryTrack& track) 
     return {{}, info};
 }
 
-std::optional<fs::path> Runner::download(const LibraryTrack& track, const Candidate& c) {
+bool Runner::cancelled(const std::string& id, const std::string& since) {
+    std::lock_guard lock(cancel_m_);
+    if (std::chrono::steady_clock::now() - cancel_read_ > std::chrono::seconds(1)) {
+        cancel_read_ = std::chrono::steady_clock::now();
+        cancel_at_.clear();
+        if (const json o = read_json(overrides_file()); o.is_object())
+            for (const auto& [k, v] : o.items())
+                if (v.is_object() && v.contains("cancelAt") && v["cancelAt"].is_string()) cancel_at_[k] = v["cancelAt"].get<std::string>();
+    }
+    const auto it = cancel_at_.find(id);
+    return it != cancel_at_.end() && it->second >= since;  // ISO seconds: same second counts
+}
+
+void Runner::set_active(const LibraryTrack& track, std::optional<std::string> started) {
+    std::lock_guard lock(active_m_);
+    if (started) active_[track.id] = {{"started", *started}, {"name", track.file_name}};
+    else active_.erase(track.id);
+    std::error_code ec;
+    fs::create_directories(work_dir(), ec);
+    paths::write_atomic(work_dir() / L"active.json", active_.dump());
+}
+
+std::optional<fs::path> Runner::download(const LibraryTrack& track, const Candidate& c, const std::string& since) {
     std::error_code ec;
     fs::create_directories(incoming_dir(), ec);
     static std::atomic<unsigned> counter{0};
@@ -314,7 +336,7 @@ std::optional<fs::path> Runner::download(const LibraryTrack& track, const Candid
     DownloadOptions o;
     o.queue_timeout = std::chrono::minutes(cfg_.queue_timeout_minutes);
     o.stall_timeout = std::chrono::minutes(cfg_.stall_timeout_minutes);
-    o.cancel = [this] { return stop_.load(); };
+    o.cancel = [this, id = track.id, since] { return stop_.load() || cancelled(id, since); };
     const auto res = backend_->download(c.username, c.path, utf8(part), o);
     if (!res.ok) {
         log_line("  ✗ " + c.username + ": " + res.error);
@@ -342,7 +364,20 @@ std::string Runner::process(const LibraryTrack& track) {
     std::string who;
     for (size_t i = 0; i < track.artists.size(); ++i) who += (i ? ", " : "") + track.artists[i];
     who += " – " + track.title;
+    const std::string since = iso_seconds_now();
+    set_active(track, since);
+    struct Done {
+        Runner* r;
+        const LibraryTrack& t;
+        ~Done() { r->set_active(t, std::nullopt); }
+    } done{this, track};
+    const auto stopped = [&] {
+        if (!cancelled(track.id, since)) return false;
+        log_line("✗ cancelled: " + who);
+        return true;
+    };
     auto [cands, info] = find(track);
+    if (stopped()) return "cancelled";
     const size_t files = info["filesSeen"].get<size_t>(), users = info["usersSeen"].get<size_t>();
     const std::string reason = files == 0 ? "no results" : std::to_string(files) + " files from " + std::to_string(users) + " users, none matched";
     if (stop_) return "failed";
@@ -353,9 +388,10 @@ std::string Runner::process(const LibraryTrack& track) {
     }
     const size_t tries = std::min<size_t>(cands.size(), size_t(cfg_.candidates_per_track));
     for (size_t i = 0; i < tries && !stop_; ++i) {
+        if (stopped()) return "cancelled";
         const Candidate& c = cands[i];
         log_line("↓ " + who + "  ←  " + c.label());
-        if (const auto dest = download(track, c)) {
+        if (const auto dest = download(track, c, since)) {
             const std::string name = utf8(dest->filename());
             log_line("✓ " + who + " → _inbox/" + name);
             mark(track, "done",
@@ -364,6 +400,7 @@ std::string Runner::process(const LibraryTrack& track) {
             return "done";
         }
     }
+    if (stopped()) return "cancelled";
     if (stop_) return "failed";
     mark(track, "failed", {{"reason", std::to_string(tries) + " sources tried, none delivered"}, {"queries", info["queries"]}});
     return "failed";
@@ -397,7 +434,7 @@ PassCounts Runner::run_pass(std::optional<int> limit) {
             std::lock_guard lock(cm);
             if (result == "done") ++counts.done;
             else if (result == "not_found") ++counts.not_found;
-            else ++counts.failed;
+            else if (result != "cancelled") ++counts.failed;
         }
     };
     std::vector<std::thread> workers;

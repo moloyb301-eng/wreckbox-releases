@@ -68,7 +68,7 @@ struct FakeNet : Backend {
     std::vector<std::string> queries, downloads;
     std::string login_error;
     bool up = false;
-    int search_delay_ms = 0;
+    int search_delay_ms = 0, download_ms = 0;  // download_ms: a slow transfer that can be cancelled
     std::string login(const std::string&, const std::string&) override {
         if (!login_error.empty()) return login_error;
         up = true;
@@ -86,7 +86,11 @@ struct FakeNet : Backend {
         const auto it = answers.find(q);
         return it == answers.end() ? std::vector<UserResult>{} : it->second;
     }
-    DownloadResult download(const std::string& user, const std::string& path, const std::string& dest, const DownloadOptions&) override {
+    DownloadResult download(const std::string& user, const std::string& path, const std::string& dest, const DownloadOptions& o) override {
+        for (int i = 0; i < download_ms / 10; ++i) {
+            if (o.cancel && o.cancel()) return {false, "cancelled", 0};
+            std::this_thread::sleep_for(10ms);
+        }
         std::lock_guard lock(m);
         downloads.push_back(user + ":" + path);
         if (const auto e = download_error.find(user); e != download_error.end()) return {false, e->second, 0};
@@ -232,6 +236,39 @@ int main() {
         const json sync = json::parse(read_all(wb::paths::soulseek_dir() / L"sync.json"));
         CHECK(sync["g"]["status"] == "done" && sync["g"]["attempts"] == 1, "%s", sync["g"].dump().c_str());  // (attempts from the not-found stay)
         fs::remove(wb::paths::soulseek_dir() / L"overrides.json");
+    }
+
+    // Cancel: the app's cancelAt stops the song mid-download (within about a second), without counting a failed try;
+    // active.json lists the song while the sync is on it.
+    {
+        auto net = std::make_unique<FakeNet>();
+        FakeNet* n = net.get();
+        n->answers["artist h song h"] = {result("slow", "Artist H - Song H.flac", 20000000, "flac")};
+        n->download_ms = 8000;
+        const auto overrides = wb::paths::soulseek_dir() / L"overrides.json", active = wb::paths::soulseek_dir() / L"active.json";
+        wb::paths::write_atomic(overrides, json{{"h", {{"retryAt", "2999-01-01T00:00:00Z"}}}}.dump());  // due now
+        Runner r(store, config("max_concurrent = 1\n"), std::move(net));
+        CHECK(r.login());
+        wb::slsk::PassCounts counts;
+        const auto t0 = std::chrono::steady_clock::now();
+        std::thread pass([&] { counts = r.run_pass(); });
+        bool listed = false;
+        for (int i = 0; i < 300 && !listed; ++i) {
+            listed = fs::exists(active) && json::parse(read_all(active)).contains("h");
+            std::this_thread::sleep_for(10ms);
+        }
+        CHECK(listed, "active.json lists the song being downloaded");
+        std::this_thread::sleep_for(300ms);  // past the (instant) search, into the transfer
+        wb::paths::write_atomic(overrides, json{{"h", {{"retryAt", "2999-01-01T00:00:00Z"}, {"cancelAt", wb::iso_seconds_now()}}}}.dump());
+        pass.join();
+        const auto took = std::chrono::steady_clock::now() - t0;
+        CHECK(took < std::chrono::seconds(5), "cancelled in %lld ms", (long long)std::chrono::duration_cast<std::chrono::milliseconds>(took).count());
+        CHECK(counts.done == 0 && counts.failed == 0 && counts.not_found == 0, "a cancel isn't a result");
+        const json sync = json::parse(read_all(wb::paths::soulseek_dir() / L"sync.json"));
+        CHECK(sync["h"]["status"] == "not_found" && sync["h"]["attempts"] == 1, "not counted as a try: %s", sync["h"].dump().c_str());
+        CHECK(read_all(wb::paths::soulseek_dir() / L"sync.log").find("✗ cancelled: Artist H – Song H") != std::string::npos);
+        CHECK(json::parse(read_all(active)).empty() && !fs::exists(wb::paths::inbox() / L"Artist H - Song H.flac"));
+        fs::remove(overrides);
     }
 
     // The login, the lock, and stopping.

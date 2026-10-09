@@ -1,7 +1,8 @@
 // The Soulseek sync loop, native (a port of Syncer in sidecar/slsk_sync.py): looks for the library's missing tracks on
 // Soulseek, downloads the best match into _inbox and keeps the same files the sidecar keeps (sync.json, sync.log, sync.pid),
 // so the Soulseek page, the queue and the retries work unchanged. The network is behind `Backend`, so the loop is tested
-// without it.
+// without it. While a track is being worked on it is listed in active.json; a `cancelAt` in overrides.json newer than
+// its start stops it (search or transfer) without counting as a failed try.
 #pragma once
 #include <atomic>
 #include <chrono>
@@ -71,8 +72,10 @@ public:
     void log_line(const std::string& message);
 
 private:
-    std::string process(const LibraryTrack& track);  // "done" | "not_found" | "failed"
-    std::optional<std::filesystem::path> download(const LibraryTrack& track, const Candidate& c);
+    std::string process(const LibraryTrack& track);  // "done" | "not_found" | "failed" | "cancelled"
+    std::optional<std::filesystem::path> download(const LibraryTrack& track, const Candidate& c, const std::string& since);
+    bool cancelled(const std::string& id, const std::string& since);  // the app asked to stop it (read at most once a second)
+    void set_active(const LibraryTrack& track, std::optional<std::string> started);  // active.json
     void mark(const LibraryTrack& track, const std::string& status, const json& extra = json::object());
     std::pair<std::vector<Candidate>, json> find(const LibraryTrack& track);
     std::vector<UserResult> search(const std::string& query);
@@ -89,6 +92,11 @@ private:
     std::chrono::steady_clock::time_point last_search_{};
     std::mutex log_m_;
     void* lock_file_ = nullptr;  // the sync.lock handle
+    std::mutex cancel_m_;
+    std::map<std::string, std::string> cancel_at_;
+    std::chrono::steady_clock::time_point cancel_read_{};
+    std::mutex active_m_;
+    json active_ = json::object();
 };
 
 }  // namespace wb::slsk

@@ -15,6 +15,14 @@ Day-to-day work goes on `main`; bigger features on a branch (`feature/<name>`), 
 
 ## Unreleased
 
+## 0.7.2 — 2026-10-09
+
+- **Cancel the song that's downloading right now.** It shows *Downloading now* (top of the Wanted tab, details panel).
+  **Cancel download** stops it within a second or two, while it's searching or mid-transfer. The partial file is
+  deleted, the song is marked Ignored, and it doesn't count as a failed try. The rest of the sync carries on. *Don't
+  download* on several songs stops any of them that are in progress too. Both the built-in client and the helper
+  support it.
+
 ## 0.7.1 — 2026-10-09
 
 - **You choose what Soulseek downloads.** New default *Only what I pick*: nothing downloads until you pick it.

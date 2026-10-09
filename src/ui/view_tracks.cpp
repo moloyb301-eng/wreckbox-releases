@@ -529,6 +529,7 @@ void View::inspector(const Rect& r, bool floating) {
     ui_.dot_label(is_file                                    ? L"In your folders"
                   : tr->status() == TrackStatus::downloaded ? L"In your crate"
                   : tr->status() == TrackStatus::ignored    ? L"Ignored"
+                  : slsk_ && slsk_->active().contains(tr->id()) ? L"Downloading now"
                   : wanted_ids_.contains(tr->id())          ? L"Wanted"
                                                             : L"Missing",
                   in.l, y + 14);
@@ -653,8 +654,12 @@ void View::inspector(const Rect& r, bool floating) {
         action(L"Show in folder", icon::folder, Ui::Pill::glass, [this, p = *path] { show_in_folder(p); });
     }
     if (!is_file && tr->status() != TrackStatus::downloaded) {  // Soulseek: get it (first, if it's already wanted), or don't
-        action(wanted_ids_.contains(tr->id()) ? L"Download first" : L"Download", icon::download, Ui::Pill::smart, [this, i = tr->id()] { want({i}, true); });
-        if (tr->status() == TrackStatus::missing) action(L"Don't download", icon::block, Ui::Pill::glass, [this, i = tr->id()] { want({i}, false); });
+        if (slsk_ && slsk_->active().contains(tr->id())) {
+            action(L"Cancel download", icon::close, Ui::Pill::glass, [this, i = tr->id()] { want({i}, false); });
+        } else {
+            action(wanted_ids_.contains(tr->id()) ? L"Download first" : L"Download", icon::download, Ui::Pill::smart, [this, i = tr->id()] { want({i}, true); });
+            if (tr->status() == TrackStatus::missing) action(L"Don't download", icon::block, Ui::Pill::glass, [this, i = tr->id()] { want({i}, false); });
+        }
     }
     if (x > in.l) y += 34;
     if (path) y += 8 + g_.paragraph(wide(*path), Rect{in.l, y + 8, in.r, y + 8}, {Font::ui, 11, 400, text3});
@@ -712,9 +717,10 @@ void View::row_menu(const std::string& id) {
         AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
         AppendMenuW(m, MF_STRING, 6, L"Move to Recycle Bin");
     }
-    if (tr->file_id.empty() && tr->status() != TrackStatus::downloaded)
+    const bool now = slsk_ && slsk_->active().contains(id);  // the sync is on it right now
+    if (tr->file_id.empty() && tr->status() != TrackStatus::downloaded && !now)
         AppendMenuW(m, MF_STRING, 7, wanted_ids_.contains(id) ? L"Download first" : L"Download");
-    if (tr->file_id.empty() && tr->status() == TrackStatus::missing) AppendMenuW(m, MF_STRING, 3, L"Don't download");
+    if (tr->file_id.empty() && (tr->status() == TrackStatus::missing || now)) AppendMenuW(m, MF_STRING, 3, now ? L"Cancel download" : L"Don't download");
     POINT pt;
     GetCursorPos(&pt);
     const int cmd = GetMenuItemCount(m) ? TrackPopupMenu(m, TPM_RETURNCMD | TPM_RIGHTBUTTON, pt.x, pt.y, 0, hwnd_, nullptr) : 0;

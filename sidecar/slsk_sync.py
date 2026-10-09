@@ -44,7 +44,12 @@ WORK_DIR = LIBRARY_ROOT / "_soulseek"
 INCOMING = WORK_DIR / "incoming"          # aioslsk writes partial files here
 INBOX = LIBRARY_ROOT / "_inbox"           # finished files are handed to the app here
 SYNC_FILE = WORK_DIR / "sync.json"
-OVERRIDES_FILE = WORK_DIR / "overrides.json"   # written by the DJ Library app: retry requests + custom queries
+OVERRIDES_FILE = WORK_DIR / "overrides.json"   # written by the DJ Library app: retry requests + custom queries + cancels
+ACTIVE_FILE = WORK_DIR / "active.json"         # the tracks being worked on now (the app offers Cancel on them)
+
+
+class Cancelled(Exception):
+    """The app asked to stop this track (overrides.json cancelAt newer than its start)."""
 LOG_FILE = WORK_DIR / "sync.log"
 CONFIG_FILE = Path(os.environ.get("WRECKBOX_SLSK_CONFIG") or (HERE / "config.toml"))
 
@@ -313,6 +318,7 @@ class Syncer:
         self.client: SoulSeekClient | None = None
         self._search_lock = asyncio.Lock()
         self._last_search = 0.0
+        self.active: dict = {}   # active.json
 
     async def connect(self) -> None:
         ss = self.cfg["soulseek"]
@@ -379,7 +385,18 @@ class Syncer:
                 return cands, info
         return [], info
 
-    async def download(self, track: dict, c: Candidate) -> Path | None:
+    def cancelled(self, track: dict, since: str) -> bool:
+        at = load_json(OVERRIDES_FILE, {}).get(track["id"], {}).get("cancelAt")
+        return bool(at) and at >= since   # ISO seconds: same second counts
+
+    def set_active(self, track: dict, started: str | None) -> None:
+        if started:
+            self.active[track["id"]] = {"started": started, "name": track["fileName"]}
+        else:
+            self.active.pop(track["id"], None)
+        save_json(ACTIVE_FILE, self.active)
+
+    async def download(self, track: dict, c: Candidate, since: str = "") -> Path | None:
         s = self.cfg["sync"]
         try:
             transfer = await self.client.transfers.download(c.username, c.path)
@@ -391,6 +408,9 @@ class Syncer:
         try:
             while True:
                 await asyncio.sleep(2)
+                if since and self.cancelled(track, since):
+                    await self._discard(transfer)
+                    raise Cancelled()
                 st = transfer.state.VALUE
                 if st == TransferState.COMPLETE:
                     break
@@ -441,7 +461,20 @@ class Syncer:
 
     async def process(self, track: dict) -> str:
         who = f"{', '.join(track['artists'])} – {track['title']}"
+        since = now_iso()
+        self.set_active(track, since)
+        try:
+            return await self._process(track, who, since)
+        except Cancelled:
+            log.info("✗ cancelled: %s", who)
+            return "cancelled"
+        finally:
+            self.set_active(track, None)
+
+    async def _process(self, track: dict, who: str, since: str) -> str:
         cands, info = await self.find(track)
+        if self.cancelled(track, since):
+            raise Cancelled()
         reason = ("no results" if info["filesSeen"] == 0
                   else f"{info['filesSeen']} files from {info['usersSeen']} users, none matched")
         if not cands:
@@ -449,8 +482,10 @@ class Syncer:
             self.mark(track, "not_found", reason=reason, queries=info["queries"])
             return "not_found"
         for c in cands[: self.cfg["sync"]["candidates_per_track"]]:
+            if self.cancelled(track, since):
+                raise Cancelled()
             log.info("↓ %s  ←  %s", who, c.label)
-            dest = await self.download(track, c)
+            dest = await self.download(track, c, since)
             if dest:
                 log.info("✓ %s → _inbox/%s", who, dest.name)
                 self.mark(track, "done", file=dest.name, source=f"{c.username}:{c.path}", format=c.ext,
@@ -467,7 +502,7 @@ class Syncer:
         if limit:
             tracks = tracks[:limit]
         log.info("Pass: %d tracks to look for", len(tracks))
-        counts = {"done": 0, "failed": 0, "not_found": 0}
+        counts = {"done": 0, "failed": 0, "not_found": 0, "cancelled": 0}
         queue: asyncio.Queue = asyncio.Queue()
         for t in tracks:
             queue.put_nowait(t)

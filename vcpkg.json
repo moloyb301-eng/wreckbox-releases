@@ -1,6 +1,6 @@
 {
   "name": "wreckbox-win",
-  "version-string": "0.7.1",
+  "version-string": "0.7.2",
   "builtin-baseline": "0bc1a55f422ceb190877234b3ba88c372f04c485",
   "dependencies": [
     "taglib",

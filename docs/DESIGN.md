@@ -200,6 +200,14 @@ for or when there is no sidecar. Downloads of either end in `_inbox`, and `Sync:
   `Tracks`, and refused for the rest of WreckBox's folder. With `skip` the song becomes `ignored`, so the sync leaves it.
 - **Quality:** `prefer_smaller` in soulseek.toml makes `quality_of` (C++ and Python) score lossless 0+rank instead of
   10+rank, below any usable lossy file (6 and up).
+- **Cancel (0.7.2):**
+  - Both runners list the tracks they're on in `_soulseek\active.json` (`{id: {started, name}}`) from start to finish.
+    The app shows *Downloading now* from it, and only while the sync runs.
+  - **Cancel download** = *Don't download* (Ignore) + `overrides.json[id].cancelAt`.
+  - A runner stops a track whose `cancelAt` is at or after that attempt's start: after the search, between sources,
+    and during a transfer. The native client polls every 250 ms, reading the file at most once a second; the sidecar
+    polls every 2 s.
+  - The partial file is dropped and nothing is marked, so it isn't a failed try. A later retry removes `cancelAt`.
 
 ### Memory
 

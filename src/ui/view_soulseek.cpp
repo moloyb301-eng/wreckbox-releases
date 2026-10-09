@@ -28,7 +28,7 @@ void View::slsk_message(std::string s) {
 void View::want(const std::vector<std::string>& ids, bool on) {
     const auto state = store_.state_copy();
     auto prios = state.download_priority;
-    std::vector<std::string> unskip, skip, fetch;
+    std::vector<std::string> unskip, skip, fetch, halt;
     for (const auto& id : ids) {
         if (!store_.track(id)) continue;  // a My folders file that isn't in the library
         const auto st = state.tracks.find(id);
@@ -40,8 +40,9 @@ void View::want(const std::vector<std::string>& ids, bool on) {
             prios.push_back(key);
             if (status == TrackStatus::ignored) unskip.push_back(id);
             fetch.push_back(id);
-        } else if (status == TrackStatus::missing) {
-            skip.push_back(id);
+        } else {
+            halt.push_back(id);  // stops it if the sync is on it right now
+            if (status == TrackStatus::missing) skip.push_back(id);
         }
     }
     // Picks of songs that are on this PC now have done their job.
@@ -50,7 +51,9 @@ void View::want(const std::vector<std::string>& ids, bool on) {
         const auto st = state.tracks.find(k.substr(6));
         return st != state.tracks.end() && st->second.status == TrackStatus::downloaded;
     });
-    const size_t n = on ? fetch.size() : skip.size();
+    const auto busy = slsk_ ? slsk_->active() : std::set<std::string>{};
+    const size_t n = on ? fetch.size() : halt.size();
+    const size_t stopping = size_t(std::count_if(halt.begin(), halt.end(), [&](const std::string& id) { return busy.contains(id); }));
     if (n == 0) {
         show_toast(on ? L"Those songs are already on this PC" : L"Nothing to skip");
         return;
@@ -58,19 +61,21 @@ void View::want(const std::vector<std::string>& ids, bool on) {
     const bool can_run = slsk_ && soulseek::Sync::available() && slsk_->configured();
     auto why = std::make_shared<std::string>();
     jobs_.run(
-        [this, prios, unskip, skip, fetch, on, can_run, why] {
+        [this, prios, unskip, skip, fetch, halt, on, can_run, why] {
             if (!unskip.empty()) store_.set_status(unskip, TrackStatus::missing);
             if (!skip.empty()) store_.set_status(skip, TrackStatus::ignored);
             store_.set_download_priority(prios);
             if (!slsk_) return;
+            if (!halt.empty()) slsk_->cancel(halt);
             if (on) slsk_->retry(fetch);  // first in line, even if an earlier try gave up
             slsk_->write_queue();
             if (on && can_run && !slsk_->running()) *why = slsk_->start();
         },
-        [this, n, on, can_run, why] {
+        [this, n, on, can_run, why, stopping] {
             dirty_ = true;
             const std::wstring songs = n == 1 ? L"1 song" : std::format(L"{} songs", n);
-            if (!on) show_toast(songs + L" won't download");
+            if (!on && stopping) show_toast(stopping == 1 && n == 1 ? L"Download cancelled" : songs + std::format(L" won't download ({} stopped mid-download)", stopping));
+            else if (!on) show_toast(songs + L" won't download");
             else if (!can_run) show_toast(L"Picked " + songs + L" · add your Soulseek login in Settings to download");
             else if (!why->empty()) show_toast(widen(*why));
             else show_toast(L"Downloading " + songs);
@@ -145,6 +150,7 @@ void View::soulseek_page(const Rect& r) {
         message = slsk_msg_;
     }
     const bool running = slsk_->running();
+    if (running) SetTimer(hwnd_, kRefreshTimer, 1500, nullptr);  // keeps "downloading now" current
     const std::wstring toggle = running ? L"Stop" : L"Start sync";
     float y = r.t + header(r, L"Tools", L"Soulseek sync",
                            running ? L"Running — checks your playlists again every 30 minutes" : L"Stopped",
@@ -201,7 +207,9 @@ void View::soulseek_page(const Rect& r) {
 
     // Tabs and "Retry all".
     const auto records = slsk_->records();
-    const auto wanted = slsk_->wanted();
+    const auto active = slsk_->active();
+    auto wanted = slsk_->wanted();
+    std::stable_partition(wanted.begin(), wanted.end(), [&](const std::string& id) { return active.contains(id); });  // the ones in progress first
     struct Tab {
         const char* id;
         const wchar_t* label;
@@ -267,8 +275,9 @@ void View::soulseek_page(const Rect& r) {
                     ui_.icon_button(Rect::xywh(right, cy - 16, 32, 32), glyph, 14, std::move(fn), false, false, tip);
                     right -= 2;
                 };
-                btn(icon::close, L"Don't download", [this, id] { want({id}, false); });
-                if (i > 0) btn(icon::up, L"Download first", [this, id] { jobs_.run([this, id] { slsk_->retry({id}); }); });
+                const bool now = active.contains(id);
+                btn(icon::close, now ? L"Cancel the download" : L"Don't download", [this, id] { want({id}, false); });
+                if (i > 0 && !now) btn(icon::up, L"Download first", [this, id] { jobs_.run([this, id] { slsk_->retry({id}); }); });
             } else if (slsk_tab_ != "done") {
                 const auto btn = [&](const wchar_t* glyph, const wchar_t* tip, std::function<void()> fn) {
                     right -= 32;
@@ -295,7 +304,8 @@ void View::soulseek_page(const Rect& r) {
                 add(fmt);
                 add(std::to_string(rec->attempts) + (rec->attempts == 1 ? " try" : " tries"));
             }
-            if (wanted_tab && i == 0) add("next");
+            if (wanted_tab && active.contains(id)) add("downloading now");
+            else if (wanted_tab && i == active.size()) add("next");
             if (slsk_->retry_pending(id)) add("retry queued");
             g_.text(widen(t->title), Rect{row.l + 60, cy - 20, right - 6, cy}, {Font::ui, 13.5f, 600, text});
             g_.text(sub, Rect{row.l + 60, cy, right - 6, cy + 20}, {Font::ui, 11.5f, 400, text3});

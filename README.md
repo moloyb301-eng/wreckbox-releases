@@ -27,7 +27,7 @@
 
 <div align="center">
 
-[![Download zip](https://img.shields.io/badge/WreckBox%200.7.1-win--native--x64.zip%20%C2%B7%2071%20MB-EFAF86?style=for-the-badge&logo=windows&logoColor=08080A&labelColor=08080A)](https://raw.githubusercontent.com/moloyb301-eng/wreckbox-releases/windows-native/downloads/WreckBox-0.7.1-win-native-x64.zip)
+[![Download zip](https://img.shields.io/badge/WreckBox%200.7.2-win--native--x64.zip%20%C2%B7%2071%20MB-EFAF86?style=for-the-badge&logo=windows&logoColor=08080A&labelColor=08080A)](https://raw.githubusercontent.com/moloyb301-eng/wreckbox-releases/windows-native/downloads/WreckBox-0.7.2-win-native-x64.zip)
 
 </div>
 
@@ -39,7 +39,7 @@ Press **Win + R**, type `cmd`, press Enter, then paste this (the copy button is 
 Enter. It downloads WreckBox, unzips it into `%LOCALAPPDATA%\Programs\WreckBox` and starts it. Run it again to update.
 
 ```cmd
-curl -fL -o "%TEMP%\WreckBox.zip" https://raw.githubusercontent.com/moloyb301-eng/wreckbox-releases/windows-native/downloads/WreckBox-0.7.1-win-native-x64.zip && (if not exist "%LOCALAPPDATA%\Programs\WreckBox" mkdir "%LOCALAPPDATA%\Programs\WreckBox") && tar -xf "%TEMP%\WreckBox.zip" -C "%LOCALAPPDATA%\Programs\WreckBox" && del "%TEMP%\WreckBox.zip" && start "" "%LOCALAPPDATA%\Programs\WreckBox\wreckbox.exe"
+curl -fL -o "%TEMP%\WreckBox.zip" https://raw.githubusercontent.com/moloyb301-eng/wreckbox-releases/windows-native/downloads/WreckBox-0.7.2-win-native-x64.zip && (if not exist "%LOCALAPPDATA%\Programs\WreckBox" mkdir "%LOCALAPPDATA%\Programs\WreckBox") && tar -xf "%TEMP%\WreckBox.zip" -C "%LOCALAPPDATA%\Programs\WreckBox" && del "%TEMP%\WreckBox.zip" && start "" "%LOCALAPPDATA%\Programs\WreckBox\wreckbox.exe"
 ```
 
 Close WreckBox before updating. The command uses `curl` and `tar`, which come with Windows 10 and 11.
@@ -232,8 +232,10 @@ pick it:
   another pick still wants are kept, and your own files outside WreckBox's folder are never touched by it.
 - The Soulseek page shows how much WreckBox's songs use and how much space is free; each playlist shows its size.
 
-Not yet: stopping the one song that's downloading right now. *Don't download* applies from the next song, and *Stop*
-stops the whole sync at once.
+**Cancelling the song that's downloading.** The song the sync is on right now shows *Downloading now*, at the top of the
+**Wanted** tab and in its details panel. **Cancel download** (or the ✕ on its row, or its right-click menu) stops it
+within a second or two, deletes the partial file and marks the song *Ignored*. It doesn't count as a failed try, and
+*Download* brings it back. The rest of the sync carries on; *Stop* still stops everything.
 
 </details>
 
