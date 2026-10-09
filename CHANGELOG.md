@@ -14,6 +14,10 @@ Day-to-day work goes on `main`; bigger features on a branch (`feature/<name>`), 
 
 ## Unreleased
 
+## 0.7.0 — 2026-10-09
+
+- **Version numbers jump from 0.2 to 0.7** so this build never looks older than the original WreckBox apps (0.6.x)
+  that share the same GitHub repo. Nothing else changes about numbering.
 - **Less memory**: about half after scrolling a library with covers (~92 → ~50 MB private on a 287-track library;
   ~103 → ~56 MB on 5,166 tracks), with the same features and paint times
   - covers and album colours no longer pile up on the graphics card while you scroll (one shared brush, a small
