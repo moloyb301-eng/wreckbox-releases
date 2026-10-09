@@ -1,6 +1,7 @@
 # Changelog
 
 Versions follow [semantic versioning](https://semver.org): MAJOR.MINOR.PATCH.
+After 0.7.0, each release goes up by one patch number: 0.7.1, 0.7.2, and so on up to 0.7.99.
 
 **Making a release**
 1. Set the version in `CMakeLists.txt` (`project(wreckbox VERSION x.y.z)`); the exe's version resource and the zip's
