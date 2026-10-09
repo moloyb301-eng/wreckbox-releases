@@ -178,7 +178,23 @@ void Sync::save_login(const std::string& username, const std::string& password, 
     const std::string share = share_tracks ? "[" + quote(to_utf8(paths::tracks())) + "]" : "[]";
     paths::write_atomic(config_file(), "[soulseek]\nusername = " + quote(username) + "\npassword = " + quote(password) +
                                            "\nlisten_port = 60000\nshare_dirs = " + share +
-                                           "\n\n[sync]\ninterval_minutes = 30\nmax_concurrent = 3\nmin_lossy_kbps = 256\n");
+                                           "\n\n[sync]\ninterval_minutes = 30\nmax_concurrent = 3\nmin_lossy_kbps = 256\nprefer_smaller = " +
+                                           (prefer_smaller() ? "true" : "false") + "\n");
+}
+
+bool Sync::prefer_smaller() const { return slsk::SyncConfig::load(config_file()).prefer_smaller; }
+
+void Sync::set_prefer_smaller(bool on) {
+    // Rewrites just that line of soulseek.toml (in [sync]); a running sync restarts to use it.
+    std::string text = std::regex_replace(config_text(), std::regex(R"((^|\n)prefer_smaller *=[^\n]*)"), "");
+    const std::string line = std::string("prefer_smaller = ") + (on ? "true" : "false") + "\n";
+    if (const auto at = text.find("[sync]"); at != std::string::npos) text.insert(text.find('\n', at) == std::string::npos ? text.size() : text.find('\n', at) + 1, line);
+    else text += "\n[sync]\n" + line;
+    paths::write_atomic(config_file(), text);
+    if (running()) {
+        stop();
+        start();
+    }
 }
 
 // MARK: Watching
@@ -243,6 +259,7 @@ void Sync::refresh() {
         external_ = external;
     }
     import_inbox();
+    if (!store_.busy()) write_queue();  // picks the playlists' new songs up; a no-op when nothing changed
     if (on_changed) on_changed();
 }
 
@@ -283,6 +300,7 @@ std::string Sync::start() {
         close(std::move(old));
     }
     if (!available()) return "The Soulseek component isn't installed next to the app.";
+    write_queue();
     if (!configured()) return "Add your Soulseek username and password first.";
     std::error_code ec;
     fs::create_directories(paths::soulseek_dir(), ec);
@@ -467,6 +485,8 @@ void Sync::write_queue() {
                         if (missing_ids.contains(id)) add(id);
                     break;
                 }
+        } else if (kind == "track") {
+            if (missing_ids.contains(name)) add(name);
         } else if (kind == "genre") {
             for (const auto* t : missing)
                 if (const auto g = state.genre_overrides.find(t->id); g != state.genre_overrides.end() && g->second == name) add(t->id);
@@ -474,10 +494,24 @@ void Sync::write_queue() {
     }
     if (!state.priority_only)
         for (const auto* t : missing) add(t->id);
+    json body{{"onlyPriority", state.priority_only}, {"priorities", state.download_priority}, {"ids", ids}};
+    const fs::path file = paths::soulseek_dir() / L"queue.json";
+    {
+        std::lock_guard lock(m_);
+        wanted_ = ids.get<std::vector<std::string>>();
+        std::error_code ec;
+        if (body == last_queue_ && fs::exists(file, ec)) return;  // unchanged: don't wake the runner
+        last_queue_ = body;
+    }
     std::error_code ec;
     fs::create_directories(paths::soulseek_dir(), ec);
-    paths::write_atomic(paths::soulseek_dir() / L"queue.json",
-                        json{{"generatedAt", iso_seconds_now()}, {"onlyPriority", state.priority_only}, {"priorities", state.download_priority}, {"ids", ids}}.dump());
+    body["generatedAt"] = iso_seconds_now();
+    paths::write_atomic(file, body.dump());
+}
+
+std::vector<std::string> Sync::wanted() const {
+    std::lock_guard lock(m_);
+    return wanted_;
 }
 
 }  // namespace wb::soulseek

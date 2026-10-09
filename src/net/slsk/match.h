@@ -13,6 +13,7 @@ namespace wb::slsk {
 struct MatchConfig {
     int min_lossy_kbps = 256;
     int duration_tolerance_seconds = 5;
+    bool prefer_smaller = false;  // MP3 / AAC at or above the limit before lossless (about 8 MB a song instead of 30)
 };
 
 // ASCII-folded (NFKD, non-ASCII dropped), lower case, "&" → "and", words of a–z / 0–9 joined by single spaces.
@@ -32,8 +33,9 @@ struct Candidate {
     std::string label() const;  // "FLAC  4.2MB  user  free  120KB/s"
 };
 
-// nullopt: not usable (lossy below the limit, or lossy of unknown quality).
-std::optional<double> quality_of(const std::string& ext, std::optional<int> bitrate, int min_kbps);
+// nullopt: not usable (lossy below the limit, or lossy of unknown quality). `smaller`: lossless ranks below any usable
+// lossy file (its 1–5 against lossy's 6+), so a FLAC is taken only when there's no good MP3 / AAC.
+std::optional<double> quality_of(const std::string& ext, std::optional<int> bitrate, int min_kbps, bool smaller = false);
 bool file_matches(const LibraryTrack& track, const std::string& path, std::optional<int> duration, int tolerance_seconds);
 // Usable candidates, best first, one per user. `loose`: a custom query, whose words must be in the path instead of the usual
 // title / artist check.

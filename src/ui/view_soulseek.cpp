@@ -1,8 +1,10 @@
-// Soulseek sync and Download queue: start / stop the sync, what it
-// downloaded / couldn't find / failed with retry (also with your own search words) and ignore, its log; and the priority list
-// that decides what it downloads first. The work is in net/soulseek.
+// Soulseek sync and Download queue: start / stop the sync, what it wants next, what it downloaded / couldn't find / failed
+// with retry (also with your own search words) and ignore, its log, storage; the priority list that decides what it
+// downloads first; and picking songs / playlists to download and deleting songs. The work is in net/soulseek.
+#include <filesystem>
 #include <format>
 
+#include "model/paths.h"
 #include "model/settings.h"
 #include "net/soulseek.h"
 #include "ui/view.h"
@@ -19,6 +21,118 @@ void View::slsk_message(std::string s) {
         slsk_msg_ = std::move(s);
     }
     InvalidateRect(hwnd_, nullptr, FALSE);
+}
+
+// MARK: Picking and deleting
+
+void View::want(const std::vector<std::string>& ids, bool on) {
+    const auto state = store_.state_copy();
+    auto prios = state.download_priority;
+    std::vector<std::string> unskip, skip, fetch;
+    for (const auto& id : ids) {
+        if (!store_.track(id)) continue;  // a My folders file that isn't in the library
+        const auto st = state.tracks.find(id);
+        const TrackStatus status = st == state.tracks.end() ? TrackStatus::missing : st->second.status;
+        if (status == TrackStatus::downloaded) continue;
+        const std::string key = "track:" + id;
+        std::erase(prios, key);
+        if (on) {
+            prios.push_back(key);
+            if (status == TrackStatus::ignored) unskip.push_back(id);
+            fetch.push_back(id);
+        } else if (status == TrackStatus::missing) {
+            skip.push_back(id);
+        }
+    }
+    // Picks of songs that are on this PC now have done their job.
+    std::erase_if(prios, [&](const std::string& k) {
+        if (!k.starts_with("track:")) return false;
+        const auto st = state.tracks.find(k.substr(6));
+        return st != state.tracks.end() && st->second.status == TrackStatus::downloaded;
+    });
+    const size_t n = on ? fetch.size() : skip.size();
+    if (n == 0) {
+        show_toast(on ? L"Those songs are already on this PC" : L"Nothing to skip");
+        return;
+    }
+    const bool can_run = slsk_ && soulseek::Sync::available() && slsk_->configured();
+    auto why = std::make_shared<std::string>();
+    jobs_.run(
+        [this, prios, unskip, skip, fetch, on, can_run, why] {
+            if (!unskip.empty()) store_.set_status(unskip, TrackStatus::missing);
+            if (!skip.empty()) store_.set_status(skip, TrackStatus::ignored);
+            store_.set_download_priority(prios);
+            if (!slsk_) return;
+            if (on) slsk_->retry(fetch);  // first in line, even if an earlier try gave up
+            slsk_->write_queue();
+            if (on && can_run && !slsk_->running()) *why = slsk_->start();
+        },
+        [this, n, on, can_run, why] {
+            dirty_ = true;
+            const std::wstring songs = n == 1 ? L"1 song" : std::format(L"{} songs", n);
+            if (!on) show_toast(songs + L" won't download");
+            else if (!can_run) show_toast(L"Picked " + songs + L" · add your Soulseek login in Settings to download");
+            else if (!why->empty()) show_toast(widen(*why));
+            else show_toast(L"Downloading " + songs);
+        });
+}
+
+void View::pick_playlist(const std::string& name, bool on) {
+    auto prios = store_.state_copy().download_priority;
+    const std::string key = "playlist:" + name;
+    std::erase(prios, key);
+    if (on) prios.push_back(key);
+    const bool can_run = slsk_ && soulseek::Sync::available() && slsk_->configured();
+    jobs_.run(
+        [this, prios, on, can_run] {
+            store_.set_download_priority(prios);
+            if (!slsk_) return;
+            slsk_->write_queue();
+            if (on && can_run && !slsk_->running()) slsk_->start();
+        },
+        [this, on, can_run, name] {
+            dirty_ = true;
+            show_toast(!on       ? widen(name) + L" won't download any more"
+                       : can_run ? L"Downloading " + widen(name)
+                                 : L"Picked " + widen(name) + L" · add your Soulseek login in Settings to download");
+        });
+}
+
+void View::delete_songs(const std::vector<std::string>& ids) {
+    confirm_delete_.clear();
+    struct Target {
+        std::string path;
+        bool own;  // a My folders file: it just goes; a library song also becomes skipped
+    };
+    std::vector<Target> targets;
+    uint64_t bytes = 0;
+    std::wstring title;
+    for (const auto& id : ids) {
+        const auto tr = store_.row(id);
+        if (!tr || tr->status() != TrackStatus::downloaded || !tr->state || !tr->state->local_path) continue;
+        if (const player::Item* now = player_.current(); now && now->track_id == id) player_.stop();  // VLC holds it open
+        std::error_code ec;
+        bytes += std::filesystem::file_size(widen(*tr->state->local_path), ec);
+        targets.push_back({*tr->state->local_path, !tr->file_id.empty()});
+        title = widen(tr->track.title);
+    }
+    if (targets.empty()) return;
+    auto result = std::make_shared<std::pair<size_t, std::string>>();  // deleted, the last error
+    jobs_.run(
+        [this, targets, result] {
+            for (const auto& t : targets) {
+                const std::string err = store_.delete_file(t.path, true, !t.own);
+                if (err.empty()) ++result->first;
+                else result->second = err;
+            }
+        },
+        [this, result, bytes, title, total = targets.size()] {
+            dirty_ = true;
+            const auto& [done, err] = *result;
+            if (done == 0) show_toast(widen(err));
+            else if (total == 1) show_toast(L"Moved to the Recycle Bin: " + title);
+            else show_toast(std::format(L"Moved {} songs ({}) to the Recycle Bin", done, size_text(bytes)) + (err.empty() ? L"" : L" · " + widen(err)));
+        });
 }
 
 // MARK: Soulseek sync
@@ -51,21 +165,68 @@ void View::soulseek_page(const Rect& r) {
         y += 30;
     }
 
+    // Storage (measured at most every 10 s: it reads every downloaded file's size).
+    if (GetTickCount64() - storage_at_ > 10000 || storage_at_ == 0) {
+        storage_at_ = GetTickCount64();
+        downloads_bytes_ = 0;
+        const auto tracks_dir = paths::tracks();
+        std::error_code ec;
+        for (std::filesystem::recursive_directory_iterator it(tracks_dir, ec), end; !ec && it != end; it.increment(ec))
+            if (it->is_regular_file(ec)) downloads_bytes_ += it->file_size(ec);
+        const auto space = std::filesystem::space(paths::root(), ec);
+        free_disk_ = ec ? 0 : space.available;
+        slsk_smaller_ = slsk_->prefer_smaller();
+    }
+    g_.text(std::format(L"WreckBox's songs use {} · {} free on this drive", size_text(downloads_bytes_), size_text(free_disk_)),
+            Rect{r.l, y, r.r, y + 20}, {Font::ui, 13, 400, text2});
+    y += 30;
+
+    // What downloads, and in what quality.
+    const auto state = store_.state_copy();
+    float x = r.l;
+    x += ui_.dot_label(L"Download", x, y + 15, text3, 10) + 10;
+    for (const auto& [label, only] : {std::pair{L"Only what I pick", true}, std::pair{L"Everything missing", false}})
+        x += ui_.chip(x, y, label, std::nullopt, state.priority_only == only, false, [this, only = only, prios = state.download_priority] {
+                 store_.set_download_priority(prios, only);
+                 jobs_.run([this] { slsk_->write_queue(); });
+             }) + 6;
+    x += 18;
+    x += ui_.dot_label(L"Quality", x, y + 15, text3, 10) + 10;
+    for (const auto& [label, smaller] : {std::pair{L"Best (FLAC first)", false}, std::pair{L"Smaller (MP3 320 first)", true}})
+        x += ui_.chip(x, y, label, std::nullopt, slsk_smaller_.value_or(false) == smaller, false, [this, smaller = smaller] {
+                 slsk_smaller_ = smaller;
+                 jobs_.run([this, smaller] { slsk_->set_prefer_smaller(smaller); });
+             }) + 6;
+    y += 46;
+
     // Tabs and "Retry all".
     const auto records = slsk_->records();
+    const auto wanted = slsk_->wanted();
     struct Tab {
         const char* id;
         const wchar_t* label;
         int n;
     };
-    const Tab tabs[] = {{"done", L"Downloaded", slsk_->done()}, {"not_found", L"Not found", slsk_->not_found()}, {"failed", L"Failed", slsk_->failed()}};
-    float x = r.l;
+    const Tab tabs[] = {{"wanted", L"Wanted", int(wanted.size())},
+                        {"done", L"Downloaded", slsk_->done()},
+                        {"not_found", L"Not found", slsk_->not_found()},
+                        {"failed", L"Failed", slsk_->failed()}};
+    x = r.l;
     for (const auto& t : tabs) x += ui_.chip(x, y, t.label, t.n, slsk_tab_ == t.id, false, [this, id = t.id] { slsk_tab_ = id, slsk_scroll_ = 0; }) + 8;
+    const bool wanted_tab = slsk_tab_ == "wanted";
     std::vector<std::pair<std::string, const soulseek::SyncRecord*>> entries;
-    for (const auto& [id, rec] : records)
-        if (rec.status == slsk_tab_ && store_.track(id)) entries.push_back({id, &rec});
-    std::sort(entries.begin(), entries.end(), [](const auto& a, const auto& b) { return a.second->last_try > b.second->last_try; });
-    if (slsk_tab_ != "done" && !entries.empty()) {
+    if (wanted_tab) {  // the queue, in order
+        for (const auto& id : wanted)
+            if (store_.track(id)) {
+                const auto rec = records.find(id);
+                entries.push_back({id, rec == records.end() ? nullptr : &rec->second});
+            }
+    } else {
+        for (const auto& [id, rec] : records)
+            if (rec.status == slsk_tab_ && store_.track(id)) entries.push_back({id, &rec});
+        std::sort(entries.begin(), entries.end(), [](const auto& a, const auto& b) { return a.second->last_try > b.second->last_try; });
+    }
+    if (!wanted_tab && slsk_tab_ != "done" && !entries.empty()) {
         const std::wstring label = std::format(L"Retry all {}", entries.size());
         ui_.pill(r.r - ui_.pill_width(label, icon::sync), y - 3, label, icon::sync, Ui::Pill::smart, [this, entries] {
             std::vector<std::string> ids;
@@ -80,7 +241,10 @@ void View::soulseek_page(const Rect& r) {
     ui_.glass(results);
     constexpr float row_h = 58, pad = 6;
     const Rect area = results.inset(0, 1);
-    if (entries.empty()) g_.text(L"Nothing here.", area, {Font::ui, 13, 400, text3, Align::center});
+    if (entries.empty())
+        g_.text(wanted_tab ? L"Nothing to download. Pick songs or playlists with Download (right-click a song, or a playlist's Download button)."
+                           : L"Nothing here.",
+                area.inset(20, 0), {Font::ui, 13, 400, text3, Align::center});
     else {
         const float before = slsk_scroll_;
         ui_.scroll_area(area, slsk_scroll_, float(entries.size()) * row_h + 2 * pad);
@@ -97,7 +261,15 @@ void View::soulseek_page(const Rect& r) {
             const float cy = (row.t + row.b) / 2;
             ui_.artwork(*t, Rect::xywh(row.l + 10, cy - 20, 40, 40), 8);
             float right = row.r - 8;
-            if (slsk_tab_ != "done") {
+            if (wanted_tab) {
+                const auto btn = [&](const wchar_t* glyph, const wchar_t* tip, std::function<void()> fn) {
+                    right -= 32;
+                    ui_.icon_button(Rect::xywh(right, cy - 16, 32, 32), glyph, 14, std::move(fn), false, false, tip);
+                    right -= 2;
+                };
+                btn(icon::close, L"Don't download", [this, id] { want({id}, false); });
+                if (i > 0) btn(icon::up, L"Download first", [this, id] { jobs_.run([this, id] { slsk_->retry({id}); }); });
+            } else if (slsk_tab_ != "done") {
                 const auto btn = [&](const wchar_t* glyph, const wchar_t* tip, std::function<void()> fn) {
                     right -= 32;
                     ui_.icon_button(Rect::xywh(right, cy - 16, 32, 32), glyph, 14, std::move(fn), false, false, tip);
@@ -116,11 +288,14 @@ void View::soulseek_page(const Rect& r) {
             const auto add = [&](const std::string& s) {
                 if (!s.empty()) sub += L" · " + widen(s);
             };
-            add(rec->reason.value_or(""));
-            std::string fmt = rec->format.value_or("");
-            for (auto& c : fmt) c = char(std::toupper(static_cast<unsigned char>(c)));
-            add(fmt);
-            add(std::to_string(rec->attempts) + (rec->attempts == 1 ? " try" : " tries"));
+            if (rec) {
+                add(rec->reason.value_or(""));
+                std::string fmt = rec->format.value_or("");
+                for (auto& c : fmt) c = char(std::toupper(static_cast<unsigned char>(c)));
+                add(fmt);
+                add(std::to_string(rec->attempts) + (rec->attempts == 1 ? " try" : " tries"));
+            }
+            if (wanted_tab && i == 0) add("next");
             if (slsk_->retry_pending(id)) add("retry queued");
             g_.text(widen(t->title), Rect{row.l + 60, cy - 20, right - 6, cy}, {Font::ui, 13.5f, 600, text});
             g_.text(sub, Rect{row.l + 60, cy, right - 6, cy + 20}, {Font::ui, 11.5f, 400, text3});
@@ -194,7 +369,10 @@ void View::queue_page(const Rect& r) {
     const float width = std::min(r.w(), 780.f), pad = 18;
     const auto lib = lib_;
     const auto state = store_.state_copy();
-    const auto& prios = state.download_priority;
+    // Single-song picks ("track:<id>") are listed in the Soulseek page's Wanted tab; this list keeps playlists / genres
+    // and leaves those where they are when it reorders.
+    std::vector<std::string> prios, picks;
+    for (const auto& k : state.download_priority) (k.starts_with("track:") ? picks : prios).push_back(k);
     // Missing tracks per playlist.
     auto missing_in = [&](const std::string& name) {
         size_t n = 0;
@@ -218,7 +396,8 @@ void View::queue_page(const Rect& r) {
     if (prios.empty())
         g_.paragraph(L"Add playlists below. Their missing tracks go to the front of the queue, top to bottom.", Rect{x, py, panel.r - pad, py + 36}, {Font::ui, 13, 400, text2});
     if (prios.empty()) py += 40;
-    auto set = [this](std::vector<std::string> p, std::optional<bool> only = std::nullopt) {
+    auto set = [this, picks](std::vector<std::string> p, std::optional<bool> only = std::nullopt) {
+        p.insert(p.end(), picks.begin(), picks.end());
         store_.set_download_priority(std::move(p), only);
         jobs_.run([this] { slsk_->write_queue(); });
     };
@@ -275,7 +454,8 @@ void View::queue_page(const Rect& r) {
     py += 14;
     const bool everything = !state.priority_only;
     g_.text(L"Then everything else", Rect{x, py, panel.r - 160, py + 22}, {Font::ui, 13.5f, 600, text});
-    g_.text(L"Off: download only your priorities", Rect{x, py + 22, panel.r - 160, py + 40}, {Font::ui, 11.5f, 400, text3});
+    g_.text(L"Off: download only what you pick (these playlists, and songs you chose)", Rect{x, py + 22, panel.r - 160, py + 40},
+            {Font::ui, 11.5f, 400, text3});
     const std::wstring label = everything ? L"On" : L"Off";
     ui_.chip(panel.r - pad - ui_.chip_width(label) - (everything ? 12 : 0), py + 4, label, std::nullopt, everything, false, [prios, everything, set] { set(prios, everything); });
     y = panel.b + 30;

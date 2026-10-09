@@ -58,6 +58,9 @@ public:
     std::string username() const;
     // Writes soulseek.toml (the login, the Tracks folder as the shared folder, sync settings). Throws on failure.
     void save_login(const std::string& username, const std::string& password, bool share_tracks = true) const;
+    // "Smaller files": MP3 / AAC (256 kbps+) before lossless. Kept in soulseek.toml, which both runners read.
+    bool prefer_smaller() const;
+    void set_prefer_smaller(bool on);
 
     // Reads the results every 15 s (and imports finished files) until destroyed.
     void start_watching(std::chrono::seconds every = std::chrono::seconds(15));
@@ -78,8 +81,11 @@ public:
     // Ask the sidecar to retry these tracks on its next pass (it wakes within ~10 s), optionally with a custom search.
     void retry(const std::vector<std::string>& ids, const std::optional<std::string>& query = std::nullopt);
     bool retry_pending(const std::string& id) const;
-    // The download order for the sidecar: playlist / genre priorities, then everything else unless "priority only".
+    // The download order for the runner: picked songs / playlists / genres, then everything else unless "only what I
+    // pick" (priority_only). Rewrites queue.json only when it changes (it runs on every refresh, so later playlist
+    // additions are picked up).
     void write_queue();
+    std::vector<std::string> wanted() const;  // the queue's missing songs, in order (the Wanted tab)
     // Files the sidecar finished go through the organiser (tags, rename, move into Tracks).
     int import_inbox();
 
@@ -93,6 +99,8 @@ private:
     std::vector<std::string> recent_;
     std::optional<unsigned long> external_;
     std::set<std::string> inbox_seen_;
+    std::vector<std::string> wanted_;
+    json last_queue_;
     std::mutex refresh_m_;
 
     std::unique_ptr<Process> proc_;

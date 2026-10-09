@@ -268,7 +268,7 @@ struct App {
             case WM_LBUTTONDOWN:
             case WM_RBUTTONDOWN:
                 SetCapture(hwnd);
-                if (view->mouse_down(dips(lp), dips_y(lp), msg == WM_RBUTTONDOWN)) repaint();
+                if (view->mouse_down(dips(lp), dips_y(lp), msg == WM_RBUTTONDOWN, wp)) repaint();
                 return 0;
             case WM_LBUTTONUP:
             case WM_RBUTTONUP:

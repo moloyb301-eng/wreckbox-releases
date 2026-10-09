@@ -653,6 +653,21 @@ your library made by `build/dev/make_bench.py`; private MB:
 
 ---
 
+## Download control ✅ (0.7.1, 2026-10-09)
+
+You asked for full control over what Soulseek downloads, and for ways to delete songs to save space.
+- [x] *Only what I pick* (new default, `downloadMode` in state.json): picks are `track:<id>` / `playlist:<name>` keys in
+  the existing priority list; `Sync::write_queue` runs on every refresh and rewrites `queue.json` only when it changes
+- [x] Fixed: "only priority" with nothing picked downloaded everything (both runners)
+- [x] Download / Don't download per song; Download playlist; Wanted tab with Don't download / Download first
+- [x] Multi-select (Ctrl / Shift + click, Ctrl + A, Esc) with a selection bar
+- [x] Delete any downloaded song (Recycle Bin, marked Ignored); Free up space per playlist
+- [x] Storage line, playlist sizes, Size column
+- [x] Quality: Best / Smaller (`prefer_smaller` in soulseek.toml, both runners)
+- [ ] Cancel the one song downloading right now (Stop sync covers it for now)
+
+---
+
 ## Cross-cutting
 
 - Before calling a phase done, compare its visible behaviour with the original app side by side on the same library

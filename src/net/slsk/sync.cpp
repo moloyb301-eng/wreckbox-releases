@@ -133,6 +133,7 @@ SyncConfig SyncConfig::parse(const std::string& text) {
                                            {"duration_tolerance_seconds", &SyncConfig::duration_tolerance_seconds}};
             for (const auto& f : fields)
                 if (key == f.name) c.*f.member = number();
+            if (key == "prefer_smaller") c.prefer_smaller = value.starts_with("true");
         }
     }
     return c;
@@ -240,10 +241,10 @@ std::vector<LibraryTrack> Runner::missing_tracks() const {
     std::stable_sort(out.begin(), out.end(), [](const LibraryTrack& a, const LibraryTrack& b) { return a.first_added.value_or("") > b.first_added.value_or(""); });
     // The app's Download queue (playlist / genre priorities) overrides that order.
     const json queue = read_json(queue_file());
-    if (queue.is_object() && queue.contains("ids") && queue["ids"].is_array() && !queue["ids"].empty()) {
+    if (queue.is_object() && queue.contains("ids") && queue["ids"].is_array()) {
         std::map<std::string, size_t> rank;
         for (size_t i = 0; i < queue["ids"].size(); ++i) rank.emplace(queue["ids"][i].get<std::string>(), i);
-        if (queue.value("onlyPriority", false))  // explicit retries still run, even outside the priorities
+        if (queue.value("onlyPriority", false))  // only what was picked (nothing picked: nothing); explicit retries still run
             out.erase(std::remove_if(out.begin(), out.end(), [&](const LibraryTrack& t) { return !rank.contains(t.id) && !retried.contains(t.id); }), out.end());
         std::stable_sort(out.begin(), out.end(), [&](const LibraryTrack& a, const LibraryTrack& b) {
             const auto ra = rank.find(a.id), rb = rank.find(b.id);
@@ -288,7 +289,7 @@ std::pair<std::vector<Candidate>, json> Runner::find(const LibraryTrack& track) 
     if (overrides.is_object() && overrides.contains(track.id) && overrides[track.id].is_object() && overrides[track.id].contains("query") && overrides[track.id]["query"].is_string())
         custom = trim(overrides[track.id]["query"].get<std::string>());
     MatchConfig mc;
-    mc.min_lossy_kbps = cfg_.min_lossy_kbps, mc.duration_tolerance_seconds = cfg_.duration_tolerance_seconds;
+    mc.min_lossy_kbps = cfg_.min_lossy_kbps, mc.duration_tolerance_seconds = cfg_.duration_tolerance_seconds, mc.prefer_smaller = cfg_.prefer_smaller;
     for (const auto& q : search_queries(track, custom)) {
         if (stop_) break;
         const auto results = search(q);

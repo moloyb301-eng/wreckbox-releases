@@ -173,8 +173,23 @@ static void organise_and_rescan() {
     CHECK(store.delete_file(doomed_u8, false).empty() && !fs::exists(doomed));
     CHECK(store.row_ids(wb::ListFilter::on_pc, std::nullopt, "gone soon").empty() && !store.row(wb::kFileIdPrefix + doomed_u8));
     CHECK(!store.delete_file(doomed_u8, false).empty());  // already gone
-    const fs::path own = wb::paths::tracks() / L"Other - Kept Song.wav";
-    CHECK(!store.delete_file(reinterpret_cast<const char*>(own.u8string().c_str()), false).empty() && fs::exists(own));
+    // Songs in Tracks can go too (Free up space); `skip` leaves the library song ignored. WreckBox's own data can't.
+    {
+        const fs::path temp = wb::paths::tracks() / L"Temp - Delete Me.wav";
+        write_click_wav(temp, 100, 4);
+        const std::string temp_u8 = reinterpret_cast<const char*>(temp.u8string().c_str());
+        const auto st = store.state_copy().tracks;
+        const auto saved = st.find("spotify:a") == st.end() ? std::nullopt : std::optional(st.at("spotify:a"));
+        wb::TrackState had;
+        had.status = wb::TrackStatus::downloaded;
+        had.local_path = temp_u8;
+        store.set_track_state("spotify:a", had);
+        CHECK(store.delete_file(temp_u8, false, true).empty() && !fs::exists(temp));
+        CHECK(store.state_copy().tracks.at("spotify:a").status == wb::TrackStatus::ignored);
+        store.set_track_state("spotify:a", saved.value_or(wb::TrackState{}));
+        const std::string lib_u8 = reinterpret_cast<const char*>(wb::paths::library_file().u8string().c_str());
+        CHECK(!store.delete_file(lib_u8, false).empty() && fs::exists(wb::paths::library_file()));
+    }
     // A file in the user's folder that matches a library track shows the library's names.
     write_click_wav(mine / L"Other - Kept Song.wav", 128, 8);
     store.rescan();

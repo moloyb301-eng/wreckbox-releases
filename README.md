@@ -27,11 +27,11 @@
 
 <div align="center">
 
-[![Download zip](https://img.shields.io/badge/WreckBox%200.7.0-win--native--x64.zip%20%C2%B7%2071%20MB-EFAF86?style=for-the-badge&logo=windows&logoColor=08080A&labelColor=08080A)](https://raw.githubusercontent.com/moloyb301-eng/wreckbox-releases/windows-native/downloads/WreckBox-0.7.0-win-native-x64.zip)
+[![Download zip](https://img.shields.io/badge/WreckBox%200.7.1-win--native--x64.zip%20%C2%B7%2071%20MB-EFAF86?style=for-the-badge&logo=windows&logoColor=08080A&labelColor=08080A)](https://raw.githubusercontent.com/moloyb301-eng/wreckbox-releases/windows-native/downloads/WreckBox-0.7.1-win-native-x64.zip)
 
 </div>
 
-The latest build. It includes the file-type column, the FLAC filter and the *My folders* list.
+The latest build. You choose exactly what Soulseek downloads (single songs or whole playlists), and you can delete songs to free up space.
 
 ### ⚡ One command
 
@@ -39,7 +39,7 @@ Press **Win + R**, type `cmd`, press Enter, then paste this (the copy button is 
 Enter. It downloads WreckBox, unzips it into `%LOCALAPPDATA%\Programs\WreckBox` and starts it. Run it again to update.
 
 ```cmd
-curl -fL -o "%TEMP%\WreckBox.zip" https://raw.githubusercontent.com/moloyb301-eng/wreckbox-releases/windows-native/downloads/WreckBox-0.7.0-win-native-x64.zip && (if not exist "%LOCALAPPDATA%\Programs\WreckBox" mkdir "%LOCALAPPDATA%\Programs\WreckBox") && tar -xf "%TEMP%\WreckBox.zip" -C "%LOCALAPPDATA%\Programs\WreckBox" && del "%TEMP%\WreckBox.zip" && start "" "%LOCALAPPDATA%\Programs\WreckBox\wreckbox.exe"
+curl -fL -o "%TEMP%\WreckBox.zip" https://raw.githubusercontent.com/moloyb301-eng/wreckbox-releases/windows-native/downloads/WreckBox-0.7.1-win-native-x64.zip && (if not exist "%LOCALAPPDATA%\Programs\WreckBox" mkdir "%LOCALAPPDATA%\Programs\WreckBox") && tar -xf "%TEMP%\WreckBox.zip" -C "%LOCALAPPDATA%\Programs\WreckBox" && del "%TEMP%\WreckBox.zip" && start "" "%LOCALAPPDATA%\Programs\WreckBox\wreckbox.exe"
 ```
 
 Close WreckBox before updating. The command uses `curl` and `tar`, which come with Windows 10 and 11.
@@ -76,7 +76,8 @@ Close WreckBox before updating. The command uses `curl` and `tar`, which come wi
 | 📊 | **Winamp bars** | Classic spectrum and oscilloscope modes. Used automatically on a PC without OpenGL 3.3 |
 | 📱 | **Phone sync** | Pair the WreckBox Android app with a QR code, then sync over your Wi-Fi |
 | ☁️ | **Use from anywhere** | Reach your library from your phone away from home, through a Cloudflare tunnel |
-| 🔍 | **Soulseek** | Sync from Soulseek, through a bundled helper, or through a built-in client (beta, opt-in) |
+| 🔍 | **Soulseek** | Downloads only the songs and playlists you pick, in best or smaller quality, through a bundled helper or a built-in client (beta) |
+| 🧹 | **Free up space** | Delete songs one at a time, a selection, or a whole playlist's downloads (to the Recycle Bin), and see how much space they use |
 | 🧾 | **Account** | Sign in to save your library to your WreckBox account |
 | 🩹 | **Housekeeping** | Update check, bug reports, onboarding and a Settings page |
 
@@ -95,8 +96,14 @@ any folder you add with **Add folder…**. The header names the folders. A song 
 library's names and cover. The details panel shows the type and size, and says "Not in your library" when it isn't.
 *Write tags* is hidden there, so your own files keep their tags. A file WreckBox can't analyse doesn't appear.
 
+**Selecting many songs.** Ctrl + click adds or removes a song, Shift + click selects a range, Ctrl + A selects the whole
+list, Esc clears it. A bar at the bottom then offers *Download*, *Don't download* and *Delete files* for all of them. The
+**Size** column (sortable) helps find the biggest files.
+
 **Deleting a song from the PC.** Right-click it and choose *Move to Recycle Bin*, or use the small *Delete from PC* link
-at the bottom of its details panel (click twice). It goes to the Recycle Bin, so you can get it back.
+at the bottom of its details panel (click twice). It goes to the Recycle Bin, so you can get it back, but the space only
+comes back once you empty the Recycle Bin. A deleted library song is marked *Ignored*, so Soulseek won't fetch it again;
+*Download* brings it back.
 
 **Imports.** CSV files from Exportify, TuneMyMusic or Google Takeout are matched with MusicBrainz and Deezer for the
 details. Spotify and YouTube need your own client ID, and then import your playlists and liked music.
@@ -205,6 +212,28 @@ service, for testing.
 Soulseek sync runs through a bundled helper, which you sign in to with your own Soulseek account. Songs land in your
 library through the Downloads organiser. There's also a built-in client in beta. It's opt-in until it has been tried on
 the live network.
+
+**You decide what downloads.** By default (*Download: Only what I pick* on the Soulseek page) nothing downloads until you
+pick it:
+- **One song:** *Download* in its details panel or right-click menu. It goes to the front of the queue and the sync
+  starts. *Don't download* skips it.
+- **A playlist:** *Download playlist* at the top of the playlist. Its missing songs download, including songs added to it
+  later. Click again to stop.
+- **Many songs:** select them (Ctrl / Shift + click) and use the bar at the bottom.
+- *Everything missing* on the Soulseek page brings back the old behaviour.
+
+**Seeing the queue.** The Soulseek page's **Wanted** tab lists what will download, in order, with *Don't download* and
+*Download first* on each song. *Downloaded*, *Not found* and *Failed* are as before.
+
+**Saving space.**
+- **Quality:** *Best (FLAC first)* or *Smaller (MP3 320 first)*. Smaller takes a 256 kbps+ MP3 / AAC when there is one
+  (about 8 MB a song instead of about 30 MB) and FLAC only when there isn't.
+- **Free up space** on a playlist sends its downloaded songs to the Recycle Bin (it asks first, with the size). Songs
+  another pick still wants are kept, and your own files outside WreckBox's folder are never touched by it.
+- The Soulseek page shows how much WreckBox's songs use and how much space is free; each playlist shows its size.
+
+Not yet: stopping the one song that's downloading right now. *Don't download* applies from the next song, and *Stop*
+stops the whole sync at once.
 
 </details>
 

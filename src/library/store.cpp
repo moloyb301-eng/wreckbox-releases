@@ -681,9 +681,11 @@ FileFacts LibraryStore::facts(const std::string& path) const {
 
 // MARK: Rescan
 
-std::string LibraryStore::delete_file(const std::string& path, bool recycle) {
-    // Only a file in your own folders: never WreckBox's folder (its downloads, its caches).
-    if (folded(path).starts_with(folded(to_utf8(paths::root())) + L'/')) return "WreckBox's own files can't be deleted here.";
+std::string LibraryStore::delete_file(const std::string& path, bool recycle, bool skip) {
+    // A file in your own folders, or a song in WreckBox's Tracks folder; never WreckBox's own data (library, caches).
+    const auto own = folded(to_utf8(paths::root())) + L'/';
+    if (folded(path).starts_with(own) && !folded(path).starts_with(folded(to_utf8(paths::tracks())) + L'/'))
+        return "WreckBox's own files can't be deleted here.";
     if (!exists(path)) return "The file is already gone.";
     std::wstring from = to_path(path).wstring();
     from.push_back(L'\0');  // SHFileOperation takes a list that ends in two nulls
@@ -697,9 +699,9 @@ std::string LibraryStore::delete_file(const std::string& path, bool recycle) {
         std::lock_guard lock(m_);
         analysis_.erase(path);
         for (auto& [id, s] : state_.tracks)
-            if (s.status == TrackStatus::downloaded && s.local_path == path) {  // the file of a library track: missing again
+            if (s.status == TrackStatus::downloaded && s.local_path == path) {  // the file of a library track: missing again (or skipped)
                 TrackState m;
-                m.status = TrackStatus::missing;
+                m.status = skip ? TrackStatus::ignored : TrackStatus::missing;
                 m.source = "deleted";
                 m.updated_at = iso_seconds_now();
                 s = m;

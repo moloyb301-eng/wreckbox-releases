@@ -60,6 +60,9 @@ static void matching_tests() {
         const bool same = c[3].is_null() ? !q : (q && std::fabs(*q - c[3].get<double>()) < 1e-9);
         CHECK(same, "quality(%s, %s) = %s, Python says %s", c[0].get<std::string>().c_str(), c[1].dump().c_str(), q ? std::to_string(*q).c_str() : "none", c[3].dump().c_str());
     }
+    // "Smaller files": a good MP3 / AAC beats lossless; lossless still beats nothing; below the limit is still out.
+    CHECK(*quality_of("mp3", 320, 256, true) > *quality_of("flac", std::nullopt, 256, true) && *quality_of("m4a", 256, 256, true) > *quality_of("m4a", std::nullopt, 256, true));
+    CHECK(*quality_of("flac", std::nullopt, 256) > *quality_of("mp3", 320, 256) && !quality_of("mp3", 192, 256, true) && quality_of("wav", std::nullopt, 256, true));
     for (const auto& c : g["matches"]) {
         std::optional<int> d;
         if (!c["duration"].is_null()) d = c["duration"].get<int>();

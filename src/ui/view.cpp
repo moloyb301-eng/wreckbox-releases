@@ -451,6 +451,8 @@ void View::go(Page p, std::optional<std::string> playlist) {
         asc_ = true;
         list_scroll_ = 0;
         sync_message_.clear();
+        clear_selection();
+        confirm_free_ = false;
     }
     dirty_ = true;
 }
@@ -470,8 +472,9 @@ ListFilter View::list_filter() const {
     }
 }
 
-bool View::mouse_down(float x, float y, bool right) {
+bool View::mouse_down(float x, float y, bool right, WPARAM keys) {
     if (GetFocus() == search_) SetFocus(hwnd_);  // clicking anywhere else leaves the search box
+    mods_ = keys;
     return ui_.mouse_down(x, y, right);
 }
 
@@ -485,6 +488,16 @@ bool View::key(WPARAM vk) {
     }
     if (vk == VK_F5) {
         if (lib_ && !store_.busy()) jobs_.run([this] { store_.rescan(); });
+        return true;
+    }
+    if (vk == 'A' && ctrl && !ids_.empty() && page_ != Page::home) {  // select every song in the list
+        selected_.clear();
+        selected_.insert(ids_.begin(), ids_.end());
+        sel_dirty_ = true, confirm_bulk_ = false;
+        return true;
+    }
+    if (vk == VK_ESCAPE && !selected_.empty()) {
+        clear_selection();
         return true;
     }
     if (vk == VK_ESCAPE && store_.focus()) {

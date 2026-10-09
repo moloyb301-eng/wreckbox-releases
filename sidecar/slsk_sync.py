@@ -65,6 +65,7 @@ DEFAULTS = {
         "retry_after_hours": 24,     # wait before retrying a failed / not-found track
         "max_attempts": 5,           # stop retrying after this many passes
         "min_lossy_kbps": 256,       # reject MP3/AAC below this bitrate
+        "prefer_smaller": False,     # MP3/AAC (at or above the limit) before lossless: ~8 MB a song instead of ~30
         "duration_tolerance_seconds": 5,
     },
 }
@@ -139,9 +140,9 @@ def missing_tracks(cfg: dict, sync: dict) -> list[dict]:
     out.sort(key=lambda t: t.get("firstAdded") or "", reverse=True)
     # The DJ Library app's Download queue (playlist / genre priorities) overrides that order.
     queue = load_json(WORK_DIR / "queue.json", None)
-    if queue and queue.get("ids"):
+    if queue and isinstance(queue.get("ids"), list):
         rank = {tid: i for i, tid in enumerate(queue["ids"])}
-        if queue.get("onlyPriority"):   # explicit retries still run, even outside the priorities
+        if queue.get("onlyPriority"):   # only what was picked (nothing picked: nothing); explicit retries still run
             out = [t for t in out if t["id"] in rank or t["id"] in retried]
         out.sort(key=lambda t: rank.get(t["id"], len(rank)))   # stable: unranked keep newest-first
     out.sort(key=lambda t: t["id"] not in retried)               # explicit retries go first
@@ -202,11 +203,12 @@ class Candidate:
         return f"{q}  {self.size / 1_048_576:.1f}MB  {self.username}  {'free' if self.free_slot else f'queue {self.queue}'}  {self.speed // 1024}KB/s"
 
 
-def quality_of(ext: str, bitrate: int | None, min_kbps: int) -> float | None:
+def quality_of(ext: str, bitrate: int | None, min_kbps: int, smaller: bool = False) -> float | None:
+    lossless = 0 if smaller else 10  # smaller: lossless (1-5) ranks below any usable lossy file (6+)
     if ext in LOSSLESS_RANK:
-        return 10 + LOSSLESS_RANK[ext]
+        return lossless + LOSSLESS_RANK[ext]
     if ext == "m4a" and (bitrate is None or bitrate > 500):
-        return 13  # Apple Lossless in an .m4a container
+        return lossless + 3  # Apple Lossless in an .m4a container
     if bitrate is None:
         return None  # lossy file of unknown quality — skip
     if bitrate < min_kbps:
@@ -247,7 +249,7 @@ def rank(track: dict, results, cfg: dict, loose: str | None = None) -> list[Cand
             attrs = {a.key: a.value for a in f.attributes}
             bitrate = attrs.get(AttributeKey.BITRATE.value)
             duration = attrs.get(AttributeKey.DURATION.value)
-            q = quality_of(ext, bitrate, s["min_lossy_kbps"])
+            q = quality_of(ext, bitrate, s["min_lossy_kbps"], bool(s.get("prefer_smaller")))
             if q is None or f.filesize < 500_000:
                 continue
             if loose:

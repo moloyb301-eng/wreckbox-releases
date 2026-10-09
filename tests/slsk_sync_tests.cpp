@@ -164,6 +164,9 @@ int main() {
         CHECK(ids().size() == 4 && ids()[2] == "h" && ids()[3] == "g", "queue order: %s %s", ids()[2].c_str(), ids()[3].c_str());
         wb::paths::write_atomic(wb::paths::soulseek_dir() / L"queue.json", json{{"ids", {"h"}}, {"onlyPriority", true}}.dump());
         CHECK((ids().size() == 3 && ids()[2] == "h"), "only priority keeps the retries and h: %zu", ids().size());
+        // Nothing picked means nothing (but the retries), not everything.
+        wb::paths::write_atomic(wb::paths::soulseek_dir() / L"queue.json", json{{"ids", json::array()}, {"onlyPriority", true}}.dump());
+        CHECK(ids().size() == 2, "nothing picked: %zu", ids().size());
         fs::remove(wb::paths::soulseek_dir() / L"queue.json");
         fs::remove(wb::paths::soulseek_dir() / L"overrides.json");
         fs::remove(wb::paths::inbox() / L"Artist C - Song C.flac");

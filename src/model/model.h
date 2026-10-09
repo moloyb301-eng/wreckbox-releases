@@ -88,7 +88,7 @@ struct AppState {
     std::map<std::string, std::string> genre_overrides;
     std::vector<std::string> scan_folders;
     std::vector<std::string> download_priority;
-    bool priority_only = false;
+    bool priority_only = true;  // "downloadMode": true = only what's picked ("track:<id>" / "playlist:<name>" / "genre:<name>")
     json extra = json::object();
 
     static AppState from_json(const json& j);

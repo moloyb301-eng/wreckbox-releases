@@ -207,7 +207,7 @@ json LogEntry::to_json() const {
 
 AppState AppState::from_json(const json& j) {
     AppState s;
-    s.extra = unknown_fields(j, {"tracks", "log", "genreOverrides", "scanFolders", "downloadPriority", "priorityOnly"});
+    s.extra = unknown_fields(j, {"tracks", "log", "genreOverrides", "scanFolders", "downloadPriority", "priorityOnly", "downloadMode"});
     if (const auto it = j.find("tracks"); it != j.end() && it->is_object())
         for (const auto& [k, v] : it->items()) s.tracks[k] = TrackState::from_json(v);
     if (const auto it = j.find("log"); it != j.end() && it->is_array())
@@ -217,7 +217,9 @@ AppState AppState::from_json(const json& j) {
             if (v.is_string()) s.genre_overrides[k] = v.get<std::string>();
     s.scan_folders = strings(j, "scanFolders");
     s.download_priority = strings(j, "downloadPriority");
-    s.priority_only = boolean(j, "priorityOnly", false);
+    // "Only what I pick" is the default since 0.7.1; the older priorityOnly flag is still written for older readers.
+    const auto mode = j.find("downloadMode");
+    s.priority_only = !(mode != j.end() && mode->is_string() && mode->get<std::string>() == "all");
     return s;
 }
 
@@ -231,6 +233,7 @@ json AppState::to_json() const {
     j["scanFolders"] = scan_folders;
     j["downloadPriority"] = download_priority;
     j["priorityOnly"] = priority_only;
+    j["downloadMode"] = priority_only ? "picked" : "all";
     return j;
 }
 

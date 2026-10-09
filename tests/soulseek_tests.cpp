@@ -107,11 +107,17 @@ int main() {
     sl.save_login("someone", "", false);
     CHECK(!sl.configured() && read_all(wb::soulseek::Sync::config_file()).find("share_dirs = []") != std::string::npos);
 
-    // The queue: priorities first (in order, only what's missing, no repeats), then everything else, newest first.
+    // The queue. By default only what's picked: nothing yet.
     auto queue = [&] { return json::parse(read_all(wb::paths::soulseek_dir() / L"queue.json")); };
     sl.write_queue();
     json q = queue();
+    CHECK(q["ids"].empty() && q["onlyPriority"] == true && sl.wanted().empty(), "%s", q.dump().c_str());
+    // Everything: priorities first (in order, only what's missing, no repeats), then everything else, newest first.
+    store.set_download_priority({}, false);
+    sl.write_queue();
+    q = queue();
     CHECK((q["ids"] == json::array({"t4", "t2", "t3", "t1"})) && q["onlyPriority"] == false && q.contains("generatedAt"), "%s", q.dump().c_str());
+    CHECK((sl.wanted() == std::vector<std::string>{"t4", "t2", "t3", "t1"}));
     {
         auto st = store.state_copy();
         wb::TrackState have;
@@ -130,13 +136,21 @@ int main() {
     {
         json st = json::parse(read_all(wb::paths::state_file()));
         st["downloadPriority"] = json::array({"playlist:Beta", "playlist:Alpha", "playlist:Nope", "nocolon"});
-        st["priorityOnly"] = true;
+        st["downloadMode"] = "picked";
         wb::paths::write_atomic(wb::paths::state_file(), st.dump());
         store.load();
     }
     sl.write_queue();
     q = queue();
     CHECK((q["ids"] == json::array({"t2", "t3", "t4", "t1"})) && q["onlyPriority"] == true && q["priorities"].size() == 4, "%s", q.dump().c_str());
+    // A song picked on its own; an ignored one stays out even when picked.
+    store.set_download_priority({"track:t3", "track:t1", "track:zz"});
+    sl.write_queue();
+    CHECK(queue()["ids"] == json::array({"t3", "t1"}), "%s", queue().dump().c_str());
+    store.set_download_priority({"track:t3", "playlist:Beta", "playlist:Alpha", "playlist:Nope", "nocolon"});
+    sl.write_queue();
+    CHECK(queue()["ids"][0] == "t3", "%s", queue().dump().c_str());
+    store.set_download_priority({"playlist:Beta", "playlist:Alpha", "playlist:Nope", "nocolon"});
 
     // Retry requests.
     CHECK(!sl.retry_pending("t1"));

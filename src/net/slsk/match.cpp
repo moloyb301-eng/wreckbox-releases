@@ -140,9 +140,10 @@ std::string Candidate::label() const {
     return q + "  " + mb + "MB  " + username + "  " + (free_slot ? "free" : "queue " + std::to_string(queue)) + "  " + std::to_string(speed / 1024) + "KB/s";
 }
 
-std::optional<double> quality_of(const std::string& ext, std::optional<int> bitrate, int min_kbps) {
-    if (const auto it = kLosslessRank.find(ext); it != kLosslessRank.end()) return 10 + it->second;
-    if (ext == "m4a" && (!bitrate || *bitrate > 500)) return 13;  // Apple Lossless in an .m4a container
+std::optional<double> quality_of(const std::string& ext, std::optional<int> bitrate, int min_kbps, bool smaller) {
+    const int lossless = smaller ? 0 : 10;
+    if (const auto it = kLosslessRank.find(ext); it != kLosslessRank.end()) return lossless + it->second;
+    if (ext == "m4a" && (!bitrate || *bitrate > 500)) return lossless + 3;  // Apple Lossless in an .m4a container
     if (!bitrate) return std::nullopt;                            // lossy file of unknown quality
     if (*bitrate < min_kbps) return std::nullopt;
     // Lossy tops out at 320 kbps; higher claims are mislabelled, so they never outrank lossless (10+).
@@ -188,7 +189,7 @@ std::vector<Candidate> rank(const LibraryTrack& track, const std::vector<UserRes
             std::optional<int> bitrate, duration;
             if (const auto it = f.attributes.find(kAttrBitrate); it != f.attributes.end()) bitrate = int(it->second);
             if (const auto it = f.attributes.find(kAttrDuration); it != f.attributes.end()) duration = int(it->second);
-            const auto q = quality_of(ext, bitrate, cfg.min_lossy_kbps);
+            const auto q = quality_of(ext, bitrate, cfg.min_lossy_kbps, cfg.prefer_smaller);
             if (!q || f.size < 500000) continue;
             if (loose) {
                 const auto hay = split_words(norm(last_parts(path_parts(f.filename), 3)));

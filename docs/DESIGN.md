@@ -187,6 +187,20 @@ behind a `Backend` interface so it is tested without a network). `soulseek::Sync
 for or when there is no sidecar. Downloads of either end in `_inbox`, and `Sync::import_inbox` files them through
 `LibraryStore::organise`.
 
+**What downloads (0.7.1).** The app writes `queue.json` = `{onlyPriority, priorities, ids}`. Both runners take only
+`ids` when `onlyPriority` is set (an empty list means nothing), plus explicit retries (`overrides.json` `retryAt`).
+- **Picks** live in state.json's `downloadPriority`: `playlist:<name>`, `genre:<name>` and `track:<id>`.
+  `downloadMode` (`picked` by default, or `all`) sets `onlyPriority`; the older `priorityOnly` flag is still written.
+- `Sync::write_queue` runs on every 15 s refresh, so a picked playlist's new songs join on their own. It rewrites the
+  file only when something changed, because a write wakes the runner.
+- **Per-song Download** = un-ignore + a `track:` pick + a retry (first in line, and past an old `done` record) + start
+  the sync.
+- **Don't download** = Ignore.
+- **Deleting** = `LibraryStore::delete_file(path, recycle, skip)`. It is allowed in the user's folders and in
+  `Tracks`, and refused for the rest of WreckBox's folder. With `skip` the song becomes `ignored`, so the sync leaves it.
+- **Quality:** `prefer_smaller` in soulseek.toml makes `quality_of` (C++ and Python) score lossless 0+rank instead of
+  10+rank, below any usable lossy file (6 and up).
+
 ### Memory
 
 **The app (2026-10-08 pass).** Measured with `build/dev/memtest.ps1` on copies of a real library (287 tracks with

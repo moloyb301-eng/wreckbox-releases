@@ -105,9 +105,10 @@ public:
     std::optional<FileAnalysis> analyze_file(const std::string& path, const std::optional<std::string>& track_id = std::nullopt);
     FileFacts facts(const std::string& path) const;
     void rescan();
-    // My folders: deletes one of your own files (to the Recycle Bin unless `recycle` is false, for tests) and forgets it; a
-    // library track it was the file of goes back to missing. Refuses WreckBox's own folder. Returns "" or why it failed.
-    std::string delete_file(const std::string& path, bool recycle = true);
+    // Deletes a song file (to the Recycle Bin unless `recycle` is false, for tests) and forgets it; a library track it was
+    // the file of goes back to missing, or to ignored with `skip` (so the sync leaves it). Your own folders and WreckBox's
+    // Tracks folder only; refuses WreckBox's own data. Returns "" or why it failed.
+    std::string delete_file(const std::string& path, bool recycle = true, bool skip = false);
     std::string organise(const std::string& path, const std::string& source, std::optional<std::string> track_id = std::nullopt);
     void write_tags(const std::optional<std::vector<std::string>>& ids = std::nullopt);
 

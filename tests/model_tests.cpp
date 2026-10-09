@@ -69,7 +69,12 @@ static void state_round_trip() {
     CHECK(s.tracks.at("USRC2").status == wb::TrackStatus::missing);  // unknown status reads as missing, like the original app
     json expected = in;
     expected["tracks"]["USRC2"]["status"] = "missing";
+    expected["downloadMode"] = "picked";
     CHECK(s.to_json() == expected, "\n%s", s.to_json().dump().c_str());
+    // "Only what I pick" unless downloadMode says "all" (an older priorityOnly: false doesn't count).
+    CHECK(wb::AppState::from_json({{"priorityOnly", false}}).priority_only);
+    const auto all = wb::AppState::from_json({{"downloadMode", "all"}});
+    CHECK(!all.priority_only && all.to_json()["downloadMode"] == "all" && all.to_json()["priorityOnly"] == false);
 
     wb::AppState big;
     for (int i = 0; i < 6000; ++i) big.log.push_back(wb::LogEntry::make("e", std::to_string(i)));

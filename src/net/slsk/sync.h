@@ -28,6 +28,7 @@ struct SyncConfig {
     std::vector<std::string> share_dirs;
     int interval_minutes = 30, max_concurrent = 3, search_wait_seconds = 12, search_gap_seconds = 4, queue_timeout_minutes = 4, stall_timeout_minutes = 3,
         candidates_per_track = 4, retry_after_hours = 24, max_attempts = 5, min_lossy_kbps = 256, duration_tolerance_seconds = 5;
+    bool prefer_smaller = false;
 
     // soulseek.toml (the format the app writes); missing keys keep the defaults.
     static SyncConfig parse(const std::string& toml_text);

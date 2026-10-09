@@ -7,6 +7,7 @@
 #include "library/matcher.h"
 #include "model/paths.h"
 #include "model/settings.h"
+#include "net/soulseek.h"
 #include "sources/sync.h"
 #include "ui/view.h"
 
@@ -30,8 +31,19 @@ int compare_ci(const std::string& a, const std::string& b) {
     return CompareStringOrdinal(wa.c_str(), int(wa.size()), wb_.c_str(), int(wb_.size()), TRUE) - CSTR_EQUAL;
 }
 
-// Column widths of the desktop list, right to left: status 16 (+10 gap), duration 50, type 56, energy 60, key 70, BPM 60.
-constexpr float kStatus = 26, kDuration = 50, kType = 56, kEnergy = 60, kKey = 70, kBpm = 60;
+// Column widths of the desktop list, right to left: status 16 (+10 gap), duration 50, size 64, type 56, energy 60, key 70,
+// BPM 60.
+constexpr float kStatus = 26, kDuration = 50, kSize = 64, kType = 56, kEnergy = 60, kKey = 70, kBpm = 60;
+
+// Is this file in WreckBox's Tracks folder (its downloads and organised songs)?
+bool in_tracks(const std::string& path) {
+    auto low = [](std::wstring s) {
+        CharLowerBuffW(s.data(), DWORD(s.size()));
+        return s;
+    };
+    static const std::wstring dir = low(paths::tracks().wstring() + L"\\");
+    return low(widen(path)).starts_with(dir);
+}
 
 }  // namespace
 
@@ -46,8 +58,14 @@ void View::refresh() {
     n_ignored_ = store_.count(TrackStatus::ignored);
     n_analysed_ = store_.analysis_count();
     n_on_pc_ = store_.row_ids(ListFilter::on_pc).size();
-    n_priority_ = store_.state_copy().download_priority.size();
+    const auto state = store_.state_copy();
+    n_priority_ = size_t(std::count_if(state.download_priority.begin(), state.download_priority.end(),
+                                       [](const std::string& k) { return !k.starts_with("track:"); }));  // songs are in the Wanted tab
     mixes_for_.reset();
+    sel_dirty_ = true;
+    wanted_ids_.clear();
+    if (slsk_)
+        for (auto& id : slsk_->wanted()) wanted_ids_.insert(std::move(id));
 
     recent_.clear();
     if (lib_) {
@@ -70,6 +88,32 @@ void View::refresh() {
             sync_unavailable_ = pl == lib_->playlists.end() ? std::optional<std::string>("This playlist is no longer in your library.")
                                                              : sync::unavailable(*pl);
         }
+        // Downloads: is it picked, what's still to come, its size, and what "Free up space" would delete.
+        const auto& prios = state.download_priority;
+        pl_picked_ = std::find(prios.begin(), prios.end(), "playlist:" + *playlist_) != prios.end();
+        pl_left_ = pl_kept_ = 0;
+        pl_bytes_ = free_bytes_ = 0;
+        free_ids_.clear();
+        std::set<std::string> other;  // songs another pick wants: picked one by one, or in another picked playlist
+        for (const auto& k : prios)
+            if (k.starts_with("track:")) other.insert(k.substr(6));
+            else if (k.starts_with("playlist:") && k.substr(9) != *playlist_)
+                for (const auto& p : lib_->playlists)
+                    if (p.name == k.substr(9)) other.insert(p.track_ids.begin(), p.track_ids.end());
+        for (const auto& p : lib_->playlists)
+            if (p.name == *playlist_)
+                for (const auto& id : p.track_ids) {
+                    if (wanted_ids_.contains(id)) ++pl_left_;
+                    const auto st = state.tracks.find(id);
+                    if (st == state.tracks.end() || st->second.status != TrackStatus::downloaded || !st->second.local_path) continue;
+                    std::error_code ec;
+                    const uint64_t size = std::filesystem::file_size(widen(*st->second.local_path), ec);
+                    if (ec) continue;
+                    pl_bytes_ += size;
+                    if (!in_tracks(*st->second.local_path)) continue;  // your own files stay out of Free up space
+                    if (other.contains(id)) ++pl_kept_;
+                    else free_ids_.push_back(id), free_bytes_ += size;
+                }
     }
     const ListFilter filter = list_filter();
     ids_ = store_.row_ids(filter, playlist_, narrow(search_text_));
@@ -116,6 +160,7 @@ void View::refresh() {
             break;
         case Sort::energy: std::stable_sort(rows.begin(), rows.end(), by([](const TrackRow& r) { return r.energy().value_or(-1); })); break;
         case Sort::type: std::stable_sort(rows.begin(), rows.end(), by([](const TrackRow& r) { return r.format(); })); break;
+        case Sort::size: std::stable_sort(rows.begin(), rows.end(), by([](const TrackRow& r) { return r.file ? r.file->size_bytes : 0; })); break;
         case Sort::none: break;
     }
     ids_.clear();
@@ -142,8 +187,30 @@ void View::track_page(const Rect& r) {
                                                    ui_.pill(x, y, L"Sync", icon::sync, Ui::Pill::smart,
                                                             can ? std::function<void()>{[this] { sync_playlist(); }} : std::function<void()>{});
                                                }});
+        // Download playlist: its missing songs download, now and as it grows. Free up space: its downloads go to the
+        // Recycle Bin (asks first), except songs another pick still wants.
+        const std::wstring dl = !pl_picked_ ? L"Download playlist" : pl_left_ ? std::format(L"Downloading · {} left", pl_left_) : L"Downloading · all here";
+        actions.insert(actions.begin(), Action{ui_.pill_width(dl, icon::download), [this, dl](float x, float y) {
+                                                   ui_.pill(x, y, dl, icon::download, pl_picked_ ? Ui::Pill::smart : Ui::Pill::glass,
+                                                            [this] { pick_playlist(*playlist_, !pl_picked_); });
+                                               }});
+        const std::wstring fr = !confirm_free_ ? L"Free up space"
+                                               : std::format(L"Delete {} song{}, {}{}? Click again", free_ids_.size(), free_ids_.size() == 1 ? L"" : L"s", size_text(free_bytes_),
+                                                             pl_kept_ ? std::format(L" ({} kept for other picks)", pl_kept_) : L"");
+        actions.insert(actions.begin(), Action{ui_.pill_width(fr, icon::trash), [this, fr](float x, float y) {
+                                                   ui_.pill(x, y, fr, icon::trash, Ui::Pill::glass,
+                                                            free_ids_.empty() ? std::function<void()>{} : [this] {
+                                                                if (!confirm_free_) {
+                                                                    confirm_free_ = true;
+                                                                    return;
+                                                                }
+                                                                confirm_free_ = false;
+                                                                delete_songs(free_ids_);
+                                                            });
+                                               }});
     }
     std::wstring subtitle = std::format(L"{} tracks · {} in your crate", list_total_, list_crate_);
+    if (is_playlist) subtitle += L" · " + size_text(pl_bytes_) + L" on this PC";
     if (page_ == Page::on_pc) {
         // My folders counts its FLAC files (once per refresh: it reads every row) and names the folders it shows.
         if (!n_flac_) {
@@ -280,8 +347,8 @@ void View::list(const Rect& r) {
     // Column header (click to sort: ascending → descending → off).
     const float hy = r.t + 14, hb = r.t + 36;
     const float right = r.r - 16;
-    const float x_status = right - kStatus, x_dur = x_status - kDuration, x_type = x_dur - kType, x_energy = x_type - kEnergy,
-                x_key = x_energy - kKey, x_bpm = x_key - kBpm;
+    const float x_status = right - kStatus, x_dur = x_status - kDuration, x_size = x_dur - kSize, x_type = x_size - kType,
+                x_energy = x_type - kEnergy, x_key = x_energy - kKey, x_bpm = x_key - kBpm;
     auto head = [&](const wchar_t* label, Sort k, float x0, float x1) {
         const bool on = sort_ == k;
         const Rect hr{x0, hy, x1, hb - 4};
@@ -298,7 +365,8 @@ void View::list(const Rect& r) {
     head(L"BPM", Sort::bpm, x_bpm, x_key);
     head(L"Key", Sort::key, x_key, x_energy);
     head(L"Energy", Sort::energy, x_energy, x_type);
-    head(L"Type", Sort::type, x_type, x_dur);
+    head(L"Type", Sort::type, x_type, x_size);
+    head(L"Size", Sort::size, x_size, x_dur);
     g_.line(r.l, hb, r.r, hb, hairline);
 
     const Rect area{r.l, hb + 1, r.r, r.b - 1};
@@ -312,7 +380,7 @@ void View::list(const Rect& r) {
         return;
     }
     constexpr float row_h = 54, pad = 6;
-    const float content = float(ids_.size()) * row_h + 2 * pad;
+    const float content = float(ids_.size()) * row_h + 2 * pad + (selected_.empty() ? 0 : 64);  // room under the selection bar
     const float before = list_scroll_;
     ui_.scroll_area(area, list_scroll_, content);
     if (list_scroll_ != before) InvalidateRect(hwnd_, nullptr, FALSE);
@@ -325,6 +393,82 @@ void View::list(const Rect& r) {
         if (const auto tr = store_.row(ids_[i])) row(*tr, Rect{area.l + pad, y, area.r - pad - 8, y + row_h});
     }
     ui_.pop_clip();
+    if (!selected_.empty()) selection_bar(area);
+}
+
+// MARK: Selection
+
+void View::select(const std::string& id) {
+    confirm_bulk_ = false;
+    sel_dirty_ = true;
+    if (mods_ & MK_SHIFT) {  // a range, from the last clicked row
+        const std::string from = !anchor_.empty() ? anchor_ : store_.focus().value_or(id);
+        auto a = std::find(ids_.begin(), ids_.end(), from), b = std::find(ids_.begin(), ids_.end(), id);
+        if (a != ids_.end() && b != ids_.end()) {
+            if (a > b) std::swap(a, b);
+            selected_.clear();
+            selected_.insert(a, b + 1);
+        }
+    } else if (mods_ & MK_CONTROL) {  // add or remove one (the row that was open counts as picked)
+        if (selected_.empty())
+            if (const auto f = store_.focus(); f && *f != id) selected_.insert(*f);
+        if (!selected_.erase(id)) selected_.insert(id);
+        anchor_ = id;
+    } else {
+        selected_.clear();
+        anchor_ = id;
+    }
+    focus(id);
+}
+
+void View::clear_selection() {
+    selected_.clear();
+    anchor_.clear();
+    confirm_bulk_ = false;
+    sel_dirty_ = true;
+}
+
+void View::selection_bar(const Rect& area) {
+    if (sel_dirty_) {  // how many of them have a file, and its size
+        sel_dirty_ = false;
+        sel_files_ = 0;
+        sel_bytes_ = 0;
+        for (const auto& id : selected_)
+            if (const auto tr = store_.row(id); tr && tr->status() == TrackStatus::downloaded && tr->state && tr->state->local_path) {
+                ++sel_files_;
+                std::error_code ec;
+                sel_bytes_ += std::filesystem::file_size(widen(*tr->state->local_path), ec);  // analysed or not
+            }
+    }
+    const Rect bar{area.l + 12, area.b - 64, area.r - 20, area.b - 12};
+    ui_.glass(bar, 26, false, true);
+    ui_.click(bar, [] {}, [] {});  // the rows under it don't take these clicks
+    const float cy = (bar.t + bar.b) / 2;
+    float x = bar.l + 18;
+    const std::wstring n = std::format(L"{} selected", selected_.size());
+    const TextStyle st{Font::ui, 13.5f, 600, text};
+    g_.text(n, Rect{x, cy - 10, x + 200, cy + 10}, st);
+    x += g_.measure(n, st) + 16;
+    const std::vector<std::string> ids(selected_.begin(), selected_.end());
+    auto pill = [&](const std::wstring& label, const wchar_t* glyph, Ui::Pill style, std::function<void()> fn) {
+        ui_.pill(x, cy - 18, label, glyph, style, std::move(fn));
+        x += ui_.pill_width(label, glyph) + 8;
+    };
+    pill(L"Download", icon::download, Ui::Pill::smart, [this, ids] { want(ids, true); });
+    pill(L"Don't download", icon::block, Ui::Pill::glass, [this, ids] { want(ids, false); });
+    if (sel_files_) {
+        const std::wstring del = confirm_bulk_ ? std::format(L"Delete {} file{}, {}? Click again", sel_files_, sel_files_ == 1 ? L"" : L"s", size_text(sel_bytes_))
+                                               : std::format(L"Delete files ({})", size_text(sel_bytes_));
+        pill(del, icon::trash, Ui::Pill::glass, [this, ids] {
+            if (!confirm_bulk_) {
+                confirm_bulk_ = true;
+                return;
+            }
+            delete_songs(ids);
+            clear_selection();
+        });
+    }
+    ui_.icon_button(Rect::xywh(bar.r - 46, cy - 16, 32, 32), icon::close, 13, [this] { clear_selection(); }, false, false, L"Clear the selection (Esc)");
 }
 
 void View::row(const TrackRow& tr, const Rect& r) {
@@ -333,6 +477,9 @@ void View::row(const TrackRow& tr, const Rect& r) {
     if (focused) {
         g_.fill_round(r, 12, theme::selected);
         g_.stroke_round(r, 12, with_alpha(lilac, 0.6f));
+    } else if (selected_.contains(tr.id())) {
+        g_.fill_round(r, 12, with_alpha(lilac, 0.10f));
+        g_.stroke_round(r, 12, with_alpha(lilac, 0.35f));
     } else if (ui_.hover(r)) {
         g_.fill_round(r, 12, theme::hover);
     }
@@ -349,8 +496,8 @@ void View::row(const TrackRow& tr, const Rect& r) {
     }
 
     const float right = c.r + 8;  // columns line up with the header (which has no scrollbar gutter)
-    const float x_status = right - kStatus, x_dur = x_status - kDuration, x_type = x_dur - kType, x_energy = x_type - kEnergy,
-                x_key = x_energy - kKey, x_bpm = x_key - kBpm;
+    const float x_status = right - kStatus, x_dur = x_status - kDuration, x_size = x_dur - kSize, x_type = x_size - kType,
+                x_energy = x_type - kEnergy, x_key = x_energy - kKey, x_bpm = x_key - kBpm;
     g_.text(wide(tr.track.title), Rect{c.l + 52, cy - 18, x_bpm - 8, cy}, {Font::ui, 13.5f, 600, current ? lilac : text});
     g_.text(wide(tr.track.artist()), Rect{c.l + 52, cy + 1, x_bpm - 8, cy + 17}, {Font::ui, 12, 400, text2});
     ui_.bpm_readout(x_bpm, cy, tr.bpm(), tr.file && tr.file->bpm_unsure());
@@ -358,9 +505,11 @@ void View::row(const TrackRow& tr, const Rect& r) {
     ui_.energy_meter(x_energy, cy + 7, tr.energy());
     if (const std::string type = tr.format(); !type.empty())  // FLAC in lilac; any other type in peach, so it's easy to spot
         g_.text(wide(type), Rect{x_type, cy - 10, x_type + kType - 8, cy + 10}, {Font::dot, 12, 700, tr.is_flac() ? lilac : peach});
+    if (tr.file && tr.status() == TrackStatus::downloaded)
+        g_.text(size_text(tr.file->size_bytes), Rect{x_size, cy - 10, x_size + kSize - 10, cy + 10}, {Font::dot, 12, 700, text3, Align::right});
     g_.text(wide(tr.duration_text()), Rect{x_dur, cy - 10, x_dur + kDuration, cy + 10}, {Font::dot, 12, 700, text3, Align::right});
     ui_.status_dot(right - 8, cy, tr.status());
-    ui_.click(r, [this, id = tr.id()] { focus(id); }, [this, id = tr.id()] { row_menu(id); });
+    ui_.click(r, [this, id = tr.id()] { select(id); }, [this, id = tr.id()] { row_menu(id); });
     if (playable) ui_.click(cover, [this, id = tr.id()] { play_track(id); }, [this, id = tr.id()] { row_menu(id); });
 }
 
@@ -380,6 +529,7 @@ void View::inspector(const Rect& r, bool floating) {
     ui_.dot_label(is_file                                    ? L"In your folders"
                   : tr->status() == TrackStatus::downloaded ? L"In your crate"
                   : tr->status() == TrackStatus::ignored    ? L"Ignored"
+                  : wanted_ids_.contains(tr->id())          ? L"Wanted"
                                                             : L"Missing",
                   in.l, y + 14);
     const Rect close = Rect::xywh(in.r - 30, y, 30, 28);
@@ -502,20 +652,20 @@ void View::inspector(const Rect& r, bool floating) {
                    busy ? std::function<void()>{} : [this, i = tr->id()] { jobs_.run([this, i] { store_.write_tags(std::vector{i}); }); });
         action(L"Show in folder", icon::folder, Ui::Pill::glass, [this, p = *path] { show_in_folder(p); });
     }
-    if (tr->status() == TrackStatus::missing)
-        action(L"Ignore", icon::block, Ui::Pill::glass, [this, i = tr->id()] { jobs_.run([this, i] { store_.set_status({i}, TrackStatus::ignored); }); });
-    if (tr->status() == TrackStatus::ignored)
-        action(L"Un-ignore", icon::undo, Ui::Pill::glass, [this, i = tr->id()] { jobs_.run([this, i] { store_.set_status({i}, TrackStatus::missing); }); });
+    if (!is_file && tr->status() != TrackStatus::downloaded) {  // Soulseek: get it (first, if it's already wanted), or don't
+        action(wanted_ids_.contains(tr->id()) ? L"Download first" : L"Download", icon::download, Ui::Pill::smart, [this, i = tr->id()] { want({i}, true); });
+        if (tr->status() == TrackStatus::missing) action(L"Don't download", icon::block, Ui::Pill::glass, [this, i = tr->id()] { want({i}, false); });
+    }
     if (x > in.l) y += 34;
     if (path) y += 8 + g_.paragraph(wide(*path), Rect{in.l, y + 8, in.r, y + 8}, {Font::ui, 11, 400, text3});
-    if (is_file && path) {
+    if (path && tr->status() == TrackStatus::downloaded) {  // tucked away, and asks twice
         const bool asking = confirm_delete_ == tr->id();
         const std::wstring label = asking ? L"Move it to the Recycle Bin? Click again" : L"Delete from PC";
         const TextStyle st{Font::ui, 11.5f, 600, text3};
         const Rect link{in.l, y + 14, in.l + g_.measure(label, st) + 4, y + 32};
         g_.text(label, link, {st.font, st.size, st.weight, asking || ui_.hover(link) ? peach : text3});
         ui_.click(link, [this, i = tr->id(), asking] {
-            if (asking) delete_from_pc(i);
+            if (asking) delete_songs({i});
             else confirm_delete_ = i;
         });
         y += 34;
@@ -530,6 +680,25 @@ void View::inspector(const Rect& r, bool floating) {
 // MARK: Menus & shell
 
 void View::row_menu(const std::string& id) {
+    if (selected_.size() > 1 && selected_.contains(id)) {  // on a selected row: the whole selection
+        const std::vector<std::string> ids(selected_.begin(), selected_.end());
+        HMENU m = CreatePopupMenu();
+        AppendMenuW(m, MF_STRING, 1, std::format(L"Download {} songs", ids.size()).c_str());
+        AppendMenuW(m, MF_STRING, 2, std::format(L"Don't download {} songs", ids.size()).c_str());
+        if (sel_files_) {
+            AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
+            AppendMenuW(m, MF_STRING, 3, std::format(L"Move {} files to the Recycle Bin ({})…", sel_files_, size_text(sel_bytes_)).c_str());
+        }
+        POINT pt;
+        GetCursorPos(&pt);
+        const int cmd = TrackPopupMenu(m, TPM_RETURNCMD | TPM_RIGHTBUTTON, pt.x, pt.y, 0, hwnd_, nullptr);
+        DestroyMenu(m);
+        if (cmd == 1) want(ids, true);
+        if (cmd == 2) want(ids, false);
+        if (cmd == 3) confirm_bulk_ = true;  // the bar asks: "Delete N files? Click again"
+        InvalidateRect(hwnd_, nullptr, FALSE);
+        return;
+    }
     const auto tr = store_.row(id);
     if (!tr) return;
     focus(id);
@@ -540,13 +709,12 @@ void View::row_menu(const std::string& id) {
         AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
         if (tr->file_id.empty()) AppendMenuW(m, store_.busy() ? MF_GRAYED : MF_STRING, 1, L"Write tags to file");
         AppendMenuW(m, MF_STRING, 2, L"Show in folder");
-        if (!tr->file_id.empty()) {  // My folders: your own file
-            AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
-            AppendMenuW(m, MF_STRING, 6, L"Move to Recycle Bin");
-        }
+        AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
+        AppendMenuW(m, MF_STRING, 6, L"Move to Recycle Bin");
     }
-    if (tr->status() == TrackStatus::missing) AppendMenuW(m, MF_STRING, 3, L"Ignore");
-    if (tr->status() == TrackStatus::ignored) AppendMenuW(m, MF_STRING, 4, L"Un-ignore");
+    if (tr->file_id.empty() && tr->status() != TrackStatus::downloaded)
+        AppendMenuW(m, MF_STRING, 7, wanted_ids_.contains(id) ? L"Download first" : L"Download");
+    if (tr->file_id.empty() && tr->status() == TrackStatus::missing) AppendMenuW(m, MF_STRING, 3, L"Don't download");
     POINT pt;
     GetCursorPos(&pt);
     const int cmd = GetMenuItemCount(m) ? TrackPopupMenu(m, TPM_RETURNCMD | TPM_RIGHTBUTTON, pt.x, pt.y, 0, hwnd_, nullptr) : 0;
@@ -554,22 +722,12 @@ void View::row_menu(const std::string& id) {
     switch (cmd) {
         case 1: jobs_.run([this, id] { store_.write_tags(std::vector{id}); }); break;
         case 2: show_in_folder(*path); break;
-        case 3: jobs_.run([this, id] { store_.set_status({id}, TrackStatus::ignored); }); break;
-        case 4: jobs_.run([this, id] { store_.set_status({id}, TrackStatus::missing); }); break;
+        case 3: want({id}, false); break;
         case 5: play_track(id); break;
-        case 6: delete_from_pc(id); break;
+        case 6: delete_songs({id}); break;
+        case 7: want({id}, true); break;
     }
     InvalidateRect(hwnd_, nullptr, FALSE);
-}
-
-void View::delete_from_pc(const std::string& id) {
-    confirm_delete_.clear();
-    const auto tr = store_.row(id);
-    if (!tr || tr->file_id.empty() || !tr->state || !tr->state->local_path) return;
-    if (const player::Item* now = player_.current(); now && now->track_id == id) player_.stop();  // VLC holds it open
-    const std::string path = *tr->state->local_path;
-    const std::string err = store_.delete_file(path);
-    show_toast(err.empty() ? L"Moved to the Recycle Bin: " + wide(tr->track.title) : wide(err));
 }
 
 void View::key_menu() {

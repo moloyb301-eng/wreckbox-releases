@@ -15,6 +15,22 @@ Day-to-day work goes on `main`; bigger features on a branch (`feature/<name>`), 
 
 ## Unreleased
 
+## 0.7.1 — 2026-10-09
+
+- **You choose what Soulseek downloads.** New default *Only what I pick*: nothing downloads until you pick it.
+  - **Download** / **Don't download** on any song (details panel, right-click menu).
+  - **Download playlist** on every playlist, which keeps up as the playlist grows.
+  - *Everything missing* on the Soulseek page brings back the old behaviour.
+- **Multi-select**: Ctrl + click, Shift + click, Ctrl + A, Esc. A bar acts on the whole selection: download, don't
+  download, delete files.
+- **Delete any downloaded song** (Recycle Bin). It is then marked Ignored, so the sync won't fetch it again.
+  **Free up space** on a playlist deletes its downloads, except songs another pick still wants.
+- **Wanted** tab on the Soulseek page: the download queue in order, with *Don't download* / *Download first*.
+- **Storage**: how much WreckBox's songs use and how much is free; each playlist's size; a sortable **Size** column.
+- **Quality: Best / Smaller.** Smaller prefers a 256 kbps+ MP3 / AAC over FLAC (about 8 MB a song instead of 30).
+- **Fixed:** with "Then everything else" off and nothing picked, the sync downloaded *everything*. The queue also
+  missed songs added to a picked playlist later; it now updates itself.
+
 ## 0.7.0 — 2026-10-09
 
 - **Version numbers jump from 0.2 to 0.7** so this build never looks older than the original WreckBox apps (0.6.x)

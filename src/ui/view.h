@@ -6,6 +6,7 @@
 #include <map>
 #include <mutex>
 #include <optional>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -45,6 +46,15 @@ inline constexpr UINT_PTR kTrimTimer = 4;  // releases idle memory pages once fu
 // was just let go: minimized, or after the full-screen visualizer (the OpenGL driver's pages).
 inline void trim_memory() { SetProcessWorkingSetSize(GetCurrentProcess(), SIZE_T(-1), SIZE_T(-1)); }
 
+// "850 MB", "1.4 GB"
+inline std::wstring size_text(uint64_t bytes) {
+    const double mb = double(bytes) / 1048576.0;
+    wchar_t s[32];
+    if (mb >= 1024) swprintf(s, 32, L"%.1f GB", mb / 1024);
+    else swprintf(s, 32, L"%.0f MB", mb);
+    return s;
+}
+
 class View {
 public:
     View(HWND hwnd, LibraryStore& store, Jobs& jobs, Ui& ui, player::Player& player);
@@ -70,7 +80,7 @@ public:
     void set_loading(bool loading) { loading_ = loading; }
 
     // Input from the window procedure. Coordinates in DIPs. Each returns true if a repaint is needed.
-    bool mouse_down(float x, float y, bool right);
+    bool mouse_down(float x, float y, bool right, WPARAM keys = 0);  // keys: MK_CONTROL / MK_SHIFT from the message
     bool key(WPARAM vk);
     void search_changed();       // EN_CHANGE from the search box
     HBRUSH edit_colors(HDC dc, HWND box);  // WM_CTLCOLOREDIT
@@ -79,7 +89,7 @@ public:
 
 private:
     enum class Page { home, all, downloaded, missing, ignored, on_pc, playlist, queue, soulseek, phone, settings };
-    enum class Sort { none, title, artist, bpm, key, energy, type };
+    enum class Sort { none, title, artist, bpm, key, energy, type, size };
     enum class Format { any, flac, not_flac };  // not_flac: has a file, of another type
     struct Mix {
         std::wstring min_bpm, max_bpm;
@@ -120,8 +130,31 @@ private:
     ListFilter list_filter() const;
     void focus(const std::optional<std::string>& id);
     void row_menu(const std::string& id);
-    void delete_from_pc(const std::string& id);  // My folders: the file to the Recycle Bin
-    std::string confirm_delete_;                 // the row whose "Delete from PC" was clicked once (asks again)
+    // Picking what Soulseek downloads, and deleting songs (view_soulseek.cpp). want: on = download these (un-skips them,
+    // picks them, puts them first, starts the sync); off = don't (skipped). delete_songs: their files to the Recycle Bin;
+    // library songs become skipped so the sync leaves them.
+    void want(const std::vector<std::string>& ids, bool on);
+    void pick_playlist(const std::string& name, bool on);  // the playlist's songs download (now and as it grows)
+    void delete_songs(const std::vector<std::string>& ids);
+    std::string confirm_delete_;  // the row whose "Delete from PC" was clicked once (asks again)
+    // Multi-select (Ctrl / Shift + click, Ctrl+A, Esc) and the bar that acts on it.
+    void select(const std::string& id);
+    void clear_selection();
+    void selection_bar(const Rect& area);
+    std::set<std::string> selected_;
+    std::string anchor_;
+    WPARAM mods_ = 0;            // the keys held at the last click
+    bool confirm_bulk_ = false;  // the bar's Delete was clicked once
+    size_t sel_files_ = 0;       // of the selection: songs with a file, and their size
+    uint64_t sel_bytes_ = 0;
+    bool sel_dirty_ = true;
+    // The open playlist: picked for download?, how many of its songs are still wanted, its files' size, and what
+    // "Free up space" would delete (its downloads in Tracks that no other pick wants).
+    bool pl_picked_ = false, confirm_free_ = false;
+    size_t pl_left_ = 0, pl_kept_ = 0;
+    uint64_t pl_bytes_ = 0, free_bytes_ = 0;
+    std::vector<std::string> free_ids_;
+    std::set<std::string> wanted_ids_;  // the Soulseek queue (missing songs that will download)
     void key_menu();
     void show_in_folder(const std::string& path);
 
@@ -185,7 +218,10 @@ private:
     void close_slsk_query();
     void slsk_message(std::string s);
     soulseek::Sync* slsk_ = nullptr;
-    std::string slsk_tab_ = "not_found", slsk_msg_;  // slsk_msg_ guarded by status_m_
+    std::string slsk_tab_ = "wanted", slsk_msg_;  // slsk_msg_ guarded by status_m_
+    uint64_t downloads_bytes_ = 0, free_disk_ = 0;  // Soulseek page: the size of Tracks' songs, free space on that drive
+    ULONGLONG storage_at_ = 0;
+    std::optional<bool> slsk_smaller_;
     float slsk_scroll_ = 0, queue_scroll_ = 0;
     bool slsk_query_open_ = false, slsk_query_focused_ = false;
     std::string slsk_query_for_, slsk_query_default_;
