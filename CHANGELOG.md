@@ -15,6 +15,19 @@ Day-to-day work goes on `main`; bigger features on a branch (`feature/<name>`), 
 
 ## Unreleased
 
+## 0.7.3 — 2026-10-09
+
+- **Download queue page, rebuilt.**
+  - **Now:** each song being fetched has a progress bar with %, size and speed; *Searching Soulseek…* / *Waiting
+    for <user>…* before the transfer starts; ✕ cancels it.
+  - **Up next:** the waiting songs in order, with *Download first* and ✕.
+  - **Just finished:** songs from the last 10 minutes, downloaded (format, size) or not (why), with *Try again*.
+  - Playlists to download below that.
+  - *Start sync* / *Stop* at the top; the sidebar shows how many songs are waiting.
+- Both runners report progress in `active.json` (state, source, bytes, size, speed), about twice a second.
+- **Fixed:** the buttons on the Soulseek page's rows (Ignore, Retry, Retry with your own words, Don't download) did
+  nothing; a click on the row underneath took them.
+
 ## 0.7.2 — 2026-10-09
 
 - **Cancel the song that's downloading right now.** It shows *Downloading now* (top of the Wanted tab, details panel).

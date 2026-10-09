@@ -75,7 +75,9 @@ private:
     std::string process(const LibraryTrack& track);  // "done" | "not_found" | "failed" | "cancelled"
     std::optional<std::filesystem::path> download(const LibraryTrack& track, const Candidate& c, const std::string& since);
     bool cancelled(const std::string& id, const std::string& since);  // the app asked to stop it (read at most once a second)
-    void set_active(const LibraryTrack& track, std::optional<std::string> started);  // active.json
+    void set_active(const LibraryTrack& track, std::optional<std::string> started);  // active.json: on / off the list
+    // active.json: what's happening to it (state, source, bytes, speed); written at most twice a second unless `now`.
+    void update_active(const std::string& id, const json& fields, bool now);
     void mark(const LibraryTrack& track, const std::string& status, const json& extra = json::object());
     std::pair<std::vector<Candidate>, json> find(const LibraryTrack& track);
     std::vector<UserResult> search(const std::string& query);
@@ -97,6 +99,7 @@ private:
     std::chrono::steady_clock::time_point cancel_read_{};
     std::mutex active_m_;
     json active_ = json::object();
+    std::chrono::steady_clock::time_point active_written_{};
 };
 
 }  // namespace wb::slsk

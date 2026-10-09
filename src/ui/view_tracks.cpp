@@ -66,6 +66,7 @@ void View::refresh() {
     wanted_ids_.clear();
     if (slsk_)
         for (auto& id : slsk_->wanted()) wanted_ids_.insert(std::move(id));
+    n_priority_ = wanted_ids_.size();  // the sidebar's Download queue count: songs waiting
 
     recent_.clear();
     if (lib_) {

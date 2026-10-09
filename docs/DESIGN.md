@@ -208,6 +208,15 @@ for or when there is no sidecar. Downloads of either end in `_inbox`, and `Sync:
     and during a transfer. The native client polls every 250 ms, reading the file at most once a second; the sidecar
     polls every 2 s.
   - The partial file is dropped and nothing is marked, so it isn't a failed try. A later retry removes `cancelAt`.
+- **Progress (0.7.3):** each `active.json` entry also has
+  - `state`: `searching`, then `waiting` once a peer is asked, then `downloading`
+  - `user` / `ext` (the source)
+  - `received` / `size` (bytes) and `speed` (bytes a second, averaged since the first byte)
+
+  The native runner writes from the client's progress callback, at most every 500 ms; the sidecar writes on its 2 s
+  poll. `soulseek::Activity::parse` reads it leniently, and the app re-reads it at most twice a second. The Download
+  queue page repaints every second while the sync runs.
+- Rows draw their own click before their buttons: `Ui` hit-tests the last registered region first.
 
 ### Memory
 

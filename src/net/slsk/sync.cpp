@@ -321,11 +321,21 @@ bool Runner::cancelled(const std::string& id, const std::string& since) {
 
 void Runner::set_active(const LibraryTrack& track, std::optional<std::string> started) {
     std::lock_guard lock(active_m_);
-    if (started) active_[track.id] = {{"started", *started}, {"name", track.file_name}};
+    if (started) active_[track.id] = {{"started", *started}, {"name", track.file_name}, {"state", "searching"}};
     else active_.erase(track.id);
     std::error_code ec;
     fs::create_directories(work_dir(), ec);
     paths::write_atomic(work_dir() / L"active.json", active_.dump());
+    active_written_ = std::chrono::steady_clock::now();
+}
+
+void Runner::update_active(const std::string& id, const json& fields, bool now) {
+    std::lock_guard lock(active_m_);
+    if (!active_.contains(id)) return;
+    for (const auto& [k, v] : fields.items()) active_[id][k] = v;
+    if (!now && std::chrono::steady_clock::now() - active_written_ < std::chrono::milliseconds(500)) return;
+    paths::write_atomic(work_dir() / L"active.json", active_.dump());
+    active_written_ = std::chrono::steady_clock::now();
 }
 
 std::optional<fs::path> Runner::download(const LibraryTrack& track, const Candidate& c, const std::string& since) {
@@ -337,6 +347,15 @@ std::optional<fs::path> Runner::download(const LibraryTrack& track, const Candid
     o.queue_timeout = std::chrono::minutes(cfg_.queue_timeout_minutes);
     o.stall_timeout = std::chrono::minutes(cfg_.stall_timeout_minutes);
     o.cancel = [this, id = track.id, since] { return stop_.load() || cancelled(id, since); };
+    // Progress for the app's queue: bytes, and the average speed since the first byte.
+    update_active(track.id, {{"state", "waiting"}, {"user", c.username}, {"ext", c.ext}, {"size", c.size}, {"received", 0}, {"speed", 0}}, true);
+    auto first = std::make_shared<std::optional<std::chrono::steady_clock::time_point>>();
+    o.progress = [this, id = track.id, first](uint64_t done, uint64_t total) {
+        const auto now = std::chrono::steady_clock::now();
+        if (!*first) *first = now;
+        const double secs = std::chrono::duration<double>(now - **first).count();
+        update_active(id, {{"state", "downloading"}, {"received", done}, {"size", total}, {"speed", secs > 0.5 ? uint64_t(double(done) / secs) : 0}}, false);
+    };
     const auto res = backend_->download(c.username, c.path, utf8(part), o);
     if (!res.ok) {
         log_line("  ✗ " + c.username + ": " + res.error);

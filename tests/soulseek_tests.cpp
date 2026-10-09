@@ -160,6 +160,14 @@ int main() {
     CHECK(sl.retry_pending("t1") && sl.retry_pending("t2") && !sl.retry_pending("t3"));
     sl.retry({"t1"}, std::string("   "));  // an empty search clears the custom words
     CHECK(!json::parse(read_all(wb::paths::soulseek_dir() / L"overrides.json"))["t1"].contains("query") && sl.retry_pending("t1"));
+    // What the runner says it's doing (active.json), read leniently.
+    {
+        const auto acts = wb::soulseek::Activity::parse(json{{"a", {{"state", "downloading"}, {"user", "u"}, {"ext", "flac"}, {"received", 500}, {"size", 1000}, {"speed", 250}}},
+                                                             {"b", {{"started", "2026-10-09T10:00:00Z"}}}, {"c", "junk"}});
+        CHECK(acts.size() == 3 && acts.at("a").state == "downloading" && acts.at("a").received == 500 && acts.at("a").size == 1000 && acts.at("a").speed == 250 && acts.at("a").user == "u");
+        CHECK(acts.at("b").state == "searching" && acts.at("b").started == "2026-10-09T10:00:00Z" && acts.at("c").state == "searching");
+        CHECK(wb::soulseek::SyncRecord::from_json({{"status", "done"}, {"sizeBytes", 31457280}, {"bitrate", 320}}).size_bytes == 31457280);
+    }
     // Cancel: a cancelAt for the runner; a later retry lifts it. Nothing is active while the sync isn't running.
     sl.cancel({"t1"});
     CHECK(json::parse(read_all(wb::paths::soulseek_dir() / L"overrides.json"))["t1"]["cancelAt"].is_string() && sl.active().empty());

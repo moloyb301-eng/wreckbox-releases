@@ -28,9 +28,19 @@ namespace wb::soulseek {
 struct SyncRecord {
     std::string status, last_try;  // status: done | not_found | failed
     int attempts = 0;
+    uint64_t size_bytes = 0;      // done: the file's size
+    std::optional<int> bitrate;   // done, lossy: kbps
     std::optional<std::string> reason, format, source;
     std::vector<std::string> queries;
     static SyncRecord from_json(const json& j);
+};
+
+// A track the sync is on right now (active.json, written by the runner about twice a second).
+struct Activity {
+    std::string state = "searching";  // searching | waiting (asked a peer, not sending yet) | downloading
+    std::string started, user, ext;   // user / ext: the source being tried
+    uint64_t received = 0, size = 0, speed = 0;  // bytes, bytes, bytes a second
+    static std::map<std::string, Activity> parse(const json& j);
 };
 
 struct Process;  // the running sidecar (soulseek.cpp)
@@ -84,7 +94,7 @@ public:
     // Stop these tracks now if the sync is on them (searching or downloading; it checks every second or two). It doesn't
     // count as a failed try; Ignore keeps them from coming back. A later retry() lifts it.
     void cancel(const std::vector<std::string>& ids);
-    std::set<std::string> active() const;  // the tracks the sync is on right now (active.json; empty when it isn't running)
+    std::map<std::string, Activity> active() const;  // the tracks the sync is on right now (empty when it isn't running)
     // The download order for the runner: picked songs / playlists / genres, then everything else unless "only what I
     // pick" (priority_only). Rewrites queue.json only when it changes (it runs on every refresh, so later playlist
     // additions are picked up).
@@ -104,7 +114,7 @@ private:
     std::optional<unsigned long> external_;
     std::set<std::string> inbox_seen_;
     std::vector<std::string> wanted_;
-    mutable std::set<std::string> active_;  // active() reads the file at most once a second
+    mutable std::map<std::string, Activity> active_;  // active() reads the file at most twice a second
     mutable std::chrono::steady_clock::time_point active_read_{};
     json last_queue_;
     std::mutex refresh_m_;

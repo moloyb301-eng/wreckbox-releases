@@ -27,11 +27,11 @@
 
 <div align="center">
 
-[![Download zip](https://img.shields.io/badge/WreckBox%200.7.2-win--native--x64.zip%20%C2%B7%2071%20MB-EFAF86?style=for-the-badge&logo=windows&logoColor=08080A&labelColor=08080A)](https://raw.githubusercontent.com/moloyb301-eng/wreckbox-releases/windows-native/downloads/WreckBox-0.7.2-win-native-x64.zip)
+[![Download zip](https://img.shields.io/badge/WreckBox%200.7.3-win--native--x64.zip%20%C2%B7%2071%20MB-EFAF86?style=for-the-badge&logo=windows&logoColor=08080A&labelColor=08080A)](https://raw.githubusercontent.com/moloyb301-eng/wreckbox-releases/windows-native/downloads/WreckBox-0.7.3-win-native-x64.zip)
 
 </div>
 
-The latest build (0.7.2). You choose exactly what Soulseek downloads (single songs or whole playlists), can cancel the song that's downloading right now, and can delete songs to free up space.
+The latest build (0.7.3). You choose exactly what Soulseek downloads (single songs or whole playlists) and watch it come in on the Download queue page, with progress bars. You can cancel the song that's downloading right now, and delete songs to free up space.
 
 ### ⚡ One command
 
@@ -39,7 +39,7 @@ Press **Win + R**, type `cmd`, press Enter, then paste this (the copy button is 
 Enter. It downloads WreckBox, unzips it into `%LOCALAPPDATA%\Programs\WreckBox` and starts it. Run it again to update.
 
 ```cmd
-curl -fL -o "%TEMP%\WreckBox.zip" https://raw.githubusercontent.com/moloyb301-eng/wreckbox-releases/windows-native/downloads/WreckBox-0.7.2-win-native-x64.zip && (if not exist "%LOCALAPPDATA%\Programs\WreckBox" mkdir "%LOCALAPPDATA%\Programs\WreckBox") && tar -xf "%TEMP%\WreckBox.zip" -C "%LOCALAPPDATA%\Programs\WreckBox" && del "%TEMP%\WreckBox.zip" && start "" "%LOCALAPPDATA%\Programs\WreckBox\wreckbox.exe"
+curl -fL -o "%TEMP%\WreckBox.zip" https://raw.githubusercontent.com/moloyb301-eng/wreckbox-releases/windows-native/downloads/WreckBox-0.7.3-win-native-x64.zip && (if not exist "%LOCALAPPDATA%\Programs\WreckBox" mkdir "%LOCALAPPDATA%\Programs\WreckBox") && tar -xf "%TEMP%\WreckBox.zip" -C "%LOCALAPPDATA%\Programs\WreckBox" && del "%TEMP%\WreckBox.zip" && start "" "%LOCALAPPDATA%\Programs\WreckBox\wreckbox.exe"
 ```
 
 Close WreckBox before updating. The command uses `curl` and `tar`, which come with Windows 10 and 11.
@@ -222,8 +222,16 @@ pick it:
 - **Many songs:** select them (Ctrl / Shift + click) and use the bar at the bottom.
 - *Everything missing* on the Soulseek page brings back the old behaviour.
 
-**Seeing the queue.** The Soulseek page's **Wanted** tab lists what will download, in order, with *Don't download* and
-*Download first* on each song. *Downloaded*, *Not found* and *Failed* are as before.
+**Seeing the queue.** The **Download queue** page (sidebar, under Tools) shows:
+- **Now:** the songs being fetched, each with a progress bar, the percentage, the size and the speed. A song still
+  being searched for says *Searching Soulseek…*, and one whose source hasn't started sending says *Waiting for…*.
+- **Up next:** the songs waiting, numbered in the order they'll download, with *Download first* and ✕ on each.
+- **Just finished:** what came in during the last 10 minutes, with its format and size. Songs that weren't found or
+  failed show here too, in peach, with *Try again*.
+- **Playlists to download**, in order, below that.
+
+*Start sync* / *Stop* is at the top, and the sidebar counts the songs waiting. The Soulseek page's **Wanted** tab has
+the same queue in a shorter form, next to *Downloaded*, *Not found*, *Failed* and the log.
 
 **Saving space.**
 - **Quality:** *Best (FLAC first)* or *Smaller (MP3 320 first)*. Smaller takes a 256 kbps+ MP3 / AAC when there is one

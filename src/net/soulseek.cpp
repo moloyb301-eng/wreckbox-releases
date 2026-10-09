@@ -92,6 +92,8 @@ SyncRecord SyncRecord::from_json(const json& j) {
     r.reason = str("reason");
     r.format = str("format");
     r.source = str("source");
+    if (const auto it = j.find("sizeBytes"); it != j.end() && it->is_number()) r.size_bytes = uint64_t(std::max(0.0, it->get<double>()));
+    if (const auto it = j.find("bitrate"); it != j.end() && it->is_number_integer()) r.bitrate = it->get<int>();
     if (const auto it = j.find("queries"); it != j.end() && it->is_array())
         for (const auto& q : *it)
             if (q.is_string()) r.queries.push_back(q.get<std::string>());
@@ -467,14 +469,29 @@ void Sync::cancel(const std::vector<std::string>& ids) {
     refresh();
 }
 
-std::set<std::string> Sync::active() const {
+std::map<std::string, Activity> Activity::parse(const json& j) {
+    std::map<std::string, Activity> out;
+    if (!j.is_object()) return out;
+    for (const auto& [id, v] : j.items()) {
+        Activity a;
+        if (v.is_object()) {
+            const auto text = [&](const char* k) { return v.contains(k) && v[k].is_string() ? v[k].get<std::string>() : std::string(); };
+            const auto num = [&](const char* k) { return v.contains(k) && v[k].is_number() ? uint64_t(std::max(0.0, v[k].get<double>())) : uint64_t(0); };
+            if (const auto s = text("state"); !s.empty()) a.state = s;
+            a.started = text("started"), a.user = text("user"), a.ext = text("ext");
+            a.received = num("received"), a.size = num("size"), a.speed = num("speed");
+        }
+        out[id] = a;
+    }
+    return out;
+}
+
+std::map<std::string, Activity> Sync::active() const {
     if (!running()) return {};
     std::lock_guard lock(m_);
-    if (std::chrono::steady_clock::now() - active_read_ > std::chrono::seconds(1)) {
+    if (std::chrono::steady_clock::now() - active_read_ > std::chrono::milliseconds(500)) {
         active_read_ = std::chrono::steady_clock::now();
-        active_.clear();
-        if (const json j = read_json(paths::soulseek_dir() / L"active.json"); j.is_object())
-            for (const auto& [k, v] : j.items()) active_.insert(k);
+        active_ = Activity::parse(read_json(paths::soulseek_dir() / L"active.json"));
     }
     return active_;
 }

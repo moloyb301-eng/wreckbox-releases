@@ -1,6 +1,8 @@
 // Soulseek sync and Download queue: start / stop the sync, what it wants next, what it downloaded / couldn't find / failed
 // with retry (also with your own search words) and ignore, its log, storage; the priority list that decides what it
 // downloads first; and picking songs / playlists to download and deleting songs. The work is in net/soulseek.
+#include <cstdio>
+#include <ctime>
 #include <filesystem>
 #include <format>
 
@@ -12,6 +14,29 @@
 namespace wb::ui {
 
 using namespace theme;
+
+namespace {
+
+// Seconds since an ISO time ("2026-10-09T09:29:50Z" or "+00:00"); a large number if it can't be read.
+double seconds_since(const std::string& iso) {
+    std::tm tm{};
+    if (std::sscanf(iso.c_str(), "%d-%d-%dT%d:%d:%d", &tm.tm_year, &tm.tm_mon, &tm.tm_mday, &tm.tm_hour, &tm.tm_min, &tm.tm_sec) != 6) return 1e12;
+    tm.tm_year -= 1900, tm.tm_mon -= 1;
+    const std::time_t t = _mkgmtime(&tm);
+    return t == -1 ? 1e12 : std::difftime(std::time(nullptr), t);
+}
+
+std::wstring speed_text(uint64_t bytes_per_s) {
+    const double kb = double(bytes_per_s) / 1024;
+    return kb < 1024 ? std::format(L"{:.0f} KB/s", kb) : std::format(L"{:.1f} MB/s", kb / 1024);
+}
+
+std::wstring ago(const std::string& iso) {
+    const double s = seconds_since(iso);
+    return s < 60 ? L"just now" : std::format(L"{} min ago", int(s / 60));
+}
+
+}  // namespace
 
 void View::attach_soulseek(soulseek::Sync& sl) { slsk_ = &sl; }
 
@@ -51,7 +76,7 @@ void View::want(const std::vector<std::string>& ids, bool on) {
         const auto st = state.tracks.find(k.substr(6));
         return st != state.tracks.end() && st->second.status == TrackStatus::downloaded;
     });
-    const auto busy = slsk_ ? slsk_->active() : std::set<std::string>{};
+    const auto busy = slsk_ ? slsk_->active() : std::map<std::string, soulseek::Activity>{};
     const size_t n = on ? fetch.size() : halt.size();
     const size_t stopping = size_t(std::count_if(halt.begin(), halt.end(), [&](const std::string& id) { return busy.contains(id); }));
     if (n == 0) {
@@ -150,7 +175,7 @@ void View::soulseek_page(const Rect& r) {
         message = slsk_msg_;
     }
     const bool running = slsk_->running();
-    if (running) SetTimer(hwnd_, kRefreshTimer, 1500, nullptr);  // keeps "downloading now" current
+    if (running) SetTimer(hwnd_, kRefreshTimer, 1000, nullptr);  // keeps "downloading now" current
     const std::wstring toggle = running ? L"Stop" : L"Start sync";
     float y = r.t + header(r, L"Tools", L"Soulseek sync",
                            running ? L"Running — checks your playlists again every 30 minutes" : L"Stopped",
@@ -266,6 +291,7 @@ void View::soulseek_page(const Rect& r) {
             const float ry = area.t + pad + float(i) * row_h - slsk_scroll_;
             const Rect row{area.l + pad, ry, area.r - pad - 8, ry + row_h};
             if (ui_.hover(row)) g_.fill_round(row, 12, hover);
+            ui_.click(row, [this, id] { store_.set_focus(id); });  // before its buttons, which win
             const float cy = (row.t + row.b) / 2;
             ui_.artwork(*t, Rect::xywh(row.l + 10, cy - 20, 40, 40), 8);
             float right = row.r - 8;
@@ -304,12 +330,14 @@ void View::soulseek_page(const Rect& r) {
                 add(fmt);
                 add(std::to_string(rec->attempts) + (rec->attempts == 1 ? " try" : " tries"));
             }
-            if (wanted_tab && active.contains(id)) add("downloading now");
+            if (const auto a = active.find(id); wanted_tab && a != active.end())
+                add(a->second.state == "downloading" && a->second.size
+                        ? std::format("downloading now · {}%", int(100 * a->second.received / a->second.size))
+                        : "downloading now");
             else if (wanted_tab && i == active.size()) add("next");
             if (slsk_->retry_pending(id)) add("retry queued");
             g_.text(widen(t->title), Rect{row.l + 60, cy - 20, right - 6, cy}, {Font::ui, 13.5f, 600, text});
             g_.text(sub, Rect{row.l + 60, cy, right - 6, cy + 20}, {Font::ui, 11.5f, 400, text3});
-            ui_.click(row, [this, id] { store_.set_focus(id); });
         }
         ui_.pop_clip();
     }
@@ -373,10 +401,142 @@ void View::close_slsk_query() {
 
 void View::queue_page(const Rect& r) {
     if (!slsk_) return;
+    const bool running = slsk_->running();
+    if (running) SetTimer(hwnd_, kRefreshTimer, 1000, nullptr);  // the progress bars move
+    const auto active = slsk_->active();
+    const auto records = slsk_->records();
+    auto wanted = slsk_->wanted();
+    std::erase_if(wanted, [&](const std::string& id) { return active.contains(id) || !store_.track(id); });
+    // Finished in the last 10 minutes, newest first: they stay a while, so you see what came in (or didn't).
+    std::vector<std::pair<std::string, const soulseek::SyncRecord*>> recent;
+    for (const auto& [id, rec] : records)
+        if (!active.contains(id) && store_.track(id) && seconds_since(rec.last_try) < 600) recent.push_back({id, &rec});
+    std::sort(recent.begin(), recent.end(), [](const auto& a, const auto& b) { return a.second->last_try > b.second->last_try; });
+
     ui_.push_clip(Rect{r.l - 22, r.t, r.r + 22, r.b});
     float y = r.t - queue_scroll_;
-    y += header(Rect{r.l, y, r.r, r.b}, L"Tools", L"Download queue", L"Soulseek downloads missing tracks in this order");
+    const std::wstring sub = !running         ? std::format(L"Stopped · {} waiting", wanted.size())
+                             : active.empty() ? std::format(L"Running · {} waiting", wanted.size())
+                                              : std::format(L"Downloading {} · {} waiting", active.size(), wanted.size());
+    const std::wstring toggle = running ? L"Stop" : L"Start sync";
+    y += header(Rect{r.l, y, r.r, r.b}, L"Tools", L"Download queue", sub,
+                {{ui_.pill_width(toggle, running ? icon::close : icon::play), [this, toggle, running](float x, float py) {
+                      ui_.pill(x, py, toggle, running ? icon::close : icon::play, running ? Ui::Pill::glass : Ui::Pill::smart, [this, running] {
+                          if (running) slsk_->stop(), slsk_message("");
+                          else slsk_message(slsk_->start());
+                      });
+                  }}});
     const float width = std::min(r.w(), 780.f), pad = 18;
+    {
+        std::string message;
+        {
+            std::lock_guard lock(status_m_);
+            message = slsk_msg_;
+        }
+        if (message.empty() && !running && (!soulseek::Sync::available() || !slsk_->configured()))
+            message = !soulseek::Sync::available() ? "The Soulseek component is missing from this install." : "Add your Soulseek login in Settings to start downloading.";
+        if (!message.empty()) {
+            g_.text(widen(message), Rect{r.l, y, r.r, y + 22}, {Font::ui, 13, 600, peach});
+            y += 32;
+        }
+    }
+
+    // One song: cover, names, what's happening (with a progress bar), and its buttons.
+    auto song_row = [&](const std::string& id, const soulseek::Activity* a, const soulseek::SyncRecord* rec, size_t pos) {
+        const auto t = store_.track(id);
+        const Rect row{r.l, y, r.l + width, y + 64};
+        g_.fill_round(row, 14, a ? with_alpha(lilac, 0.07f) : glass_fill);
+        if (a) g_.stroke_round(row, 14, with_alpha(lilac, 0.25f));
+        ui_.click(row, [this, id] { store_.set_focus(id); }, [this, id] { row_menu(id); });  // before its buttons, which win
+        float lx = row.l + 12;
+        if (pos) {
+            g_.text(std::to_wstring(pos), Rect{lx, row.t, lx + 26, row.b}, {Font::dot, 13, 700, text3, Align::center});
+            lx += 32;
+        }
+        ui_.artwork(*t, Rect::xywh(lx, row.t + 10, 44, 44), 8);
+        lx += 56;
+        float rx = row.r - 10;
+        const auto btn = [&](const wchar_t* glyph, const wchar_t* tip, std::function<void()> fn) {
+            rx -= 32;
+            ui_.icon_button(Rect::xywh(rx, row.t + 16, 32, 32), glyph, 13, std::move(fn), false, false, tip);
+            rx -= 2;
+        };
+        if (a) {
+            btn(icon::close, L"Cancel the download", [this, id] { want({id}, false); });
+        } else if (pos) {
+            btn(icon::close, L"Don't download", [this, id] { want({id}, false); });
+            if (pos > 1) btn(icon::up, L"Download first", [this, id] { jobs_.run([this, id] { slsk_->retry({id}); }); });
+        } else if (rec && rec->status != "done") {
+            btn(icon::sync, L"Try again", [this, id] { jobs_.run([this, id] { slsk_->retry({id}); }); });
+        }
+        // What's happening, and how far along.
+        std::wstring status;
+        auto color = text3;
+        double frac = -1;
+        if (a) {
+            color = lilac;
+            if (a->state == "downloading" && a->size) {
+                frac = std::min(1.0, double(a->received) / double(a->size));
+                status = std::format(L"{}% · {} of {}", int(frac * 100), size_text(a->received), size_text(a->size)) + (a->speed ? L" · " + speed_text(a->speed) : L"");
+            } else if (a->state == "waiting") {
+                frac = 0;
+                status = L"Waiting for " + widen(a->user) + L" to start sending";
+            } else {
+                status = L"Searching Soulseek…";
+            }
+        } else if (rec) {
+            std::string fmt = rec->format.value_or("");
+            for (auto& c : fmt) c = char(std::toupper(static_cast<unsigned char>(c)));
+            if (rec->status == "done") {
+                frac = 1, color = lilac;
+                status = L"Downloaded · " + widen(fmt) + (rec->bitrate ? std::format(L" {}", *rec->bitrate) : L"") +
+                         (rec->size_bytes ? L" · " + size_text(rec->size_bytes) : L"") + L" · " + ago(rec->last_try);
+            } else {
+                color = peach;
+                status = (rec->status == "not_found" ? L"Not found" : L"Failed") + (rec->reason ? L" · " + widen(*rec->reason) : L"") + L" · " + ago(rec->last_try);
+            }
+        } else {
+            status = pos == 1 && running ? L"Next" : L"Waiting";
+        }
+        const TextStyle st{Font::ui, 11.5f, 600, color, Align::right};
+        const float sw = std::min(g_.measure(status, st) + 4, (rx - lx) * 0.6f);
+        g_.text(widen(t->title), Rect{lx, row.t + 11, rx - 8, row.t + 29}, {Font::ui, 13.5f, 600, text});
+        g_.text(widen(t->artist()), Rect{lx, row.t + 30, rx - 16 - sw, row.t + 46}, {Font::ui, 11.5f, 400, text2});
+        g_.text(status, Rect{rx - 8 - sw, row.t + 30, rx - 8, row.t + 46}, st);
+        if (frac >= 0) ui_.progress(Rect{lx, row.b - 12, rx - 8, row.b - 9}, frac);
+        y += 70;
+    };
+    auto section = [&](const std::wstring& label) {
+        ui_.dot_label(label, r.l + 2, y + 10, text3, 10);
+        y += 26;
+    };
+    if (!active.empty()) {
+        section(L"Now");
+        for (const auto& [id, a] : active)
+            if (store_.track(id)) song_row(id, &a, nullptr, 0);
+        y += 12;
+    }
+    section(std::format(L"Up next · {}", wanted.size()));
+    if (wanted.empty()) {
+        g_.text(L"Nothing waiting. Pick songs with Download (details panel or right-click), or a whole playlist below.",
+                Rect{r.l + 2, y, r.l + width, y + 20}, {Font::ui, 13, 400, text3});
+        y += 34;
+    }
+    constexpr size_t kShown = 40;  // the rest wait their turn below
+    for (size_t i = 0; i < std::min(kShown, wanted.size()); ++i) {
+        const auto rec = records.find(wanted[i]);
+        song_row(wanted[i], nullptr, rec == records.end() || rec->second.status == "done" ? nullptr : &rec->second, i + 1);
+    }
+    if (wanted.size() > kShown) {
+        g_.text(std::format(L"+ {} more, in this order", wanted.size() - kShown), Rect{r.l + 2, y, r.l + width, y + 20}, {Font::ui, 12.5f, 400, text3});
+        y += 30;
+    }
+    if (!recent.empty()) {
+        y += 12;
+        section(L"Just finished (last 10 minutes)");
+        for (const auto& [id, rec] : recent) song_row(id, nullptr, rec, 0);
+    }
+    y += 18;
     const auto lib = lib_;
     const auto state = store_.state_copy();
     // Single-song picks ("track:<id>") are listed in the Soulseek page's Wanted tab; this list keeps playlists / genres
@@ -401,7 +561,7 @@ void View::queue_page(const Rect& r) {
     const Rect panel{r.l, y, r.l + width, y + height};
     ui_.glass(panel, 24);
     float x = panel.l + pad, py = panel.t + pad;
-    ui_.dot_label(L"Priority", x, py + 7, text);
+    ui_.dot_label(L"Playlists to download, in order", x, py + 7, text);
     py += 28;
     if (prios.empty())
         g_.paragraph(L"Add playlists below. Their missing tracks go to the front of the queue, top to bottom.", Rect{x, py, panel.r - pad, py + 36}, {Font::ui, 13, 400, text2});

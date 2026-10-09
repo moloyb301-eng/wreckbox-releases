@@ -665,6 +665,7 @@ You asked for full control over what Soulseek downloads, and for ways to delete 
 - [x] Storage line, playlist sizes, Size column
 - [x] Quality: Best / Smaller (`prefer_smaller` in soulseek.toml, both runners)
 - [x] Cancel the song downloading right now (0.7.2): `cancelAt` in overrides.json, `active.json` from both runners
+- [x] Download queue page with progress (0.7.3): Now (progress bars) / Up next / Just finished (10 min) / playlists
 
 ---
 

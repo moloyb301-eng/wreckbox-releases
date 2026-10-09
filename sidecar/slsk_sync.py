@@ -391,10 +391,16 @@ class Syncer:
 
     def set_active(self, track: dict, started: str | None) -> None:
         if started:
-            self.active[track["id"]] = {"started": started, "name": track["fileName"]}
+            self.active[track["id"]] = {"started": started, "name": track["fileName"], "state": "searching"}
         else:
             self.active.pop(track["id"], None)
         save_json(ACTIVE_FILE, self.active)
+
+    def update_active(self, track: dict, **fields) -> None:
+        """What's happening to it, for the app's queue: state, source, bytes, speed."""
+        if track["id"] in self.active:
+            self.active[track["id"]].update(fields)
+            save_json(ACTIVE_FILE, self.active)
 
     async def download(self, track: dict, c: Candidate, since: str = "") -> Path | None:
         s = self.cfg["sync"]
@@ -405,12 +411,20 @@ class Syncer:
             return None
         started = time.monotonic()
         last_bytes, last_progress = 0, time.monotonic()
+        first_byte = None
+        self.update_active(track, state="waiting", user=c.username, ext=c.ext, size=c.size, received=0, speed=0)
         try:
             while True:
                 await asyncio.sleep(2)
                 if since and self.cancelled(track, since):
                     await self._discard(transfer)
                     raise Cancelled()
+                got = transfer.bytes_transfered or 0
+                if got:
+                    first_byte = first_byte or time.monotonic()
+                    secs = time.monotonic() - first_byte
+                    self.update_active(track, state="downloading", received=got, size=getattr(transfer, "filesize", None) or c.size,
+                                       speed=int(got / secs) if secs > 0.5 else 0)
                 st = transfer.state.VALUE
                 if st == TransferState.COMPLETE:
                     break

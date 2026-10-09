@@ -89,6 +89,7 @@ struct FakeNet : Backend {
     DownloadResult download(const std::string& user, const std::string& path, const std::string& dest, const DownloadOptions& o) override {
         for (int i = 0; i < download_ms / 10; ++i) {
             if (o.cancel && o.cancel()) return {false, "cancelled", 0};
+            if (o.progress) o.progress(uint64_t(i + 1) * 10000, 20000000);
             std::this_thread::sleep_for(10ms);
         }
         std::lock_guard lock(m);
@@ -258,7 +259,16 @@ int main() {
             std::this_thread::sleep_for(10ms);
         }
         CHECK(listed, "active.json lists the song being downloaded");
-        std::this_thread::sleep_for(300ms);  // past the (instant) search, into the transfer
+        // It reports the transfer as it goes: the source, bytes and size (written about twice a second).
+        json a;
+        for (int i = 0; i < 300; ++i) {
+            a = json::parse(read_all(active)).value("h", json::object());
+            if (a.value("state", "") == "downloading" && a.value("received", 0) > 0) break;
+            std::this_thread::sleep_for(10ms);
+        }
+        CHECK(a.value("state", "") == "downloading" && a.value("user", "") == "slow" && a.value("ext", "") == "flac" && a.value("size", 0) == 20000000 &&
+                  a.value("received", 0) > 0 && a.contains("speed"),
+              "%s", a.dump().c_str());
         wb::paths::write_atomic(overrides, json{{"h", {{"retryAt", "2999-01-01T00:00:00Z"}, {"cancelAt", wb::iso_seconds_now()}}}}.dump());
         pass.join();
         const auto took = std::chrono::steady_clock::now() - t0;
