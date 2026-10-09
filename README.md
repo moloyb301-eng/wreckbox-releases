@@ -76,7 +76,7 @@ Close WreckBox before updating. The command uses `curl` and `tar`, which come wi
 | 📊 | **Winamp bars** | Classic spectrum and oscilloscope modes. Used automatically on a PC without OpenGL 3.3 |
 | 📱 | **Phone sync** | Pair the WreckBox Android app with a QR code, then sync over your Wi-Fi |
 | ☁️ | **Use from anywhere** | Reach your library from your phone away from home, through a Cloudflare tunnel |
-| 🔍 | **Soulseek** | Downloads only the songs and playlists you pick, in best or smaller quality, with a queue you can reorder and cancel (even mid-download), through a bundled helper or a built-in client (beta) |
+| 🔍 | **Soulseek** | Downloads only the songs and playlists you pick, in best or smaller quality, with a Download queue page that shows each song's progress bar and what just finished, and that you can reorder and cancel (even mid-download), through a bundled helper or a built-in client (beta) |
 | 🧹 | **Free up space** | Delete songs one at a time, a selection, or a whole playlist's downloads (to the Recycle Bin), and see how much space they use |
 | 🧾 | **Account** | Sign in to save your library to your WreckBox account |
 | 🩹 | **Housekeeping** | Update check, bug reports, onboarding and a Settings page |
