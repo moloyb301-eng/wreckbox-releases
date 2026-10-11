@@ -534,6 +534,11 @@ bool View::das_screen() {
         if (in.song != das_cover_for_) {
             das_cover_for_ = in.song;
             das_->set_cover(nullptr, 0, 0);
+            // The title card: drawn once by Direct2D into DasVis's texture, on the GPU.
+            int letters = 0;
+            const bool card = cur && !cur->title.empty() &&
+                              g_.draw_title_card(das_->title_target(768, 192), wide(cur->title), wide(cur->artist), &letters);
+            das_->show_title(card ? letters : 0, Gfx::kTitleShare);
             if (row) {
                 auto pixels = std::make_shared<std::vector<uint8_t>>();
                 auto size = std::make_shared<std::pair<UINT, UINT>>();

@@ -93,7 +93,7 @@ the tests in §12.
 | Shaders | **HLSL**, compiled at build time with `fxc` (`ps_4_0` / `vs_4_0`) into `.cso` files next to the exe. Your own scenes compile at run time with `d3dcompiler_47.dll` (part of Windows 10), which is loaded **only if you have your own scenes**. | No compiler in memory normally; the build fails if a shader doesn't compile |
 | Stems (kick / snare / hats / bass / vocals) | **DSP pseudo-stems:** harmonic–percussive separation plus band splits, streamed through the song (§6) | A few seconds of one background core a song, under 2 MB of memory, no new dependencies |
 | When songs are analysed | **Only while DasVis is open:** the current song at once (it plays *Live* for those few seconds), then the next one in the queue | Never costs anything if you don't use DasVis |
-| Default visualizer | **MilkDrop until DasVis has 12+ scenes and the director**, then DasVis | Don't swap in something half-finished |
+| Default visualizer | **MilkDrop until DasVis has 12+ scenes and the director**, then DasVis (done in phase 6: 13 scenes) | Don't swap in something half-finished |
 | Graphics card | On laptops with two GPUs, DasVis asks for the **fast one** while full screen is open, and goes back when it closes | Battery life the rest of the time |
 | On battery | **30 fps cap** and one tier lower (setting: *Full / Save battery*) | Half the power for a picture that still moves smoothly |
 | No usable GPU (Remote Desktop, a broken driver) | The **Winamp bars**, as MilkDrop does today | Software rendering would burn the CPU |
@@ -797,7 +797,54 @@ Every phase has to pass the **Low-tier check** (§12) before it ships, not just 
   - parameter drift from the track seed
 - Deterministic for a given seed, map and tier, so it's testable.
 
-### Phase 6: hero scenes and type
+### Phase 6: hero scenes and type ✅ 2026-10-11
+**Built:**
+- **Six scenes** (13 in all), every one Shader Model 4:
+  - **Synthwave** (L): an outrun sun with bass-thickened stripes, a neon grid stepping on the beat, mountains from the
+    spectrum's peaks; the drop flares the sun.
+  - **Hyperspace** (L, hero): a starfield in layers whose stars stretch through a build-up and jump to light speed on
+    the drop; faster with the energy and kicks (`TRAVEL`).
+  - **Aurora** (M, calm only): curtains in the key's hue over a lake that reflects them; the lead brightens and folds
+    them.
+  - **Mandelbox Flight** (H, hero): a ray-marched Mandelbox (the standard distance estimate), orbit-trap colours, glossy
+    with rim light and fog in the key's tint; the bass changes the fold; a new camera path each phrase.
+  - **Liquid Chrome** (H): five ray-marched metaballs, one per stem, sized by it, reflecting the album cover; they flow
+    together on the bar's last beat.
+  - **Storm** (H): cloud layers lit from inside; the snare throws a lightning bolt (within the flash budget), kicks
+    flicker the clouds, the bass shakes the camera.
+- **Mid layer: Ribbon** (`sims/ribbon.hlsl`): the waveform as a twisting ribbon in 3D, one 1,024-vertex strip; the
+  director now picks particles *or* the ribbon.
+- **Events:** **Cover Shatter** joins the shockwave and white-out (the final pass): the cover breaks into 16 Voronoi
+  shards that fly at you on the drop, come back over 8 bars and fade. Normal intensity picks one event per drop
+  (shatter comes with a shockwave); insane plays all three.
+- **Overlays:** **Beat Sigils** (a ring, triangle or hexagon stamped where each kick says, growing and fading; not on
+  chill or in calm parts) and the **Title Card**: the title over the artist, drawn once a song by Direct2D straight
+  into a 768 × 192 GPU texture (as outlines, with the window's own device context: no CPU pixels, no glyph atlas),
+  letters arriving one each half beat with a flash, then dissolving into sparks at 7–9.5 s; the texture is freed at
+  10.5 s.
+- **N / P reach every scene** (your choice, the heavy ones too); only the director's own picks keep to what fits.
+- **DasVis is the default visualizer.** Settings from before it existed (MilkDrop with no DasVis options) move to it
+  once; choosing MilkDrop afterwards sticks. **M** is still one key away.
+- New in `dasvis.hlsli`: `TRAVEL`, `SINCE_DROP`, `smin()`, `u_title`.
+
+**Measured:**
+- **Tests:** every scene (13 + the example) renders on WARP at Medium (Direct3D 11) and at Low (feature level 10_0),
+  N reaches them all; the cover shatter shows outside the middle after a drop and nowhere before it; old MilkDrop
+  settings move to DasVis once. All 12 suites pass.
+- **GPU time on the Intel UHD:** Low tier (60 % scale) Synthwave 3.9, Hyperspace 4.0, Aurora 4.1 ms; Mandelbox 18.5 ms
+  at 33 % scale, Liquid Chrome 7 ms at 40 %, Storm ~15 ms at High 70 %. The heavy ones measure over this PC's Low
+  budget, so the director doesn't pick them there; on a faster GPU it will.
+- **Memory (Low tier, feature level 10_0, 2 cores):** +20.7 to +21.4 MB while open (phase 5: +19.5 to +20), back to
+  where it was after closing. The title card first cost +4.5 MB and kept 3 MB after closing (drawn on the CPU with a
+  software Direct2D target); drawing it on the GPU as outlines and freeing it after 10 s brought that to nothing.
+  About 1 MB over the +20 MB budget remains: the six extra scenes' compiled shaders.
+- **In the app** (muted test libraries): every scene at High; *Afterhours* with its cover in Liquid Chrome, the title
+  card, Aurora in the intro and Hyperspace with the spectrum ring after it.
+
+**Found along the way (song map, phase 2):** with the library's analysed tempo (120.1), *Afterhours*' map has no
+drop (Intro → Verse → Chorus); without a known tempo it finds one. Worth a look when the analysis is next tuned.
+
+**As planned:**
 - **Synthwave, Hyperspace** (Light); **Aurora** (Medium); **Mandelbox Flight, Liquid Chrome, Storm** (Heavy).
 - Events: **Cover Shatter, Shockwave, White-out**.
 - Overlays: **Title Card**, **Ribbon**, **Beat Sigils**.

@@ -31,8 +31,11 @@ cbuffer DasVis : register(b0) {
     float4 u_hits;   // kick, snare, hats hit in this frame (1 / 0), seconds since the last kick
     float4 u_sim;    // the built-in scenes' simulations: grid size and two values of their own (0 in your scenes)
     float4 u_dir;    // the director: transition kind (0 crossfade, 1 wipe, 2 zoom through, 3 shatter, 4 glitch), the
-                     // drop's event (0 none, 1 shockwave, 2 white-out, 3 both), the particle layer (0 / 1)
+                     // drop's events (bits: 1 shockwave, 2 white-out, 4 cover shatter), beat sigils (0 / 1)
     float4 u_drift;  // four slow waves (0–1, tens of seconds each) from the song's seed: let a parameter wander
+    float4 u_ext;    // travel (distance flown: faster with energy, kicks and drops), kicks so far, seconds into the
+                     // song, bars since the last drop (99: none yet)
+    float4 u_title;  // the title card: its texture's width / height, letters, the title line's share of its height, on
 };
 
 #define TIME u_time.x
@@ -74,6 +77,8 @@ cbuffer DasVis : register(b0) {
 #define PART_ENERGY u_drop.w
 #define DRIFT u_drift       // float4, each 0–1, changing slowly: a long section keeps evolving
 #define EVENT int(u_dir.y + 0.5)
+#define TRAVEL u_ext.x      // for flights: steady, faster with the music
+#define SINCE_DROP u_ext.w  // bars
 
 Texture2D t_src : register(t0);    // scenes: the last frame; post passes: their input
 Texture2D t_cover : register(t1);  // the album cover (when HAS_COVER)
@@ -129,6 +134,11 @@ float fbm(float2 p, int octaves) {  // fractal noise, about 0–1
         a *= 0.5;
     }
     return s;
+}
+
+float smin(float a, float b, float k) {  // a smooth union of two distances
+    float h = saturate(0.5 + 0.5 * (b - a) / k);
+    return lerp(b, a, h) - k * h * (1 - h);
 }
 
 float2x2 rot(float a) {

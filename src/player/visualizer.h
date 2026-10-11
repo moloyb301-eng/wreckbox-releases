@@ -13,7 +13,7 @@ struct VisOptions {
     enum class Mode { spectrum, scope, both, off, milkdrop, dasvis };
     enum class Bars { normal, fire, line };
     enum class Scope { dots, lines, solid };
-    Mode mode = Mode::milkdrop;
+    Mode mode = Mode::dasvis;  // WreckBox's own; MilkDrop is one key (M) away
     Bars bars = Bars::normal;
     Scope scope = Scope::lines;
     int bar_falloff = 2;   // 0 slowest … 4 fastest, as in Winamp's options

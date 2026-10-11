@@ -83,8 +83,13 @@ public:
     // The current song's cover: opaque BGRA, any size (a square ~512 px is plenty). nullptr: no cover. Its colours become
     // the palette (fading in over about a second), unless it's grey.
     void set_cover(const uint8_t* bgra, int w, int h);
+    // The title card shown as the song starts: title_target() gives a cleared BGRA render-target texture for the app to
+    // draw the title over the artist into (red: coverage; green: the letter's number × coverage); then show_title() with
+    // how many letters and the title line's share of the height. show_title(0, …): none (radio, or no title).
+    ID3D11Texture2D* title_target(int w, int h);
+    void show_title(int letters, float title_share);
 
-    // N / P: the next or previous scene that fits this PC. skip(): the director picks another now (X).
+    // N / P: the next or previous scene (any: your choice). skip(): the director picks another that fits, now (X).
     void next();
     void previous();
     void skip();

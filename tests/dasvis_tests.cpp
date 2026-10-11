@@ -18,6 +18,7 @@
 #include <fstream>
 #include <numbers>
 #include <random>
+#include <set>
 #include <vector>
 
 #include "dasvis/control.h"
@@ -510,7 +511,7 @@ void gpu(bool fl10) {
     DasVis dv(dev.Get(), cfg);
     CHECK(dv.ok(), "DasVis on %s: %s", label, dv.error().c_str());
     if (!dv.ok()) return;
-    CHECK(dv.scene_count() == 8, "scenes: %zu (7 built in + the example)", dv.scene_count());
+    CHECK(dv.scene_count() == 14, "scenes: %zu (13 built in + the example)", dv.scene_count());
     CHECK(dv.user_errors().find("broken.hlsl") != std::string::npos && dv.user_errors().find("nope") != std::string::npos,
           "the broken scene's error names it: %s", dv.user_errors().c_str());
 
@@ -534,6 +535,8 @@ void gpu(bool fl10) {
         f.update(win.data(), 1 / 60.f, 124);
         dv.render(in, screen.Get());
     };
+    // Each scene in turn (N reaches them all, the heavy ones too, even on Low).
+    std::set<std::string> seen;
     for (size_t s = 0; s < dv.scene_count(); ++s) {
         if (s) dv.next();
         for (int i = 0; i < 60; ++i) frame();  // the transition is over
@@ -542,10 +545,12 @@ void gpu(bool fl10) {
         for (int i = 0; i < 20; ++i) frame();
         const Stats two = read(dev.Get(), screen.Get(), &b);
         const std::string name = dv.scene_name();
+        if (!seen.insert(name).second) break;  // round again: every scene that fits was shown
         CHECK(one.mean > 0.01 && one.mean < 0.95, "%s on %s: mean %.3f (black or white)", name.c_str(), label, one.mean);
         CHECK(diff(a, b) > 0.002, "%s on %s: the picture doesn't move (%.4f)", name.c_str(), label, diff(a, b));
         std::printf("  %s on %s: mean %.3f, moving %.3f\n", name.c_str(), label, two.mean, diff(a, b));
     }
+    CHECK(seen.size() == dv.scene_count(), "N reaches every scene on %s (%zu seen)", label, seen.size());
     // The feedback stays bounded: Feedback Classic with loud music for 10 s doesn't white out.
     while (dv.scene_name() != "Feedback Classic") dv.next();
     for (int i = 0; i < 600; ++i) frame();
@@ -621,7 +626,7 @@ void director() {
     m.drop = false, m.glitchy = true;
     CHECK(d.dress(1, m).transition == Transition::glitch, "dubstep: glitch");
     int whiteouts = 0;
-    for (size_t k = 0; k < 50; ++k) whiteouts += Director::event(5, k, 0) != Event::shockwave;
+    for (size_t k = 0; k < 50; ++k) whiteouts += (Director::events(5, k, 0) & kWhiteout) != 0;
     CHECK(whiteouts == 0, "chill: no white-outs");
     std::printf("  director: %zu picks, no repeats within 4, heroes on drops; liked %d, skipped %d\n", a.size(), liked, skipped);
 }
@@ -674,6 +679,54 @@ void director_timing() {
     std::printf("  director in the renderer: %s\n", got.c_str());
 }
 
+// The cover shatter on a drop (insane: every event): the cover's shards are on screen after the drop. Two runs with grey
+// covers (no palette from them, so everything else is the same), dark and light: only the shards can differ.
+void cover_shatter() {
+    ComPtr<ID3D11Device> dev;
+    const D3D_FEATURE_LEVEL fl = D3D_FEATURE_LEVEL_10_0;
+    if (FAILED(D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, D3D11_CREATE_DEVICE_BGRA_SUPPORT, &fl, 1, D3D11_SDK_VERSION, &dev, nullptr, nullptr)))
+        return std::puts("FAIL: no WARP device"), void(++failures);
+    SongMap map;
+    map.bpm = 120, map.duration = 40;
+    for (double t = 0; t < 40; t += 0.5) map.beats.push_back(t);
+    map.parts = {{0, 16, Section::build, 0.5f}, {16, 40, Section::drop, 1.f}};
+    map.drops = {16}, map.gaps = {-1};
+    D3D11_TEXTURE2D_DESC td{160, 90, 1, 1, DXGI_FORMAT_B8G8R8A8_UNORM, {1, 0}, D3D11_USAGE_DEFAULT, D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE};
+    ComPtr<ID3D11Texture2D> screen;
+    dev->CreateTexture2D(&td, nullptr, &screen);
+    const auto run = [&](uint8_t grey, double until) {
+        Config cfg;
+        cfg.start = Tier::low, cfg.auto_tier = false;
+        DasVis dv(dev.Get(), cfg);
+        std::vector<uint8_t> cover(32 * 32 * 4, grey);
+        dv.set_cover(cover.data(), 32, 32);
+        Features f;
+        Inputs in;
+        in.f = &f, in.song = "shatter-song", in.map = &map, in.intensity = 2;
+        for (int i = 0; i <= int(until * 30); ++i) in.song_time = i / 30.0, in.dt = 1 / 30.f, dv.render(in, screen.Get());
+        std::vector<uint8_t> px;
+        read(dev.Get(), screen.Get(), &px);
+        return px;
+    };
+    // Only outside the middle, where the spectrum ring (which shows the cover too, on a drop) never reaches here: the
+    // test plays silence, so its bars stay short.
+    const auto outside = [](const std::vector<uint8_t>& a, const std::vector<uint8_t>& b) {
+        double sum = 0;
+        int n = 0;
+        for (int y = 0; y < 90; ++y)
+            for (int x = 0; x < 160; ++x) {
+                const double px = (x + 0.5) / 160 - 0.5, py = (y + 0.5) / 90 - 0.5;
+                if (std::hypot(px * 160 / 90, py) < 0.24) continue;
+                for (int c = 0; c < 3; ++c) sum += std::abs(int(a[(size_t(y) * 160 + x) * 3 + c]) - int(b[(size_t(y) * 160 + x) * 3 + c])) / 255.0;
+                n += 3;
+            }
+        return sum / n;
+    };
+    const double before = outside(run(40, 15), run(220, 15)), after = outside(run(40, 16.4), run(220, 16.4));
+    CHECK(after > before + 0.02, "the cover's shards show after the drop: %.3f before, %.3f after", before, after);
+    std::printf("  cover shatter: dark vs light cover differ %.3f before the drop, %.3f after\n", before, after);
+}
+
 // dasvis_tests --map <audio file> [bpm]: prints a real song's map instead of testing (for tuning the analysis).
 int print_map(const fs::path& file, double bpm) {
     const auto t0 = std::chrono::steady_clock::now();
@@ -700,6 +753,7 @@ int main(int argc, char** argv) {
     quality();
     director();
     director_timing();
+    cover_shatter();
     gpu(false);
     gpu(true);
     if (failures) {

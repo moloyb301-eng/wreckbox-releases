@@ -15,6 +15,10 @@ Day-to-day work goes on `main`; bigger features on a branch (`feature/<name>`), 
 
 ## Unreleased
 
+- **DasVis is now the default visualizer** (MilkDrop is still on **M**), with six more scenes: *Synthwave*,
+  *Hyperspace*, *Aurora*, and for faster graphics cards *Mandelbox Flight*, *Liquid Chrome* and *Storm*. Each song opens
+  with its title and artist, letter by letter on the beat; drops can shatter the cover at you; kicks stamp sigils; a
+  ribbon of the waveform can fly over the scene.
 - **The DasVis director**: scenes now follow the song. A calm scene for the breakdown, a hero scene on each drop
   (zooming through from the build-up, with a shockwave or a white-out), changes on the downbeat with a wipe,
   crossfade, shatter or glitch, only scenes this PC runs smoothly, and never the same few in a row. **F** likes a scene

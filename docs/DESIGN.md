@@ -193,6 +193,9 @@ libVLC (decode, resample to 48 kHz, equalizer, normvol)
     tier, saved per graphics card), weighted by energy and by your likes and skips for the genre (saved in the
     settings), never one of the last 4. Deterministic from the song's seed. Transitions run in `dasvis.hlsli`'s
     `main` over the last picture; drop events in the final pass.
+  - **Title card** (phase 6): `Gfx::draw_title_card` draws the title and artist with the window's own Direct2D
+    context, its target switched for a moment to DasVis's texture (`DasVis::title_target`), as outlines (no glyph
+    atlas); red is coverage and green each letter's number, for the shader to animate. Freed after 10 s.
   - **Simulations** (phase 4): a scene can have one: particles, a fluid, reaction-diffusion, stars or the spectrum's
     history. It's made when the scene comes on screen, at the tier's size (grids 128 / 192 / 256 cells tall), stepped
     by pixel shaders on ping-pong textures before the scene is drawn, and dropped when the scene goes. Points, stars and

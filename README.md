@@ -72,7 +72,7 @@ Close WreckBox before updating. The command uses `curl` and `tar`, which come wi
 | ▶️ | **Player** | 18+ formats, internet radio and `.m3u` / `.pls` links, files from outside the library, media keys |
 | 🎛️ | **Equalizer & normalizer** | 10-band EQ with presets and preamp, plus a volume normalizer |
 | 🌈 | **MilkDrop visualizer** | Full-screen MilkDrop presets (9,795 of them) with a player bar: song, transport, seek, volume, EQ and "Up next" |
-| ✨ | **DasVis visualizer** (preview) | WreckBox's own: HDR scenes that move with the kick, snare, hats and the beat. Light enough for old PCs (about 5 % of one core), and you can write your own scenes |
+| ✨ | **DasVis visualizer** | WreckBox's own, and the default: 13 HDR scenes that follow the song's build-ups and drops and move with the kick, snare, hats and the beat. Light enough for old PCs (about 5 % of one core), and you can write your own scenes |
 | 🥁 | **Beat sync** | Kicks pulse the picture, presets change on drops, and you can nudge the timing by 25 ms |
 | 📊 | **Winamp bars** | Classic spectrum and oscilloscope modes. Used automatically on a PC without OpenGL 3.3 |
 | 📱 | **Phone sync** | Pair the WreckBox Android app with a QR code, then sync over your Wi-Fi |
@@ -189,11 +189,11 @@ the screen. The bar fades when the mouse is still. Its ⌄ button, or **H**, hid
   **V** switches between the Classic Winamp and WreckBox colours.
 - A PC without OpenGL 3.3 gets the bars automatically. `WRECKBOX_NO_MILKDROP=1` forces them.
 
-**DasVis** (preview) is WreckBox's own visualizer: **D**, or the *DasVis* chip on the player bar.
+**DasVis** is WreckBox's own visualizer, and the default: **D**, or the *DasVis* chip on the player bar.
 - **Its colours come from the album cover** (or from the song's key when the cover is black and white), and each part
   of the drums moves something different: the kick sends light down the tunnel, the snare flashes, the hats glint, the
   vocals and lead shift the colours.
-- Seven scenes so far:
+- **It's the default visualizer** (MilkDrop is one key away: **M**). Thirteen scenes:
   - *Feedback Classic*: MilkDrop-style trails and a waveform ring, with particles thrown off it on the kicks
   - *Neon Tunnel*: one ring per beat, with a spectrum ring round the cover
   - *Kaleido Cover*: a kaleidoscope of the album art
@@ -201,6 +201,14 @@ the screen. The bar fades when the mouse is still. Its ⌄ button, or **H**, hid
   - *Coral*: reaction-diffusion growing coral and spots, lit as relief
   - *Galaxy*: a spiral galaxy of up to a million stars; the drop is a supernova
   - *Ridge Lines*: the music's last few seconds as glowing ridges, flowing towards a sun at dusk
+  - *Synthwave*: an outrun sun over a neon grid, mountains made from the spectrum
+  - *Hyperspace*: stars stretching through a build-up, light speed on the drop
+  - *Aurora*: northern lights in the song's key over a lake, for the calm parts
+  - *Mandelbox Flight*, *Liquid Chrome* (metal blobs, one per drum and the bass and vocals, reflecting the cover) and
+    *Storm* (lightning on the snare): the heavy ones, for PCs with the graphics to run them
+- Each song starts with its **title and artist**, letter by letter on the beat; drops bring a **shockwave**, a
+  **white-out** or the **cover shattering** at you; kicks stamp **sigils**, and a **ribbon** of the waveform can fly
+  over the scene.
 - The simulations are sized to the PC and exist only while their scene is on screen.
 - **A director picks the scenes** as the song moves from part to part: calm scenes for breakdowns, a hero scene for
   each drop (zooming through from the build-up, with a shockwave or a white-out), only scenes your PC can run

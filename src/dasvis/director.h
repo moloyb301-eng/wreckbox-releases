@@ -22,19 +22,21 @@ struct SceneTags {
     uint8_t energy = kCalm | kMid | kPeak;
     char cost = 'L';      // L (< 2 ms on the Intel UHD at 720p, quality 0.3), M (< 5 ms), H (more)
     bool hero = false;    // a drop's scene
-    bool layers = true;   // the particle layer may go over it
+    bool layers = true;   // a mid layer (particles or the ribbon) may go over it
     bool ring = false;    // the spectrum ring suits it
 };
 
 enum class Transition : uint8_t { crossfade, wipe, zoom, shatter, glitch };  // the shaders' TRANSITION_KIND
-enum class Event : uint8_t { none, shockwave, whiteout, both };              // the shaders' EVENT
+enum class Mid : uint8_t { none, particles, ribbon };                        // the layer over the scene
+enum : uint8_t { kShockwave = 1, kWhiteout = 2, kCoverShatter = 4 };         // a drop's events (the shaders' EVENT bits)
 
 struct Cue {
     size_t scene = 0;
     Transition transition = Transition::wipe;
     float beats = 2;         // how long the transition takes
-    bool particles = false;  // the mid layer
-    bool ring = false;       // the overlay
+    Mid mid = Mid::none;     // the mid layer
+    bool ring = false;       // overlays: the spectrum ring
+    bool sigils = false;     // and the beat sigils
 };
 
 // Where the music is when the director picks.
@@ -73,8 +75,9 @@ public:
     Cue dress(size_t scene, const Moment& m) const;
     void reset() { recent_.clear(); }  // a new song
 
-    // The event on a song's drop number `drop` (0, 1, …).
-    static Event event(uint32_t seed, size_t drop, int intensity);
+    // The events on a song's drop number `drop` (0, 1, …): kShockwave / kWhiteout / kCoverShatter bits. Chill: the
+    // shockwave; normal: one of shockwave, white-out, or cover shatter (with a shockwave); insane: all three.
+    static uint8_t events(uint32_t seed, size_t drop, int intensity);
     // The energy a section suits: calm (intro, breakdown, outro or a quiet part), peak (drop, or a loud chorus), mid.
     static uint8_t energy_of(Section s, float part_energy);
     // Bars a scene stays on within one section before the next phrase changes it: chill 64, normal 32, insane 16.

@@ -63,6 +63,9 @@ VisOptions VisOptions::from_json(const json& j) {
     VisOptions o;
     if (!j.is_object()) return o;
     o.mode = parse(j, "mode", o.mode, {"spectrum", "scope", "both", "off", "milkdrop", "dasvis"});
+    // DasVis became the default: settings from before it existed (no DasVis options in them, MilkDrop being the default
+    // then) move to it, once; anyone who then picks MilkDrop keeps it.
+    if (o.mode == Mode::milkdrop && !j.contains("dasvis")) o.mode = Mode::dasvis;
     o.bars = parse(j, "bars", o.bars, {"normal", "fire", "line"});
     o.scope = parse(j, "scope", o.scope, {"dots", "lines", "solid"});
     o.bar_falloff = std::clamp(j.value("barFalloff", o.bar_falloff), 0, 4);

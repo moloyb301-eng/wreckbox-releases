@@ -43,10 +43,11 @@ uint8_t Director::energy_of(Section s, float part_energy) {
     return kMid;
 }
 
-Event Director::event(uint32_t seed, size_t drop, int intensity) {
-    if (intensity >= 2) return Event::both;
-    if (intensity <= 0) return Event::shockwave;  // chill: no white-out
-    return rnd(seed, uint32_t(drop), 7) < 0.5 ? Event::shockwave : Event::whiteout;
+uint8_t Director::events(uint32_t seed, size_t drop, int intensity) {
+    if (intensity >= 2) return kShockwave | kWhiteout | kCoverShatter;
+    if (intensity <= 0) return kShockwave;  // chill: no white-out
+    const double r = rnd(seed, uint32_t(drop), 7);
+    return r < 1 / 3.0 ? kShockwave : r < 2 / 3.0 ? kWhiteout : kCoverShatter | kShockwave;
 }
 
 Cue Director::dress(size_t scene, const Moment& m) const {
@@ -60,10 +61,13 @@ Cue Director::dress(size_t scene, const Moment& m) const {
     c.beats = kBeats[int(c.transition)];
     if (scene < scenes_.size()) {
         const SceneTags& t = scenes_[scene];
-        // The particle layer: never on chill; on insane whenever there's room; on normal half the time, not when calm.
+        // A mid layer (particles or the ribbon): never on chill; on insane whenever there's room; on normal half the
+        // time, not when calm. The sigils: not on chill nor when calm; always on insane, else 40 % of the time.
         const bool room = cost(scene, m.tier) <= 0.7f * m.budget_ms;
-        c.particles = t.layers && room && m.intensity > 0 && (m.intensity == 2 || (m.energy != kCalm && rnd(m.seed, m.index, 3) < 0.5));
+        if (t.layers && room && m.intensity > 0 && (m.intensity == 2 || (m.energy != kCalm && rnd(m.seed, m.index, 3) < 0.5)))
+            c.mid = rnd(m.seed, m.index, 4) < 0.5 ? Mid::particles : Mid::ribbon;
         c.ring = t.ring || (m.intensity == 2 && m.energy == kPeak);
+        c.sigils = m.intensity > 0 && m.energy != kCalm && (m.intensity == 2 || rnd(m.seed, m.index, 5) < 0.4);
     }
     return c;
 }

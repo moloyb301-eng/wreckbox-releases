@@ -14,14 +14,17 @@
 
 #include "dasvis/director.h"
 #include "dasvis_gen/library.h"
+#include "dasvis_gen/ps_aurora.h"
 #include "dasvis_gen/ps_bloom_down.h"
 #include "dasvis_gen/ps_bloom_up.h"
+#include "dasvis_gen/ps_chrome.h"
 #include "dasvis_gen/ps_copy.h"
 #include "dasvis_gen/ps_coral.h"
 #include "dasvis_gen/ps_coral_step.h"
 #include "dasvis_gen/ps_feedback.h"
 #include "dasvis_gen/ps_final.h"
 #include "dasvis_gen/ps_galaxy.h"
+#include "dasvis_gen/ps_hyperspace.h"
 #include "dasvis_gen/ps_ink.h"
 #include "dasvis_gen/ps_ink_divergence.h"
 #include "dasvis_gen/ps_ink_gradient.h"
@@ -29,14 +32,19 @@
 #include "dasvis_gen/ps_ink_velocity.h"
 #include "dasvis_gen/ps_kaleido.h"
 #include "dasvis_gen/ps_lum.h"
+#include "dasvis_gen/ps_mandelbox.h"
 #include "dasvis_gen/ps_particles.h"
 #include "dasvis_gen/ps_particles_update.h"
+#include "dasvis_gen/ps_ribbon.h"
 #include "dasvis_gen/ps_ridge.h"
 #include "dasvis_gen/ps_ridges.h"
 #include "dasvis_gen/ps_star.h"
+#include "dasvis_gen/ps_storm.h"
+#include "dasvis_gen/ps_synthwave.h"
 #include "dasvis_gen/ps_tunnel.h"
 #include "dasvis_gen/vs_fullscreen.h"
 #include "dasvis_gen/vs_particles.h"
+#include "dasvis_gen/vs_ribbon.h"
 #include "dasvis_gen/vs_ridge.h"
 #include "dasvis_gen/vs_star.h"
 
@@ -48,7 +56,7 @@ namespace {
 
 // Mirrors the cbuffer in dasvis.hlsli: float4s only, so the C++ and HLSL layouts can't drift apart.
 struct Uniforms {
-    float time[4], res[4], out[4], beat[4], drums[4], tone[4], look[4], post[4], key[4], pal[5][4], pass[4], song[4], drop[4], hits[4], sim[4], dir[4], drift[4];
+    float time[4], res[4], out[4], beat[4], drums[4], tone[4], look[4], post[4], key[4], pal[5][4], pass[4], song[4], drop[4], hits[4], sim[4], dir[4], drift[4], ext[4], title[4];
 };
 static_assert(sizeof(Uniforms) % 16 == 0);
 
@@ -89,6 +97,12 @@ const BuiltIn kScenes[] = {
     {k_ps_ridges, sizeof k_ps_ridges, Sim::ridges, {"Ridge Lines", kCalm | kMid, 'L', false, false, false}},
     {k_ps_coral, sizeof k_ps_coral, Sim::coral, {"Coral", kCalm | kMid, 'M', false, false, false}},
     {k_ps_galaxy, sizeof k_ps_galaxy, Sim::galaxy, {"Galaxy", kMid | kPeak, 'M', true, false, false}},
+    {k_ps_synthwave, sizeof k_ps_synthwave, Sim::none, {"Synthwave", kMid | kPeak, 'L', false, true, false}},
+    {k_ps_hyperspace, sizeof k_ps_hyperspace, Sim::none, {"Hyperspace", kMid | kPeak, 'L', true, false, true}},
+    {k_ps_aurora, sizeof k_ps_aurora, Sim::none, {"Aurora", kCalm, 'M', false, false, false}},
+    {k_ps_mandelbox, sizeof k_ps_mandelbox, Sim::none, {"Mandelbox Flight", kMid | kPeak, 'H', true, false, false}},
+    {k_ps_chrome, sizeof k_ps_chrome, Sim::none, {"Liquid Chrome", kMid | kPeak, 'H', false, false, false}},
+    {k_ps_storm, sizeof k_ps_storm, Sim::none, {"Storm", kMid | kPeak, 'H', false, false, false}},
 };
 
 // The simulations' grids by tier, in cells tall: no bigger, as an integrated GPU's textures come out of the PC's RAM
@@ -142,7 +156,8 @@ struct DasVis::Impl {
     ComPtr<ID3D11VertexShader> vs;
     ComPtr<ID3D11PixelShader> ps_down, ps_up, ps_lum, ps_final, ps_copy;
     ComPtr<ID3D11PixelShader> ps_velocity, ps_divergence, ps_jacobi, ps_gradient, ps_coral_step, ps_update, ps_point, ps_star, ps_ridge;
-    ComPtr<ID3D11VertexShader> vs_point, vs_star, vs_ridge;
+    ComPtr<ID3D11VertexShader> vs_point, vs_star, vs_ridge, vs_ribbon;
+    ComPtr<ID3D11PixelShader> ps_ribbon;
     ComPtr<ID3D11Buffer> cb;
     ComPtr<ID3D11SamplerState> clamp, wrap;
     ComPtr<ID3D11BlendState> add;
@@ -164,7 +179,9 @@ struct DasVis::Impl {
     float ring_from = 0;   // the ring's mix when the last change began
     float drift_seed[4][2] = {};  // the song's drift waves (periods and phases, 0–1)
 
-    Target comp[2], lum, spec, wave, cover;
+    Target comp[2], lum, spec, wave, cover, title;
+    double travel = 0;  // TRAVEL: how far the flights have gone
+    float kicks = 0;    // kicks so far (the sigils' random numbers)
     // The current scene's simulation: made when the scene comes on screen, at its tier's size, and dropped when it goes,
     // so a PC only ever holds the one on screen.
     struct SimState {
@@ -254,7 +271,9 @@ struct DasVis::Impl {
             if (FAILED(hr = dev->CreatePixelShader(sims[i].first, sims[i].second, nullptr, &*sim_slots[i]))) return fail("simulation shader", hr);
         if (FAILED(hr = dev->CreateVertexShader(k_vs_particles, sizeof k_vs_particles, nullptr, &vs_point)) ||
             FAILED(hr = dev->CreateVertexShader(k_vs_star, sizeof k_vs_star, nullptr, &vs_star)) ||
-            FAILED(hr = dev->CreateVertexShader(k_vs_ridge, sizeof k_vs_ridge, nullptr, &vs_ridge)))
+            FAILED(hr = dev->CreateVertexShader(k_vs_ridge, sizeof k_vs_ridge, nullptr, &vs_ridge)) ||
+            FAILED(hr = dev->CreateVertexShader(k_vs_ribbon, sizeof k_vs_ribbon, nullptr, &vs_ribbon)) ||
+            FAILED(hr = dev->CreatePixelShader(k_ps_ribbon, sizeof k_ps_ribbon, nullptr, &ps_ribbon)))
             return fail("vertex shader", hr);
         if (FAILED(dev->CheckFormatSupport(fine, &support)) || !(support & D3D11_FORMAT_SUPPORT_SHADER_SAMPLE)) fine = DXGI_FORMAT_R16G16_FLOAT;
         for (const auto& s : kScenes) {
@@ -379,14 +398,11 @@ struct DasVis::Impl {
         ++picks;
     }
 
-    // N / P: the next or previous scene that fits this PC, dressed by the director.
+    // N / P: the next or previous scene, dressed by the director. Any scene: it's your choice (the heavy ones too, at a
+    // smaller render size if they must); only the director's own picks keep to what fits.
     void step_scene(int by) {
         if (scenes.empty()) return;
-        size_t i = current;
-        for (size_t k = 0; k < scenes.size(); ++k) {
-            i = by > 0 ? (i + 1) % scenes.size() : (i + scenes.size() - 1) % scenes.size();
-            if (dir.fits(i, qc.tier(), now.budget_ms)) break;
-        }
+        const size_t i = by > 0 ? (current + 1) % scenes.size() : (current + scenes.size() - 1) % scenes.size();
         Moment m = now;
         m.drop = false;
         apply(dir.dress(i, m));
@@ -652,7 +668,7 @@ struct DasVis::Impl {
 
     void final_pass(const Target& out) {
         u.out[0] = float(out.w), u.out[1] = float(out.h), u.out[2] = float(out.w) / float(out.h);
-        pass(ps_final.Get(), out, comp[cur], bloom.empty() ? &comp[cur] : &bloom[0], false);
+        pass(ps_final.Get(), out, comp[cur], bloom.empty() ? &comp[cur] : &bloom[0], false, title.srv.Get());
         ID3D11ShaderResourceView* none[6] = {};
         ctx->PSSetShaderResources(0, 6, none);
         ctx->OMSetRenderTargets(0, nullptr, nullptr);  // Direct2D draws over it next
@@ -734,13 +750,19 @@ struct DasVis::Impl {
         }
         const float beat_s = float(60.0 / std::max(60.0, has_map ? in.map->bpm : f.bpm));
         transition = std::min(1.f, transition + dt / std::max(0.25f, cue.beats * beat_s));
-        // The drop's event: the next drop's while it's coming, this one's while it lands.
-        Event event = Event::none;
+        // The drop's events: the next drop's while it's coming, the last one's while it lands (and the cover shatter
+        // plays out over the 8 bars after it).
+        uint8_t events = 0;
+        float since_drop = 99;
         if (has_map && !in.map->drops.empty()) {
-            size_t k = size_t(std::upper_bound(in.map->drops.begin(), in.map->drops.end(), now_t) - in.map->drops.begin());
-            if (ms.drop > 0 && k) --k;
-            event = Director::event(song_seed, k, std::clamp(in.intensity, 0, 2));
+            const auto& dr = in.map->drops;
+            const size_t k = size_t(std::upper_bound(dr.begin(), dr.end(), now_t) - dr.begin());
+            if (k) since_drop = float((now_t - dr[k - 1]) / in.map->bar_seconds());
+            events = Director::events(song_seed, k && (ms.drop > 0 || since_drop < 9) ? k - 1 : k, std::clamp(in.intensity, 0, 2));
         }
+        if (title.tex && in.song_time > 10.5) title = {}, u.title[3] = 0;  // the card has played: its texture goes
+        travel += dt * (0.3 + 0.6 * f.energy + 0.6 * drv.kick + 3.0 * ms.drop);
+        kicks += drv.kick_hit;
 
         read_timers();
         read_lum(dt);
@@ -770,7 +792,8 @@ struct DasVis::Impl {
         set(u.look, intensity, flash, limiter.gain(), has_cover ? 1.f : 0.f);
         const float ring = ring_from + ((cue.ring ? 1.f : 0.f) - ring_from) * transition;
         set(u.post, 0.08f + 0.04f * f.energy, float(std::max<size_t>(1, bloom.size())), 0.018f, ring);
-        set(u.dir, float(int(cue.transition)), float(int(event)), cue.particles ? 1.f : 0.f, 0);
+        set(u.dir, float(int(cue.transition)), float(events), cue.sigils ? 1.f : 0.f, 0);
+        set(u.ext, float(std::fmod(travel, 10000.0)), kicks, float(in.song_time), since_drop);
         // Drift: four slow waves from the song's seed, so a long section keeps changing without looping.
         for (int i = 0; i < 4; ++i) {
             const float a = drift_seed[i][0], b = drift_seed[i][1];
@@ -789,7 +812,7 @@ struct DasVis::Impl {
         if (timing) ctx->Begin(tm.disjoint.Get()), ctx->End(tm.t0.Get());
 
         ensure_sim(sim, scenes[current].sim, float(w) / float(h));
-        ensure_sim(layer, cue.particles ? Sim::particles : Sim::none, float(w) / float(h));
+        ensure_sim(layer, cue.mid == Mid::particles ? Sim::particles : Sim::none, float(w) / float(h));
         step_sim(layer, f, dt);
         step_sim(sim, f, dt);  // last: the scene's pass reads its u_sim
         const int prev = cur;
@@ -797,6 +820,7 @@ struct DasVis::Impl {
         pass(scenes[current].ps.Get(), comp[cur], comp[prev], nullptr, false, sim_view(sim));
         draw_sim(sim, comp[cur]);
         draw_sim(layer, comp[cur]);
+        if (cue.mid == Mid::ribbon) draw(vs_ribbon.Get(), ps_ribbon.Get(), comp[cur], D3D11_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP, 1024, wave.srv.Get(), true);
         const Target* src = &comp[cur];
         for (auto& b : bloom) pass(ps_down.Get(), b, *src, nullptr, false), src = &b;
         if (!bloom.empty()) pass(ps_lum.Get(), lum, bloom.back(), nullptr, false);
@@ -805,6 +829,18 @@ struct DasVis::Impl {
         final_pass(out);
         if (timing) ctx->End(tm.t1.Get()), ctx->End(tm.disjoint.Get()), tm.issued = true;
         ++frame;
+    }
+
+    ID3D11Texture2D* title_target(int w, int h) {
+        u.title[3] = 0;
+        if (title.w != w || title.h != h) title = make(w, h, DXGI_FORMAT_B8G8R8A8_UNORM);
+        return title.tex.Get();
+    }
+
+    void show_title(int letters, float share) {
+        if (!letters || !title.tex) title = {};  // nothing to show: the texture goes
+        u.title[0] = title.h ? float(title.w) / float(title.h) : 1, u.title[1] = float(letters), u.title[2] = share;
+        u.title[3] = title.tex ? 1.f : 0.f;
     }
 
     void set_cover(const uint8_t* bgra, int w, int h) {
@@ -854,7 +890,11 @@ void DasVis::skip() {
     p_->choose(m);
 }
 std::map<std::string, float> DasVis::costs() const { return p_->dir.costs(); }
-bool DasVis::particles() const { return p_->cue.particles; }
+bool DasVis::particles() const { return p_->cue.mid == Mid::particles; }
+ID3D11Texture2D* DasVis::title_target(int w, int h) { return ok() ? p_->title_target(w, h) : nullptr; }
+void DasVis::show_title(int letters, float title_share) {
+    if (ok()) p_->show_title(letters, title_share);
+}
 void DasVis::lock(bool on) { p_->locked = on, p_->advance_due = false; }
 bool DasVis::locked() const { return p_->locked; }
 void DasVis::set_auto_advance(double seconds) { p_->cfg.auto_advance = seconds; }

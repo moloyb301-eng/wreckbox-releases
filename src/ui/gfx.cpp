@@ -398,6 +398,75 @@ IDWriteTextFormat* Gfx::format(const TextStyle& st, bool wrap) {
     return f.Get();
 }
 
+bool Gfx::draw_title_card(ID3D11Texture2D* target, const std::wstring& title, const std::wstring& artist, int* letters) {
+    *letters = 0;
+    // Drawn with the window's own device context, its target switched to the texture for a moment (Direct2D allows it
+    // mid-frame): a second context would hold its own buffers, ~1.5 MB.
+    ComPtr<IDXGISurface> surface;
+    ComPtr<ID2D1Bitmap1> bmp;
+    ComPtr<ID2D1Image> window;
+    const auto props = D2D1::BitmapProperties1(D2D1_BITMAP_OPTIONS_TARGET | D2D1_BITMAP_OPTIONS_CANNOT_DRAW,
+                                               D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED), 96, 96);
+    if (!target || !rt_ || FAILED(target->QueryInterface(IID_PPV_ARGS(&surface))) || FAILED(rt_->CreateBitmapFromDxgiSurface(surface.Get(), props, &bmp)))
+        return false;
+    ID2D1DeviceContext* dc = rt_.Get();
+    dc->GetTarget(&window);
+    D2D1_MATRIX_3X2_F transform;
+    dc->GetTransform(&transform);
+    const D2D1_TEXT_ANTIALIAS_MODE aa = dc->GetTextAntialiasMode();
+    ComPtr<IDWriteRenderingParams> params, outline;
+    dc->GetTextRenderingParams(&params);
+    // As outlines (shapes), not glyph bitmaps: big text would otherwise get a glyph atlas of its own (~1.5 MB).
+    if (SUCCEEDED(dw_->CreateCustomRenderingParams(1.8f, 0, 0, DWRITE_PIXEL_GEOMETRY_FLAT, DWRITE_RENDERING_MODE_OUTLINE, &outline)))
+        dc->SetTextRenderingParams(outline.Get());
+    dc->SetTransform(D2D1::Matrix3x2F::Identity());
+    D3D11_TEXTURE2D_DESC td;
+    target->GetDesc(&td);
+    const float W = float(td.Width), H = float(td.Height), split = H * kTitleShare;
+    dc->SetTarget(bmp.Get());
+    dc->SetTextAntialiasMode(D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE);  // the channels carry data: no colour fringes
+    dc->Clear(D2D1::ColorF(0, 0, 0, 0));
+    struct Line {
+        const std::wstring& s;
+        TextStyle st;
+        float top, height;
+    } lines[] = {{title, {Font::ui, H * 0.42f, 700}, 0, split}, {artist, {Font::ui, H * 0.24f, 500}, split, H - split}};
+    std::vector<ComPtr<ID2D1SolidColorBrush>> brushes;  // one per letter: red 1 (so red = coverage), green its number
+    for (Line& ln : lines) {
+        if (ln.s.empty()) continue;
+        auto lay = layout(ln.s, ln.st, 100000, ln.height, false);
+        DWRITE_TEXT_METRICS m{};
+        if (!lay || FAILED(lay->GetMetrics(&m))) continue;
+        if (m.widthIncludingTrailingWhitespace > W - 16) {  // too long: smaller, to fit
+            ln.st.size *= (W - 16) / m.widthIncludingTrailingWhitespace;
+            lay = layout(ln.s, ln.st, 100000, ln.height, false);
+        }
+        UINT32 n = 0;
+        lay->GetClusterMetrics(nullptr, 0, &n);
+        std::vector<DWRITE_CLUSTER_METRICS> cm(n);
+        if (FAILED(lay->GetClusterMetrics(cm.data(), n, &n))) continue;
+        UINT32 at = 0;
+        for (const auto& c : cm) {
+            if (!c.isWhitespace) {
+                ComPtr<ID2D1SolidColorBrush> br;
+                if (SUCCEEDED(dc->CreateSolidColorBrush(D2D1::ColorF(1, float(std::min(*letters, 255)) / 255.f, 0), &br))) {
+                    lay->SetDrawingEffect(br.Get(), {at, c.length});
+                    brushes.push_back(br);
+                }
+                ++*letters;
+            }
+            at += c.length;
+        }
+        dc->DrawTextLayout(D2D1::Point2F(8, ln.top), lay.Get(), brushes.empty() ? nullptr : brushes.front().Get());
+    }
+    dc->Flush();  // into the texture now: DasVis reads it this frame
+    dc->SetTarget(window.Get());
+    dc->SetTransform(transform);
+    dc->SetTextAntialiasMode(aa);
+    dc->SetTextRenderingParams(params.Get());
+    return true;
+}
+
 ComPtr<IDWriteTextLayout> Gfx::layout(const std::wstring& s, const TextStyle& st, float w, float h, bool wrap) {
     ComPtr<IDWriteTextLayout> l;
     dw_->CreateTextLayout(s.data(), UINT32(s.size()), format(st, wrap), std::max(w, 0.f), std::max(h, 0.f), &l);

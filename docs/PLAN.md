@@ -688,7 +688,8 @@ CPU and memory than MilkDrop (≤ +20 MB and < 5 % of a core at Low tier).
 - [x] Phase 5: the director: scenes picked by the song's sections, energy, this PC's budget and your likes (F) and
       skips (X); transitions on downbeats; shockwave and white-out on drops; parameters drift. Details:
       `docs/DASVIS-PLAN.md`
-- [ ] Phase 6: hero scenes, drop events, title cards; DasVis becomes the default
+- [x] Phase 6: Synthwave, Hyperspace, Aurora, Mandelbox Flight, Liquid Chrome, Storm; the ribbon; cover shatter;
+      beat sigils; the title card; DasVis is the default visualizer. Details: `docs/DASVIS-PLAN.md`
 - [ ] Phase 7: phone VJ deck, room lights, video export, Spout, wallpaper, lyrics (opt-in)
 - [ ] Phase 8 (optional): Demucs stems, MilkDrop as a layer
 
