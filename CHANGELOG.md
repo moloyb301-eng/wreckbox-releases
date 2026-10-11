@@ -15,6 +15,10 @@ Day-to-day work goes on `main`; bigger features on a branch (`feature/<name>`), 
 
 ## Unreleased
 
+- **The DasVis director**: scenes now follow the song. A calm scene for the breakdown, a hero scene on each drop
+  (zooming through from the build-up, with a shockwave or a white-out), changes on the downbeat with a wipe,
+  crossfade, shatter or glitch, only scenes this PC runs smoothly, and never the same few in a row. **F** likes a scene
+  and **X** skips it, per genre. Long sections keep evolving, as each scene's settings drift slowly.
 - **Four new DasVis scenes and a particle layer**: *Ink Ocean* (a fluid simulation), *Coral* (reaction-diffusion),
   *Galaxy* (up to a million stars), *Ridge Lines* (the spectrum's history in 3D), and particles over *Feedback
   Classic*. All run on old graphics cards (feature level 10_0) and are sized to the PC: on the old-PC check each new

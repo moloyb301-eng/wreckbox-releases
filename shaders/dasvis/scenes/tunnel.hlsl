@@ -7,7 +7,7 @@
 
 float3 scene(float2 uv, float2 p) {
     float sides = 6 + 2 * floor(frac(SEED * 13.7) * 4);  // 6, 8, 10 or 12 sides: this song's tunnel
-    p = mul(p, rot(0.2 * sin(TIME * 0.27) + 0.12 * sin(BAR * TAU)));
+    p = mul(p, rot((0.08 + 0.3 * DRIFT.y) * sin(TIME * 0.27) + 0.12 * sin(BAR * TAU)));
     float a01 = atan2(p.y, p.x) / TAU + 0.5;
     float cell = frac(a01 * sides);              // across one face, 0 → 1
     float seg = TAU / sides;

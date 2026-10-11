@@ -53,7 +53,7 @@ float3 scene(float2 uv, float2 p) {
     float dif = saturate(dot(n, l));
     float spec = pow(saturate(reflect(-l, n).z), 24);
     float m = smoothstep(0.1, 0.3, v);  // coral (1) or the water around it (0)
-    float3 base = lerp(u_pal[0].rgb * 0.25 + 0.01, PAL(0.4 + 0.5 * v + 0.15 * uv.x + LEAD * 0.15), m);
+    float3 base = lerp(u_pal[0].rgb * 0.25 + 0.01, PAL(0.3 + 0.5 * v + 0.15 * uv.x + 0.25 * DRIFT.y + LEAD * 0.15), m);
     float3 c = base * (0.25 + 1.1 * dif) * (0.85 + 0.4 * BASS);
     c += PAL(0.95) * spec * m * (0.4 + 1.6 * SNARE * FLASH);
     // The hats: glints on the ridges.

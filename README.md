@@ -202,8 +202,12 @@ the screen. The bar fades when the mouse is still. Its ⌄ button, or **H**, hid
   - *Galaxy*: a spiral galaxy of up to a million stars; the drop is a supernova
   - *Ridge Lines*: the music's last few seconds as glowing ridges, flowing towards a sun at dusk
 - The simulations are sized to the PC and exist only while their scene is on screen.
-- **N / P** or a click change the scene, and **L** locks it. It changes by itself on a bar's downbeat (the same
-  setting as MilkDrop's presets), and on every drop.
+- **A director picks the scenes** as the song moves from part to part: calm scenes for breakdowns, a hero scene for
+  each drop (zooming through from the build-up, with a shockwave or a white-out), only scenes your PC can run
+  smoothly, never the same few over and over. Scenes change on the downbeat, with a wipe, crossfade, shatter or (for
+  dubstep and drum & bass) a glitch.
+- **N / P** or a click change the scene, **L** locks it, **F** likes it and **X** skips it: likes and skips are kept per
+  genre, so the director learns what you want to see.
 - **It knows the song.** The first time a song plays in DasVis, it's analysed in the background: a few seconds, about
   6 MB of memory. DasVis then knows the beats, the bars, the parts (intro, build-up, drop, breakdown …) and when each
   drop lands. Build-ups drain the colour and close in, the bar before a drop goes quiet, and the drop hits. The player

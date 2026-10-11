@@ -12,11 +12,14 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <map>
 #include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "dasvis/control.h"
+#include "dasvis/director.h"
 #include "dasvis/features.h"
 #include "dasvis/palette.h"
 #include "dasvis/songmap.h"
@@ -30,6 +33,7 @@ struct Config {
     bool reduce_flash = false;  // at most 1 big flash a second (instead of 3), and gentler flashes
     double auto_advance = 30;   // seconds per scene, 0 = stay
     std::filesystem::path user_dir;  // the user's own scenes (.hlsl); empty = none
+    std::map<std::string, float> costs;  // what each scene measured on this graphics card before (costs())
 };
 
 // What the app knows this frame.
@@ -44,6 +48,9 @@ struct Inputs {
     // The beat, bar, phrase, section, build-up and drop come from the map; the live kicks keep the two in step.
     const SongMap* map = nullptr;
     double song_time = 0;
+    // Your likes and skips for this song's genre: scene name → weight (1 neutral). nullptr: neutral.
+    const std::map<std::string, float>* taste = nullptr;
+    bool glitchy = false;  // the genre suits glitch transitions (dubstep, drum & bass)
 };
 
 // What moves the pictures this frame: the kick, snare, hats, bass and lead. From the song map when there is one (exact
@@ -77,8 +84,10 @@ public:
     // the palette (fading in over about a second), unless it's grey.
     void set_cover(const uint8_t* bgra, int w, int h);
 
+    // N / P: the next or previous scene that fits this PC. skip(): the director picks another now (X).
     void next();
     void previous();
+    void skip();
     void lock(bool on);
     bool locked() const;
     void set_auto_advance(double seconds);
@@ -95,11 +104,18 @@ public:
     bool tier_settled() const;  // measured long enough to remember the tier
     float flash_budget() const;
     double map_offset() const;  // seconds the song time is moved by to match the kicks heard (the dev view shows it)
+    bool particles() const;     // the particle layer is on
+    // What each scene measured on this graphics card ("<scene>|<tier>" → GPU ms at the tier's smallest size): saved,
+    // and given back in Config::costs next time, so the director knows what fits from the start.
+    std::map<std::string, float> costs() const;
 
 private:
     struct Impl;
     std::unique_ptr<Impl> p_;
 };
+
+// The built-in scenes' tags, in their order (what the director knows of them).
+std::vector<SceneTags> builtin_scenes();
 
 // dasvis.hlsli's text: written next to the user's scenes so they can #include it.
 const char* library_source();

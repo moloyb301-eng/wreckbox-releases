@@ -204,6 +204,11 @@ bool View::vis_key(WPARAM vk) {
                 audio_at_ = clock_t_::now();  // show the change even while paused
             }
             return true;
+        case 'F':
+        case 'X':
+            mouse_moved();
+            if (das_ && das_->ok() && vis_.opt.mode == VisOptions::Mode::dasvis) das_rate(vk == 'F');
+            return true;
         case 'M': vis_use(VisOptions::Mode::milkdrop); return true;
         case 'D':
             if (GetKeyState(VK_CONTROL) < 0 && GetKeyState(VK_SHIFT) < 0) return das_dev_ = !das_dev_, true;  // the dev view
@@ -373,6 +378,11 @@ std::filesystem::path View::das_scenes_dir() const { return paths::settings_dir(
 
 void View::das_free() {
     if (!das_) return;
+    if (das_->ok() && !das_gpu_.empty()) {  // what each scene cost here, so the director knows next time
+        json costs = json::object();
+        for (const auto& [k, ms] : das_->costs()) costs[k] = std::round(double(ms) * 100) / 100;
+        if (vis_.opt.das_costs.value(das_gpu_, json::object()) != costs) vis_.opt.das_costs[das_gpu_] = costs, save_vis();
+    }
     das_.reset();
     das_cover_for_.clear();
     das_map_.reset();  // in memory only; it's in the cache for next time
@@ -458,6 +468,10 @@ bool View::das_screen() {
         cfg.reduce_flash = o.das_reduce_flash;
         cfg.auto_advance = o.auto_advance;
         cfg.user_dir = das_scenes_dir();
+        if (const auto c = o.das_costs.find(gpu); c != o.das_costs.end() && c->is_object())
+            for (const auto& [k, ms] : c->items())
+                if (ms.is_number()) cfg.costs[k] = ms.get<float>();
+        das_gpu_ = gpu;
         das_ = std::make_unique<dasvis::DasVis>(g_.d3d(), cfg);
         das_gen_ = g_.generation();
         das_feat_ = {};
@@ -496,6 +510,18 @@ bool View::das_screen() {
         in.budget_ms = 0.75f * 1000.f * float(frame_interval()) / das_hz_;
         in.map = das_map_.get();
         in.song_time = das_song_t_;
+        // Your likes and skips for this genre; glitch transitions for the genres that suit them.
+        std::string genre = row ? row->genre : std::string();
+        std::transform(genre.begin(), genre.end(), genre.begin(), [](char c) { return char(std::tolower(static_cast<unsigned char>(c))); });
+        if (genre != das_genre_) {
+            das_genre_ = genre;
+            das_taste_.clear();
+            if (const auto g = o.das_taste.find(genre.empty() ? "any" : genre); g != o.das_taste.end() && g->is_object())
+                for (const auto& [scene, w] : g->items())
+                    if (w.is_number()) das_taste_[scene] = w.get<float>();
+        }
+        in.taste = &das_taste_;
+        in.glitchy = genre.find("dubstep") != std::string::npos || genre.find("drum") != std::string::npos || genre.find("dnb") != std::string::npos;
         // The panel's line (only worked out while the panel or the dev view shows it).
         if (overlay_alpha() <= 0 && !das_dev_) {
         } else if (das_map_) {
@@ -538,6 +564,21 @@ bool View::das_screen() {
                                  frame_interval(), das_hz_, das_->flash_budget()));
     }
     return true;
+}
+
+// F / X: your taste for this genre. A like makes the scene come up more (up to 4×), a skip less (down to 0.15×) and
+// changes it now. Kept in the settings, per genre.
+void View::das_rate(bool like) {
+    if (!das_ || !das_->ok()) return;
+    const std::string scene = das_->scene_name();
+    float& w = das_taste_.try_emplace(scene, 1.f).first->second;
+    w = like ? std::min(4.f, w * 1.5f) : std::max(0.15f, w * 0.6f);
+    vis_.opt.das_taste[das_genre_.empty() ? "any" : das_genre_][scene] = std::round(double(w) * 100) / 100;
+    save_vis();
+    const std::wstring genre = das_genre_.empty() ? L"" : L" in " + wide(das_genre_);
+    show_toast(like ? std::format(L"More {}{}", wide(scene), genre) : std::format(L"Less {}{}", wide(scene), genre));
+    if (!like) das_->skip();
+    audio_at_ = clock_t_::now();
 }
 
 // Ctrl+Shift+D: the song map over the picture. The whole song (its parts, the drops, where it is now), then the 16 s
@@ -744,7 +785,7 @@ void View::vis_overlay(const Rect& r, float a) {
     const bool das = das_ && das_->ok() && vis_.opt.mode == VisOptions::Mode::dasvis;
     if (a < 1) g_.push_opacity(a);
     g_.fill_span(Rect{r.l, r.t, r.r, r.t + 80}, {0, r.t}, {0, r.t + 80}, {argb(0xA0000000), argb(0x00000000)});  // keeps the hint legible
-    g_.text(das    ? L"Click / N: next scene     P: previous     L: lock     D: bars     F5: reload my scenes     H: hide player     Right-click: options     Esc: exit"
+    g_.text(das    ? L"Click / N: next scene     P: previous     L: lock     F: like     X: skip     D: bars     F5: reload my scenes     H: hide player     Right-click: options     Esc: exit"
             : milk ? L"Click / N: next preset     P: previous     R: random     L: lock     M: bars     H: hide player     Right-click: options     Space: pause     Esc: exit"
                    : L"Click: spectrum · scope · both · off     M: MilkDrop     D: DasVis     H: hide player     Right-click: options     V: look     Esc: exit",
             Rect{r.l + 48, r.t + 18, r.r - 100, r.t + 44}, {Font::ui, 12.5f, 500, text2});
@@ -831,9 +872,13 @@ void View::vis_overlay(const Rect& r, float a) {
             ui_.icon_button(Rect::xywh(l, cy3 - 16, 32, 32), icon::chevron_right, 13, [this] { das_->next(); }, false, false, L"Next scene (N)");
             ui_.icon_button(Rect::xywh(l + 36, cy3 - 16, 32, 32), icon::lock, 13, [this] { das_->lock(!das_->locked()); }, das_->locked(), false,
                             das_->locked() ? L"Unlock this scene (L)" : L"Lock this scene (L)");
+            const auto liked = das_taste_.find(das_->scene_name());
+            const bool loved = liked != das_taste_.end() && liked->second > 1;
+            ui_.icon_button(Rect::xywh(l + 72, cy3 - 16, 32, 32), loved ? icon::heart_fill : icon::heart, 13, [this] { das_rate(true); }, loved, false,
+                            L"Like this scene (F): more of it for this genre");
             // What this PC runs it at, quietly: the tier and the render size.
             const std::wstring how = std::format(L"{} · {:.0f} %", wide(dasvis::tier_name(das_->tier())), das_->scale() * 100);
-            float hx = l + 76;
+            float hx = l + 112;
             if (!das_status_.empty() && hx + 200 < x) {  // the song map's word on where the song is
                 const TextStyle ss{Font::ui, 13, 600, das_status_.starts_with(L"Build") ? peach : lilac};
                 const float sw = g_.measure(das_status_, ss) + 2;
@@ -924,6 +969,8 @@ void View::vis_menu() {
     radio(das, kDas + 1, L"Reduce flashing", o.das_reduce_flash);
     radio(das, kDas + 2, L"Use the fast graphics card", o.das_fast_gpu);
     radio(das, kDas + 5, L"Lock this scene\tL", das_ && das_->locked());
+    AppendMenuW(das, MF_STRING | (das_ && das_->ok() ? 0 : MF_GRAYED), kDas + 6, L"Like this scene\tF");
+    AppendMenuW(das, MF_STRING | (das_ && das_->ok() ? 0 : MF_GRAYED), kDas + 7, L"Skip this scene\tX");
     AppendMenuW(das, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(das, MF_STRING, kDas + 3, L"Open my scenes folder…");
     AppendMenuW(das, MF_STRING | (das_ && das_->ok() ? 0 : MF_GRAYED), kDas + 4, L"Reload my scenes\tF5");
@@ -1012,6 +1059,7 @@ void View::vis_menu() {
                 return;
             } else if (i == 4) return das_reload();
             else if (i == 5 && das_) return das_->lock(!das_->locked());
+            else if (i == 6 || i == 7) return das_rate(i == 6);
             break;
         case kLock:
             if (milk_) milk_->lock(!milk_->locked());

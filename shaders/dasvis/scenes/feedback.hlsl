@@ -13,7 +13,7 @@ float3 scene(float2 uv, float2 p) {
     // A build-up pulls the zoom harder; the drop throws the turn the other way for a moment.
     float zoom = exp(-DT * (0.3 + 1.2 * BASS * INTENSITY + 1.5 * BUILD));
     float turn = dir * DT * (0.1 + 1.6 * on_beat * INTENSITY - 6 * DROP);
-    float swirl = DT * 0.6 * sin(TIME * 0.21 + SEED * TAU) * r;
+    float swirl = DT * (0.25 + 0.7 * DRIFT.x) * sin(TIME * 0.21 + SEED * TAU) * r;
     float2 q = mul(p, rot(turn + swirl)) * zoom;
     int oct = STEPS(2, 4);
     float2 n = float2(fbm(p * 2 + TIME * 0.15, oct), fbm(p * 2 - TIME * 0.15 + 7.1, oct)) - 0.5;

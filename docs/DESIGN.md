@@ -188,6 +188,11 @@ libVLC (decode, resample to 48 kHz, equalizer, normvol)
 - **DasVis** (`dasvis/*`, plan: `docs/DASVIS-PLAN.md`) is WreckBox's own visualizer, on the app's Direct3D 11 device.
   - **Audio:** `dasvis::Features` gets the same 2,048 heard samples the bars get, one refresh ahead: drum onsets
     (spectral flux), smoothed levels, a beat clock (the library's BPM, else the kicks'), spectrum and waveform.
+  - **Director** (`dasvis/director.*`, phase 5): picks the scene, its layers and its transition at each part of the
+    song map (and on 16-bar phrases in long parts), from the scenes that fit the budget (costs measured per scene and
+    tier, saved per graphics card), weighted by energy and by your likes and skips for the genre (saved in the
+    settings), never one of the last 4. Deterministic from the song's seed. Transitions run in `dasvis.hlsli`'s
+    `main` over the last picture; drop events in the final pass.
   - **Simulations** (phase 4): a scene can have one: particles, a fluid, reaction-diffusion, stars or the spectrum's
     history. It's made when the scene comes on screen, at the tier's size (grids 128 / 192 / 256 cells tall), stepped
     by pixel shaders on ping-pong textures before the scene is drawn, and dropped when the scene goes. Points, stars and

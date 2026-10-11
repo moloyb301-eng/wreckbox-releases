@@ -41,7 +41,7 @@ Ridge vs_ridge(uint id : SV_VertexID) {
     int bin = 16 + int(abs(x) * 170);
     float level = (t_sim.Load(int3(bin - 1, hist, 0)).r + t_sim.Load(int3(bin, hist, 0)).r + t_sim.Load(int3(bin + 1, hist, 0)).r) / 3;
     level = pow(saturate((level - 0.3) / 0.7), 1.5);
-    float y = foot ? -0.03 : level * 0.4 * smoothstep(1, 0.3, abs(x)) * sqrt(INTENSITY);
+    float y = foot ? -0.03 : level * (0.3 + 0.2 * DRIFT.w) * smoothstep(1, 0.3, abs(x)) * sqrt(INTENSITY);
     float z = 0.3 + (float(age) + u_sim.w) * 0.09;
     float cam = 0.3 + 0.35 * BUILD;
     Ridge o;

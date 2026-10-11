@@ -12,6 +12,7 @@
 #include <fstream>
 #include <vector>
 
+#include "dasvis/director.h"
 #include "dasvis_gen/library.h"
 #include "dasvis_gen/ps_bloom_down.h"
 #include "dasvis_gen/ps_bloom_up.h"
@@ -47,7 +48,7 @@ namespace {
 
 // Mirrors the cbuffer in dasvis.hlsli: float4s only, so the C++ and HLSL layouts can't drift apart.
 struct Uniforms {
-    float time[4], res[4], out[4], beat[4], drums[4], tone[4], look[4], post[4], key[4], pal[5][4], pass[4], song[4], drop[4], hits[4], sim[4];
+    float time[4], res[4], out[4], beat[4], drums[4], tone[4], look[4], post[4], key[4], pal[5][4], pass[4], song[4], drop[4], hits[4], sim[4], dir[4], drift[4];
 };
 static_assert(sizeof(Uniforms) % 16 == 0);
 
@@ -71,25 +72,23 @@ enum class Sim {
 struct Scene {
     std::string name;
     ComPtr<ID3D11PixelShader> ps;
-    bool ring = false;  // the spectrum ring over it
     Sim sim = Sim::none;
 };
 
 struct BuiltIn {
-    const char* name;
     const BYTE* code;
     size_t size;
-    bool ring;
     Sim sim;
+    SceneTags tags;  // name, energy, cost class, hero, takes the particle layer, suits the ring
 };
 const BuiltIn kScenes[] = {
-    {"Feedback Classic", k_ps_feedback, sizeof k_ps_feedback, false, Sim::particles},
-    {"Neon Tunnel", k_ps_tunnel, sizeof k_ps_tunnel, true, Sim::none},
-    {"Kaleido Cover", k_ps_kaleido, sizeof k_ps_kaleido, false, Sim::none},
-    {"Ink Ocean", k_ps_ink, sizeof k_ps_ink, false, Sim::fluid},
-    {"Ridge Lines", k_ps_ridges, sizeof k_ps_ridges, false, Sim::ridges},
-    {"Coral", k_ps_coral, sizeof k_ps_coral, false, Sim::coral},
-    {"Galaxy", k_ps_galaxy, sizeof k_ps_galaxy, false, Sim::galaxy},
+    {k_ps_feedback, sizeof k_ps_feedback, Sim::none, {"Feedback Classic", kMid | kPeak, 'L', false, true, false}},
+    {k_ps_tunnel, sizeof k_ps_tunnel, Sim::none, {"Neon Tunnel", kMid | kPeak, 'L', true, true, true}},
+    {k_ps_kaleido, sizeof k_ps_kaleido, Sim::none, {"Kaleido Cover", kCalm | kMid, 'L', false, true, false}},
+    {k_ps_ink, sizeof k_ps_ink, Sim::fluid, {"Ink Ocean", kCalm | kMid, 'M', false, false, false}},
+    {k_ps_ridges, sizeof k_ps_ridges, Sim::ridges, {"Ridge Lines", kCalm | kMid, 'L', false, false, false}},
+    {k_ps_coral, sizeof k_ps_coral, Sim::coral, {"Coral", kCalm | kMid, 'M', false, false, false}},
+    {k_ps_galaxy, sizeof k_ps_galaxy, Sim::galaxy, {"Galaxy", kMid | kPeak, 'M', true, false, false}},
 };
 
 // The simulations' grids by tier, in cells tall: no bigger, as an integrated GPU's textures come out of the PC's RAM
@@ -154,6 +153,16 @@ struct DasVis::Impl {
     bool locked = false, advance_due = false;
     double since_switch = 0, last_bar = 0;
     float transition = 1;
+    // The director's choice on screen: the scene, its transition, its layers.
+    Director dir;
+    Cue cue;
+    Moment now;            // what the director knows this frame (for N / P and skips)
+    long last_part = -1;   // the song map's part on screen (-1: none yet, adopted without a change)
+    int bars_on = 0;       // bars since the scene changed
+    uint32_t picks = 0;    // picks this song
+    uint32_t song_seed = 0;
+    float ring_from = 0;   // the ring's mix when the last change began
+    float drift_seed[4][2] = {};  // the song's drift waves (periods and phases, 0–1)
 
     Target comp[2], lum, spec, wave, cover;
     // The current scene's simulation: made when the scene comes on screen, at its tier's size, and dropped when it goes,
@@ -167,7 +176,7 @@ struct DasVis::Impl {
         uint32_t frames = 0;
         int row = 0;        // Ridge Lines: the newest row
         double row_t = 0;   // and how long ago it was written
-    } sim;
+    } sim, layer;  // the scene's own, and the particle layer over it
     DXGI_FORMAT fine = DXGI_FORMAT_R32G32_FLOAT;  // the reaction-diffusion (16-bit floats are too coarse for it, if the
                                                   // card can't filter 32-bit ones)
     int out_w = 0, out_h = 0;
@@ -187,7 +196,6 @@ struct DasVis::Impl {
     // carries on from the live clock without jumping when the map arrives.
     double map_offset = 0, kick_drift = 0, beats_shift = 0;
     bool had_map = false;
-    float last_drop = 0;
     float gpu_ms = 0;
     double time = 0;
     std::string song, camelot;
@@ -201,7 +209,7 @@ struct DasVis::Impl {
     Palette pal_target{}, pal{};
     bool pal_set = false;
 
-    explicit Impl(const Config& c) : cfg(c), qc(c.start, c.auto_tier, c.max_tier), limiter(c.reduce_flash ? 1 : 3) {}
+    explicit Impl(const Config& c) : cfg(c), qc(c.start, c.auto_tier, c.max_tier), limiter(c.reduce_flash ? 1 : 3) { dir.set_costs(c.costs); }
 
     bool fail(const char* what, HRESULT hr) {
         char buf[160];
@@ -250,7 +258,7 @@ struct DasVis::Impl {
             return fail("vertex shader", hr);
         if (FAILED(dev->CheckFormatSupport(fine, &support)) || !(support & D3D11_FORMAT_SUPPORT_SHADER_SAMPLE)) fine = DXGI_FORMAT_R16G16_FLOAT;
         for (const auto& s : kScenes) {
-            Scene sc{s.name, nullptr, s.ring, s.sim};
+            Scene sc{s.tags.name, nullptr, s.sim};
             if (FAILED(hr = dev->CreatePixelShader(s.code, s.size, nullptr, &sc.ps))) return fail("scene shader", hr);
             scenes.push_back(std::move(sc));
         }
@@ -293,8 +301,16 @@ struct DasVis::Impl {
 
     // MARK: Scenes
 
+    // The director's list: the built-in scenes' tags, and the user's scenes as light ones that suit anything.
+    void tag_scenes() {
+        std::vector<SceneTags> tags;
+        for (size_t i = 0; i < scenes.size(); ++i) tags.push_back(i < builtin ? kScenes[i].tags : SceneTags{scenes[i].name});
+        dir.set_scenes(std::move(tags));
+    }
+
     std::string reload_user() {
         scenes.resize(builtin);
+        tag_scenes();
         if (current >= scenes.size()) current = 0;
         if (previous >= scenes.size()) previous = current;
         user_errors.clear();
@@ -321,7 +337,7 @@ struct DasVis::Impl {
             const std::string name = f.string();
             const HRESULT hr = compile(src.data(), src.size(), name.c_str(), nullptr, D3D_COMPILE_STANDARD_FILE_INCLUDE, "main", "ps_4_0",
                                        D3DCOMPILE_OPTIMIZATION_LEVEL3, 0, &code, &errors);
-            Scene sc{f.stem().string(), nullptr, false};
+            Scene sc{f.stem().string(), nullptr, Sim::none};
             if (SUCCEEDED(hr) && SUCCEEDED(dev->CreatePixelShader(code->GetBufferPointer(), code->GetBufferSize(), nullptr, &sc.ps))) {
                 scenes.push_back(std::move(sc));
             } else {
@@ -332,24 +348,61 @@ struct DasVis::Impl {
             }
         }
         FreeLibrary(dll);
+        tag_scenes();
         return user_errors;
     }
 
-    void switch_to(size_t i) {
+    // Puts the director's cue on screen: a new scene starts its transition; the same one only changes its layers.
+    void apply(const Cue& c) {
         if (scenes.empty()) return;
-        i %= scenes.size();
-        if (i == current) return;
-        previous = current, current = i;
-        transition = 0;
-        since_switch = 0;
-        advance_due = false;
+        ring_from = u.post[3];
+        cue = c;
+        cue.scene %= scenes.size();
+        if (cue.scene == current) return;
+        previous = current, current = cue.scene;
+        transition = 0, since_switch = 0, bars_on = 0, advance_due = false;
+    }
+
+    // What the director knows now, for a pick at the start of a `kind` part (from `from`) with this energy.
+    Moment moment(const Inputs& in, Section kind, Section from, float part_energy) {
+        Moment m;
+        m.seed = song_seed, m.index = picks;
+        m.section = kind, m.from = from, m.drop = kind == Section::drop;
+        m.energy = Director::energy_of(kind, part_energy);
+        m.tier = qc.tier(), m.budget_ms = in.budget_ms, m.intensity = std::clamp(in.intensity, 0, 2), m.glitchy = in.glitchy;
+        return m;
+    }
+
+    // The director picks for `m` (never the scene on screen), and it goes on screen.
+    void choose(const Moment& m) {
+        apply(dir.pick(m, current));
+        ++picks;
+    }
+
+    // N / P: the next or previous scene that fits this PC, dressed by the director.
+    void step_scene(int by) {
+        if (scenes.empty()) return;
+        size_t i = current;
+        for (size_t k = 0; k < scenes.size(); ++k) {
+            i = by > 0 ? (i + 1) % scenes.size() : (i + scenes.size() - 1) % scenes.size();
+            if (dir.fits(i, qc.tier(), now.budget_ms)) break;
+        }
+        Moment m = now;
+        m.drop = false;
+        apply(dir.dress(i, m));
     }
 
     // A new song: its own seed (camera, turn direction, tunnel sides …), palette and starting scene.
     void new_song(const Inputs& in) {
         song = in.song;
-        seed = float(fnv1a(song) % 100000) / 100000.f;
-        if (!locked) switch_to(size_t(seed * float(scenes.size())));
+        song_seed = fnv1a(song);
+        seed = float(song_seed % 100000) / 100000.f;
+        for (int i = 0; i < 4; ++i)
+            for (int k = 0; k < 2; ++k) drift_seed[i][k] = float(fnv1a(song + char('a' + 4 * k + i)) % 1000) / 1000.f;
+        dir.reset();
+        picks = 0, last_part = -1;
+        dir.set_taste(in.taste);
+        if (!locked) choose(moment(in, Section::intro, Section::intro, 0.5f));
     }
 
     // The palette the picture fades towards: the cover's, or five colours around the song's key.
@@ -449,15 +502,15 @@ struct DasVis::Impl {
 
     // Makes the simulation `kind` needs at this tier and screen shape, unless it's there already (dropping any other).
     // Grids are kGrid cells tall; the particle layer is that number squared (16k, 37k, 65k).
-    void ensure_sim(Sim kind, float aspect) {
+    void ensure_sim(SimState& s, Sim kind, float aspect) {
         const int n = kGrid[int(qc.tier())];
         int w = 0, h = 0;
         if (kind == Sim::fluid || kind == Sim::coral) w = std::max(16, int(std::lround(float(n) * aspect))), h = n;
         else if (kind == Sim::particles) w = h = n;
         else if (kind == Sim::ridges) w = int(Features::kBins), h = kHistory;
-        if (sim.kind == kind && sim.tier == qc.tier() && sim.w == w && sim.h == h) return;
-        sim = {};
-        sim.kind = kind, sim.tier = qc.tier(), sim.w = w, sim.h = h;
+        if (s.kind == kind && s.tier == qc.tier() && s.w == w && s.h == h) return;
+        s = {};
+        s.kind = kind, s.tier = qc.tier(), s.w = w, s.h = h;
         if (!w) return;
         const float zero[4] = {}, food[4] = {1, 0, 0, 0};
         const auto both = [&](Target* t, DXGI_FORMAT f, const float* clear) {
@@ -467,65 +520,66 @@ struct DasVis::Impl {
             }
         };
         switch (kind) {
-        case Sim::particles: both(sim.a, DXGI_FORMAT_R32G32B32A32_FLOAT, zero); break;
-        case Sim::fluid: both(sim.a, DXGI_FORMAT_R16G16_FLOAT, zero), both(sim.b, DXGI_FORMAT_R16G16_FLOAT, zero); break;
-        case Sim::coral: both(sim.a, fine, food); break;  // all food and nothing growing: the first frame seeds it
+        case Sim::particles: both(s.a, DXGI_FORMAT_R32G32B32A32_FLOAT, zero); break;
+        case Sim::fluid: both(s.a, DXGI_FORMAT_R16G16_FLOAT, zero), both(s.b, DXGI_FORMAT_R16G16_FLOAT, zero); break;
+        case Sim::coral: both(s.a, fine, food); break;  // all food and nothing growing: the first frame seeds it
         case Sim::ridges:
-            sim.a[0] = make(w, h, DXGI_FORMAT_R32_FLOAT);
-            if (sim.a[0].rtv) ctx->ClearRenderTargetView(sim.a[0].rtv.Get(), zero);
+            s.a[0] = make(w, h, DXGI_FORMAT_R32_FLOAT);
+            if (s.a[0].rtv) ctx->ClearRenderTargetView(s.a[0].rtv.Get(), zero);
             break;
         default: break;
         }
     }
 
     // One frame of the simulation, before the scene is drawn.
-    void step_sim(const Features& f, float dt) {
-        set_sim(float(sim.w), float(sim.h), float(sim.frames), 0);
-        const int level = int(sim.tier);
-        switch (sim.kind) {
+    void step_sim(SimState& s, const Features& f, float dt) {
+        set_sim(float(s.w), float(s.h), float(s.frames), 0);
+        const int level = int(s.tier);
+        switch (s.kind) {
         case Sim::particles:
-            pass(ps_update.Get(), sim.a[sim.ai ^ 1], sim.a[sim.ai], nullptr, false);
-            sim.ai ^= 1;
+            pass(ps_update.Get(), s.a[s.ai ^ 1], s.a[s.ai], nullptr, false);
+            s.ai ^= 1;
             break;
         case Sim::fluid:  // the flow ends up back in a[0]
-            pass(ps_velocity.Get(), sim.a[1], sim.a[0], nullptr, false);
-            pass(ps_divergence.Get(), sim.b[sim.bi ^ 1], sim.a[1], nullptr, false, sim.b[sim.bi].srv.Get());
-            sim.bi ^= 1;
-            for (int i = 0; i < 8 + 4 * level; ++i) pass(ps_jacobi.Get(), sim.b[sim.bi ^ 1], sim.b[sim.bi], nullptr, false), sim.bi ^= 1;
-            pass(ps_gradient.Get(), sim.a[0], sim.a[1], nullptr, false, sim.b[sim.bi].srv.Get());
+            pass(ps_velocity.Get(), s.a[1], s.a[0], nullptr, false);
+            pass(ps_divergence.Get(), s.b[s.bi ^ 1], s.a[1], nullptr, false, s.b[s.bi].srv.Get());
+            s.bi ^= 1;
+            for (int i = 0; i < 8 + 4 * level; ++i) pass(ps_jacobi.Get(), s.b[s.bi ^ 1], s.b[s.bi], nullptr, false), s.bi ^= 1;
+            pass(ps_gradient.Get(), s.a[0], s.a[1], nullptr, false, s.b[s.bi].srv.Get());
             break;
         case Sim::coral:
-            set_sim(float(sim.w), float(sim.h), sim.frames == 0 ? 1.f : 0.f, 0);
-            for (int i = 0; i < 2 + level; ++i) pass(ps_coral_step.Get(), sim.a[sim.ai ^ 1], sim.a[sim.ai], nullptr, false), sim.ai ^= 1;
+            set_sim(float(s.w), float(s.h), s.frames == 0 ? 1.f : 0.f, 0);
+            for (int i = 0; i < 2 + level; ++i) pass(ps_coral_step.Get(), s.a[s.ai ^ 1], s.a[s.ai], nullptr, false), s.ai ^= 1;
             break;
         case Sim::ridges:  // a new row of history every 1/30 s, whatever the frame rate
-            sim.row_t += dt;
-            if (sim.row_t >= 1 / kRowRate && sim.a[0].tex) {
-                sim.row_t = std::fmod(sim.row_t, 1 / kRowRate);
-                sim.row = (sim.row + 1) % kHistory;
-                const D3D11_BOX box{0, UINT(sim.row), 0, UINT(Features::kBins), UINT(sim.row + 1), 1};
-                ctx->UpdateSubresource(sim.a[0].tex.Get(), 0, &box, f.spectrum().data(), UINT(Features::kBins * sizeof(float)), 0);
+            s.row_t += dt;
+            if (s.row_t >= 1 / kRowRate && s.a[0].tex) {
+                s.row_t = std::fmod(s.row_t, 1 / kRowRate);
+                s.row = (s.row + 1) % kHistory;
+                const D3D11_BOX box{0, UINT(s.row), 0, UINT(Features::kBins), UINT(s.row + 1), 1};
+                ctx->UpdateSubresource(s.a[0].tex.Get(), 0, &box, f.spectrum().data(), UINT(Features::kBins * sizeof(float)), 0);
             }
             break;
         default: break;
         }
-        ++sim.frames;
+        ++s.frames;
     }
 
     // What the scene's own pass reads of its simulation (t5).
-    ID3D11ShaderResourceView* sim_view() const {
-        if (sim.kind == Sim::fluid) return sim.a[0].srv.Get();
-        if (sim.kind == Sim::coral) return sim.a[sim.ai].srv.Get();
+    static ID3D11ShaderResourceView* sim_view(const SimState& s) {
+        if (s.kind == Sim::fluid) return s.a[0].srv.Get();
+        if (s.kind == Sim::coral) return s.a[s.ai].srv.Get();
         return nullptr;
     }
 
     // The simulation's points or lines, over the scene.
-    void draw_sim(const Target& dst) {
-        const int level = int(sim.tier);
-        switch (sim.kind) {
+    void draw_sim(const SimState& s, const Target& dst) {
+        const int level = int(s.tier);
+        switch (s.kind) {
         case Sim::particles:
-            if (sim.a[sim.ai].srv)
-                draw(vs_point.Get(), ps_point.Get(), dst, D3D11_PRIMITIVE_TOPOLOGY_POINTLIST, UINT(sim.w * sim.h), sim.a[sim.ai].srv.Get(), true);
+            set_sim(float(s.w), float(s.h), float(s.frames), 0);
+            if (s.a[s.ai].srv)
+                draw(vs_point.Get(), ps_point.Get(), dst, D3D11_PRIMITIVE_TOPOLOGY_POINTLIST, UINT(s.w * s.h), s.a[s.ai].srv.Get(), true);
             break;
         case Sim::galaxy: {
             const UINT stars = 65536u << (2 * level);  // 64k, 256k, 1M
@@ -534,10 +588,10 @@ struct DasVis::Impl {
             break;
         }
         case Sim::ridges:
-            if (sim.a[0].srv) {
+            if (s.a[0].srv) {
                 const int rows = 64 + 32 * level, segs = 96 + 64 * level;
-                set_sim(float(rows), float(segs), float(sim.row), float(sim.row_t * kRowRate));
-                draw(vs_ridge.Get(), ps_ridge.Get(), dst, D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST, UINT(rows * segs * 6), sim.a[0].srv.Get(), false);
+                set_sim(float(rows), float(segs), float(s.row), float(s.row_t * kRowRate));
+                draw(vs_ridge.Get(), ps_ridge.Get(), dst, D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST, UINT(rows * segs * 6), s.a[0].srv.Get(), false);
             }
             break;
         default: break;
@@ -650,20 +704,52 @@ struct DasVis::Impl {
         last_t = now_t;
         fade_palette(dt);
 
-        // Auto-advance: when it's time, on the next bar's downbeat (with the map: the next 4-bar boundary). And with
-        // the map, a new scene on each drop (if the last change wasn't just now).
+        // The director. With the map: a pick as each part of the song starts (they start on a 4-bar downbeat; a drop
+        // gets a hero), and on a 16-bar phrase when a scene has been on for long enough. Without: when the scene's time
+        // is up (shorter on insane, longer on chill), on a bar's downbeat.
         since_switch += dt;
-        if (!locked && cfg.auto_advance > 0 && since_switch > cfg.auto_advance) advance_due = true;
         const bool new_bar = bar < last_bar;
-        if (advance_due && new_bar && (!has_map || ms.bar % 4 == 0)) switch_to((current + 1) % scenes.size());
-        if (has_map && !locked && ms.drop > 0.9f && last_drop < 0.9f && since_switch > 8) switch_to((current + 1) % scenes.size());
+        bars_on += new_bar;
         last_bar = bar;
-        last_drop = ms.drop;
-        const float beat_s = float(60.0 / std::max(60.0, f.bpm));
-        transition = std::min(1.f, transition + dt / std::max(0.4f, 2 * beat_s));  // two beats
+        now = moment(in, ms.section, ms.section, has_map ? ms.energy : f.energy);
+        dir.set_taste(in.taste);
+        if (!locked && has_map) {
+            const auto& parts = in.map->parts;
+            const auto it = std::upper_bound(parts.begin(), parts.end(), now_t, [](double t, const SongMap::Part& p) { return t < p.start; });
+            const long part = long(it - parts.begin()) - 1;
+            if (last_part < 0 || part < 0) {
+                last_part = part;  // the map just arrived, or before the first part: carry on
+            } else if (part != last_part) {
+                last_part = part;
+                const auto& p = parts[size_t(part)];
+                choose(moment(in, p.kind, part ? parts[size_t(part) - 1].kind : p.kind, p.energy));
+            } else if (new_bar && ms.bar % 16 == 0 && bars_on >= Director::phrase_bars(in.intensity) && ms.section != Section::drop) {
+                choose(moment(in, ms.section, ms.section, ms.energy));
+            }
+        } else if (!locked) {
+            const double every = cfg.auto_advance * (in.intensity <= 0 ? 2 : in.intensity >= 2 ? 0.5 : 1);
+            if (every > 0 && since_switch > every) advance_due = true;
+            const float e = f.energy;
+            if (advance_due && new_bar) choose(moment(in, e > 0.75f ? Section::chorus : Section::verse, Section::verse, e));
+        }
+        const float beat_s = float(60.0 / std::max(60.0, has_map ? in.map->bpm : f.bpm));
+        transition = std::min(1.f, transition + dt / std::max(0.25f, cue.beats * beat_s));
+        // The drop's event: the next drop's while it's coming, this one's while it lands.
+        Event event = Event::none;
+        if (has_map && !in.map->drops.empty()) {
+            size_t k = size_t(std::upper_bound(in.map->drops.begin(), in.map->drops.end(), now_t) - in.map->drops.begin());
+            if (ms.drop > 0 && k) --k;
+            event = Director::event(song_seed, k, std::clamp(in.intensity, 0, 2));
+        }
 
         read_timers();
         read_lum(dt);
+        // What this scene costs here, for the director: measured once it's settled, scaled to the tier's smallest size
+        // (cost goes roughly with the pixels).
+        if (transition >= 1 && since_switch > 3 && gpu_ms > 0 && frame % 30 == 0) {
+            const float smin = tier_spec(qc.tier()).scale_min, sc = qc.scale();
+            dir.set_cost(scenes[current].name, qc.tier(), gpu_ms * (smin / sc) * (smin / sc));
+        }
         bind_pipeline();
         const bool changed = gpu_ms > 0 && qc.update(gpu_ms, in.budget_ms, dt);  // acts on real measurements only
         if (changed || out_w != w || out_h != h || !comp[0].tex) resize(w, h);
@@ -682,8 +768,15 @@ struct DasVis::Impl {
         set(u.song, float(ms.phrase_phase), float(int(ms.section)), ms.section_t, ms.build);
         set(u.drop, ms.drop, std::min(ms.to_drop, 99.f), ms.gap ? 1.f : 0.f, ms.energy);
         set(u.look, intensity, flash, limiter.gain(), has_cover ? 1.f : 0.f);
-        const float ring = scenes[previous].ring + (float(scenes[current].ring) - float(scenes[previous].ring)) * transition;
+        const float ring = ring_from + ((cue.ring ? 1.f : 0.f) - ring_from) * transition;
         set(u.post, 0.08f + 0.04f * f.energy, float(std::max<size_t>(1, bloom.size())), 0.018f, ring);
+        set(u.dir, float(int(cue.transition)), float(int(event)), cue.particles ? 1.f : 0.f, 0);
+        // Drift: four slow waves from the song's seed, so a long section keeps changing without looping.
+        for (int i = 0; i < 4; ++i) {
+            const float a = drift_seed[i][0], b = drift_seed[i][1];
+            u.drift[i] = 0.5f + 0.3f * std::sin(float(time) * 6.2832f / (40 + 50 * a) + 6.2832f * b) +
+                         0.2f * std::sin(float(time) * 6.2832f / (17 + 20 * b) + 6.2832f * a);
+        }
         u.key[3] = ts.quality >= 0.5f ? 0.0015f + 0.005f * drv.kick * intensity + 0.008f * ms.drop * flash : 0.f;
 
         float sp[Features::kBins * 2];
@@ -695,12 +788,15 @@ struct DasVis::Impl {
         const bool timing = !tm.issued;  // a query still in flight from four frames ago is skipped, not overwritten
         if (timing) ctx->Begin(tm.disjoint.Get()), ctx->End(tm.t0.Get());
 
-        ensure_sim(scenes[current].sim, float(w) / float(h));
-        step_sim(f, dt);
+        ensure_sim(sim, scenes[current].sim, float(w) / float(h));
+        ensure_sim(layer, cue.particles ? Sim::particles : Sim::none, float(w) / float(h));
+        step_sim(layer, f, dt);
+        step_sim(sim, f, dt);  // last: the scene's pass reads its u_sim
         const int prev = cur;
         cur ^= 1;
-        pass(scenes[current].ps.Get(), comp[cur], comp[prev], nullptr, false, sim_view());
-        draw_sim(comp[cur]);
+        pass(scenes[current].ps.Get(), comp[cur], comp[prev], nullptr, false, sim_view(sim));
+        draw_sim(sim, comp[cur]);
+        draw_sim(layer, comp[cur]);
         const Target* src = &comp[cur];
         for (auto& b : bloom) pass(ps_down.Get(), b, *src, nullptr, false), src = &b;
         if (!bloom.empty()) pass(ps_lum.Get(), lum, bloom.back(), nullptr, false);
@@ -746,11 +842,19 @@ void DasVis::set_cover(const uint8_t* bgra, int w, int h) {
     if (ok()) p_->set_cover(bgra, w, h);
 }
 void DasVis::next() {
-    if (ok()) p_->switch_to(p_->current + 1);
+    if (ok()) p_->step_scene(1);
 }
 void DasVis::previous() {
-    if (ok()) p_->switch_to(p_->current + p_->scenes.size() - 1);
+    if (ok()) p_->step_scene(-1);
 }
+void DasVis::skip() {
+    if (!ok()) return;
+    Moment m = p_->now;
+    m.drop = false;
+    p_->choose(m);
+}
+std::map<std::string, float> DasVis::costs() const { return p_->dir.costs(); }
+bool DasVis::particles() const { return p_->cue.particles; }
 void DasVis::lock(bool on) { p_->locked = on, p_->advance_due = false; }
 bool DasVis::locked() const { return p_->locked; }
 void DasVis::set_auto_advance(double seconds) { p_->cfg.auto_advance = seconds; }
@@ -770,6 +874,12 @@ float DasVis::flash_budget() const { return p_->limiter.budget(); }
 double DasVis::map_offset() const { return p_->map_offset; }
 
 const char* library_source() { return k_library; }
+
+std::vector<SceneTags> builtin_scenes() {
+    std::vector<SceneTags> t;
+    for (const auto& s : kScenes) t.push_back(s.tags);
+    return t;
+}
 
 void prepare_user_dir(const std::filesystem::path& dir) {
     std::error_code ec;

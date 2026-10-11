@@ -54,7 +54,9 @@ json VisOptions::to_json() const {
                         {"saveBattery", das_battery},
                         {"reduceFlashing", das_reduce_flash},
                         {"fastGpu", das_fast_gpu},
-                        {"tiers", das_tiers}}}};
+                        {"tiers", das_tiers},
+                        {"costs", das_costs},
+                        {"taste", das_taste}}}};
 }
 
 VisOptions VisOptions::from_json(const json& j) {
@@ -83,6 +85,8 @@ VisOptions VisOptions::from_json(const json& j) {
         o.das_reduce_flash = d->value("reduceFlashing", o.das_reduce_flash);
         o.das_fast_gpu = d->value("fastGpu", o.das_fast_gpu);
         if (const auto t = d->find("tiers"); t != d->end() && t->is_object()) o.das_tiers = *t;
+        if (const auto t = d->find("costs"); t != d->end() && t->is_object()) o.das_costs = *t;
+        if (const auto t = d->find("taste"); t != d->end() && t->is_object()) o.das_taste = *t;
     }
     return o;
 }

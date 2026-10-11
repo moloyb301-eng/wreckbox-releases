@@ -1,4 +1,4 @@
-// The particle layer, over Feedback Classic: N × N particles (16k on old PCs, 65k on fast ones) whose position and
+// The particle layer, which the director puts over some scenes (Feedback Classic, Neon Tunnel, Kaleido Cover): N × N particles (16k on old PCs, 65k on fast ones) whose position and
 // velocity live in a float texture, moved on by a pixel shader each frame and drawn as points added to the picture (the
 // feedback turns them into trails). They drift on curl noise (it swirls but never bunches up), faster with the lead;
 // each kick throws a share of them off the ring; the hats make a few sparkle.
@@ -7,7 +7,7 @@
 // u_sim: N, N, frames since the layer was made.
 #include "dasvis.hlsli"
 
-// Feedback Classic's ring (its radius at rest): where the particles are born.
+// Where the particles are born: a ring round the middle (Feedback Classic's ring, the tunnel's far end).
 float ring_r() { return 0.2 * (1 - 0.35 * BUILD) * (1 + 0.6 * DROP); }
 
 float4 ps_update(VsOut v) : SV_Target {

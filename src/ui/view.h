@@ -356,6 +356,10 @@ private:
     bool das_dev_ = false;       // Ctrl+Shift+D: the map drawn over the picture
     double das_song_t_ = 0;      // where the song is, for the frame being drawn
     std::wstring das_status_;    // the panel's line: the section, a build-up's countdown, "Analysing the song…", "Live"
+    std::string das_gpu_;        // the graphics card it was made on (its measured costs are saved under it)
+    std::string das_genre_ = "\x01";  // the genre whose likes are loaded (lower case, "" none; "\x01" none loaded yet)
+    std::map<std::string, float> das_taste_;  // that genre's likes and skips: scene → weight
+    void das_rate(bool like);    // F: more of this scene for this genre; X: less, and another now
     void das_request_map(const player::Item& item, double bpm);
     void das_prepare_next();     // the next song in the queue, so its map is ready when it starts
     void das_dev_view(float W);

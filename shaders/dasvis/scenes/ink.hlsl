@@ -23,7 +23,7 @@ void jets(float2 p, out float2 push, out float3 dye) {
     }
     // The lead's current: a jet going round the middle.
     float t = TIME * 0.35 + SEED * TAU;
-    float2 at = float2(cos(t) * 0.3 * ASPECT, sin(t * 1.3) * 0.25);
+    float2 at = float2(cos(t) * (0.15 + 0.2 * DRIFT.x) * ASPECT, sin(t * 1.3) * (0.15 + 0.15 * DRIFT.y));
     float g = exp(-dot(p - at, p - at) * 250);
     push += float2(-sin(t), cos(t)) * g * (0.6 + 4 * LEAD) * INTENSITY;
     dye += PAL(0.85 + 0.1 * sin(TIME * 0.2)) * g * 4 * LEAD;

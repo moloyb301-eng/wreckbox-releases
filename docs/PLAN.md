@@ -685,7 +685,9 @@ CPU and memory than MilkDrop (≤ +20 MB and < 5 % of a core at Low tier).
 - [x] Phase 4: Ink Ocean (fluid), Coral (reaction-diffusion), Galaxy (a million stars on High), Ridge Lines, a particle
       layer over Feedback Classic. Each simulation exists only while its scene is on screen. Details:
       `docs/DASVIS-PLAN.md`
-- [ ] Phase 5: the director
+- [x] Phase 5: the director: scenes picked by the song's sections, energy, this PC's budget and your likes (F) and
+      skips (X); transitions on downbeats; shockwave and white-out on drops; parameters drift. Details:
+      `docs/DASVIS-PLAN.md`
 - [ ] Phase 6: hero scenes, drop events, title cards; DasVis becomes the default
 - [ ] Phase 7: phone VJ deck, room lights, video export, Spout, wallpaper, lyrics (opt-in)
 - [ ] Phase 8 (optional): Demucs stems, MilkDrop as a layer

@@ -13,6 +13,8 @@
 #include <cmath>
 #include <cstdio>
 #include <filesystem>
+#include <format>
+#include <map>
 #include <fstream>
 #include <numbers>
 #include <random>
@@ -20,6 +22,7 @@
 
 #include "dasvis/control.h"
 #include "dasvis/dasvis.h"
+#include "dasvis/director.h"
 #include "dasvis/features.h"
 #include "dasvis/palette.h"
 #include "dasvis/songmap.h"
@@ -560,6 +563,117 @@ void gpu(bool fl10) {
     fs::remove_all(dir);
 }
 
+// The director on its own: a song's sections in, scenes out.
+void director() {
+    std::vector<SceneTags> tags = builtin_scenes();
+    tags.push_back({"Heavy", kCalm | kMid | kPeak, 'H'});  // a heavy scene, never measured
+    const size_t heavy = tags.size() - 1;
+    const Section song[] = {Section::intro, Section::verse, Section::build, Section::drop, Section::breakdown, Section::verse,
+                            Section::build, Section::drop, Section::chorus, Section::outro};
+    // The scenes for `rounds` passes through the song: index, and whether it was a drop's.
+    const auto run = [&](uint32_t seed, Tier tier, const std::map<std::string, float>& costs, const std::map<std::string, float>* taste,
+                         int rounds) {
+        Director d(tags);
+        d.set_costs(costs);
+        d.set_taste(taste);
+        std::vector<std::pair<size_t, bool>> out;
+        size_t current = 0;
+        uint32_t index = 0;
+        for (int r = 0; r < rounds; ++r)
+            for (size_t i = 0; i < std::size(song); ++i) {
+                Moment m;
+                m.seed = seed, m.index = index++, m.section = song[i], m.from = i ? song[i - 1] : song[i];
+                m.drop = song[i] == Section::drop, m.energy = Director::energy_of(song[i], 0.6f), m.tier = tier, m.budget_ms = 13;
+                current = d.pick(m, current).scene;
+                out.emplace_back(current, m.drop);
+            }
+        return out;
+    };
+    const auto a = run(42, Tier::medium, {}, nullptr, 20), b = run(42, Tier::medium, {}, nullptr, 20), c = run(43, Tier::medium, {}, nullptr, 20);
+    CHECK(a == b, "the same seed gives the same scenes");
+    CHECK(a != c, "another seed gives other scenes");
+    int repeats = 0, unheroic = 0, heavy_on_low = 0;
+    for (size_t i = 0; i < a.size(); ++i) {
+        if (a[i].second) unheroic += !tags[a[i].first].hero;
+        else
+            for (size_t k = i >= 4 ? i - 4 : 0; k < i; ++k) repeats += a[k].first == a[i].first;
+    }
+    CHECK(repeats == 0, "no scene repeats within 4 picks (%d did)", repeats);
+    CHECK(unheroic == 0, "every drop gets a hero scene (%d didn't)", unheroic);
+    // Low tier: a scene measured over the budget, and a heavy one not measured yet, are never picked.
+    for (const auto& [i, drop] : run(7, Tier::low, {{"Coral|Low", 40.f}}, nullptr, 40)) heavy_on_low += i == heavy || tags[i].name == "Coral";
+    CHECK(heavy_on_low == 0, "Low tier never picks a scene that doesn't fit (%d times)", heavy_on_low);
+    int heavy_on_high = 0;
+    for (const auto& [i, drop] : run(7, Tier::high, {}, nullptr, 40)) heavy_on_high += i == heavy;
+    CHECK(heavy_on_high > 0, "High tier picks the heavy scene");
+    // Likes and skips: a liked scene comes up more often than a skipped one.
+    const std::map<std::string, float> taste{{"Kaleido Cover", 4.f}, {"Ridge Lines", 0.15f}};
+    int liked = 0, skipped = 0;
+    for (const auto& [i, drop] : run(9, Tier::medium, {}, &taste, 40)) liked += tags[i].name == "Kaleido Cover", skipped += tags[i].name == "Ridge Lines";
+    CHECK(liked > 2 * skipped, "liked %d times, skipped %d times", liked, skipped);
+    // Transitions and events.
+    Director d(tags);
+    Moment m;
+    m.section = Section::drop, m.from = Section::build, m.drop = true;
+    CHECK(d.dress(1, m).transition == Transition::zoom, "build-up to drop: zoom through");
+    m.from = Section::verse;
+    CHECK(d.dress(1, m).transition == Transition::shatter, "into a drop: shatter");
+    m.drop = false, m.glitchy = true;
+    CHECK(d.dress(1, m).transition == Transition::glitch, "dubstep: glitch");
+    int whiteouts = 0;
+    for (size_t k = 0; k < 50; ++k) whiteouts += Director::event(5, k, 0) != Event::shockwave;
+    CHECK(whiteouts == 0, "chill: no white-outs");
+    std::printf("  director: %zu picks, no repeats within 4, heroes on drops; liked %d, skipped %d\n", a.size(), liked, skipped);
+}
+
+// The director in the renderer: scenes change only where a part of the song starts, or on a 16-bar phrase after a
+// scene has been on long enough; a drop gets a hero; the same song plays out the same way twice.
+void director_timing() {
+    ComPtr<ID3D11Device> dev;
+    const D3D_FEATURE_LEVEL fl = D3D_FEATURE_LEVEL_10_0;
+    if (FAILED(D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, D3D11_CREATE_DEVICE_BGRA_SUPPORT, &fl, 1, D3D11_SDK_VERSION, &dev, nullptr, nullptr)))
+        return std::puts("FAIL: no WARP device"), void(++failures);
+    SongMap map;  // 120 BPM: a bar is 2 s, a 16-bar phrase 32 s
+    map.bpm = 120, map.duration = 176;
+    for (double t = 0; t < 176; t += 0.5) map.beats.push_back(t);
+    const std::pair<double, Section> parts[] = {{0, Section::intro},  {16, Section::verse},     {80, Section::build},
+                                                {96, Section::drop},  {128, Section::breakdown}, {160, Section::outro}};
+    for (size_t i = 0; i < std::size(parts); ++i)
+        map.parts.push_back({parts[i].first, i + 1 < std::size(parts) ? parts[i + 1].first : 176, parts[i].second, parts[i].second == Section::drop ? 1.f : 0.5f});
+    map.drops = {96}, map.gaps = {-1};
+    D3D11_TEXTURE2D_DESC td{96, 54, 1, 1, DXGI_FORMAT_B8G8R8A8_UNORM, {1, 0}, D3D11_USAGE_DEFAULT, D3D11_BIND_RENDER_TARGET};
+    ComPtr<ID3D11Texture2D> screen;
+    dev->CreateTexture2D(&td, nullptr, &screen);
+    const auto play = [&] {
+        Config cfg;
+        cfg.start = Tier::low, cfg.auto_tier = false;
+        DasVis dv(dev.Get(), cfg);
+        Features f;
+        Inputs in;
+        in.f = &f, in.song = "director-song", in.map = &map, in.intensity = 2;  // insane: a new scene every 16 bars at most
+        std::vector<std::pair<double, std::string>> changes;
+        for (int i = 0; i < 176 * 30; ++i) {
+            in.song_time = i / 30.0, in.dt = 1 / 30.f;
+            dv.render(in, screen.Get());
+            if (changes.empty() || changes.back().second != dv.scene_name()) changes.emplace_back(in.song_time, dv.scene_name());
+        }
+        return changes;
+    };
+    const auto one = play(), two = play();
+    CHECK(one == two, "the same song plays out the same way twice");
+    // Expected: the start, each part, and the verse's 16-bar phrase at 64 s (on 32 bars of verse).
+    const double expect[] = {0, 16, 64, 80, 96, 128, 160};
+    bool on_time = one.size() == std::size(expect);
+    for (size_t i = 0; on_time && i < one.size(); ++i) on_time = one[i].first >= expect[i] && one[i].first < expect[i] + 0.05;
+    std::string got;
+    for (const auto& [t, name] : one) got += std::format("{:.2f} {}; ", t, name);
+    CHECK(on_time, "scene changes at the starts of parts and phrases: %s", got.c_str());
+    const auto at_drop = std::find_if(one.begin(), one.end(), [](const auto& c) { return c.first >= 96; });
+    CHECK(at_drop != one.end() && (at_drop->second == "Neon Tunnel" || at_drop->second == "Galaxy"), "the drop gets a hero: %s",
+          at_drop != one.end() ? at_drop->second.c_str() : "none");
+    std::printf("  director in the renderer: %s\n", got.c_str());
+}
+
 // dasvis_tests --map <audio file> [bpm]: prints a real song's map instead of testing (for tuning the analysis).
 int print_map(const fs::path& file, double bpm) {
     const auto t0 = std::chrono::steady_clock::now();
@@ -584,6 +698,8 @@ int main(int argc, char** argv) {
     features();
     limiter();
     quality();
+    director();
+    director_timing();
     gpu(false);
     gpu(true);
     if (failures) {

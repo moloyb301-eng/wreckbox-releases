@@ -30,6 +30,9 @@ cbuffer DasVis : register(b0) {
                      // quiet bars before a drop), the part's energy (0–1)
     float4 u_hits;   // kick, snare, hats hit in this frame (1 / 0), seconds since the last kick
     float4 u_sim;    // the built-in scenes' simulations: grid size and two values of their own (0 in your scenes)
+    float4 u_dir;    // the director: transition kind (0 crossfade, 1 wipe, 2 zoom through, 3 shatter, 4 glitch), the
+                     // drop's event (0 none, 1 shockwave, 2 white-out, 3 both), the particle layer (0 / 1)
+    float4 u_drift;  // four slow waves (0–1, tens of seconds each) from the song's seed: let a parameter wander
 };
 
 #define TIME u_time.x
@@ -69,6 +72,8 @@ cbuffer DasVis : register(b0) {
 #define TO_DROP u_drop.y
 #define GAP u_drop.z        // the breath before the drop: hold back
 #define PART_ENERGY u_drop.w
+#define DRIFT u_drift       // float4, each 0–1, changing slowly: a long section keeps evolving
+#define EVENT int(u_dir.y + 0.5)
 
 Texture2D t_src : register(t0);    // scenes: the last frame; post passes: their input
 Texture2D t_cover : register(t1);  // the album cover (when HAS_COVER)
@@ -143,13 +148,51 @@ struct VsOut {
 #ifdef DASVIS_SCENE
 float3 scene(float2 uv, float2 p);
 
+// Into a new scene, the way the director chose: the last picture (PREV, which keeps whatever hasn't been replaced yet)
+// gives way to the new one `c`. Only the new scene is drawn: the old one is its last frames, so a change costs nothing.
+float3 into(float2 uv, float3 c) {
+    float t = TRANSITION;
+    int kind = int(u_dir.x + 0.5);
+    float3 o;
+    if (kind == 0) {  // crossfade (calm to calm)
+        o = lerp(PREV(uv), c, smoothstep(0, 1, t));
+    } else if (kind == 1) {  // wipe: along a noise pattern, with a soft edge
+        float n = fbm(uv * float2(ASPECT, 1) * 2.5 + SEED * 9, 3);
+        o = lerp(PREV(uv), c, smoothstep(n - 0.06, n + 0.06, lerp(-0.1, 1.0, t)));
+    } else if (kind == 2) {  // zoom through: it rushes past you
+        o = lerp(PREV(0.5 + (uv - 0.5) * (1 - 0.12 * t)), c, t * t);
+    } else if (kind == 3) {  // shatter: shards of the last picture, each going at its own moment, edges lit as they crack
+        float2 q = uv * float2(ASPECT, 1) * 6, cell = floor(q), id = cell;
+        float d1 = 9, d2 = 9;
+        [unroll] for (int y = -1; y <= 1; ++y) {
+            [unroll] for (int x = -1; x <= 1; ++x) {
+                float2 at = cell + float2(x, y);
+                float d = distance(q, at + float2(hash12(at), hash12(at + 7.7)));
+                if (d < d1) {
+                    d2 = d1;
+                    d1 = d;
+                    id = at;
+                } else {
+                    d2 = min(d2, d);
+                }
+            }
+        }
+        float gone = step(hash12(id + 3.1) * 0.85, t);
+        float3 old = PREV(0.5 + (uv - 0.5) * (1 - 0.03 * t));  // flying at you
+        o = lerp(old + PAL(0.95) * smoothstep(0.08, 0, d2 - d1) * 1.5 * FLASH * t, c, gone);
+    } else {  // glitch: bands of the last picture, shifted and split into red, green and blue, cutting over band by band
+        float r = hash12(float2(floor(uv.y * 24), floor(TIME * 20)));
+        float sh = (r - 0.5) * 0.06;
+        float3 g = float3(PREV(uv + float2(sh + 0.01, 0)).r, PREV(uv + float2(sh, 0)).g, PREV(uv + float2(sh - 0.01, 0)).b);
+        o = r < t ? c : g;
+    }
+    return o;
+}
+
 float4 main(VsOut v) : SV_Target {
     float2 p = (v.uv - 0.5) * float2(ASPECT, 1);
     float3 c = scene(v.uv, p);
-    if (TRANSITION < 1) {  // into a new scene: the last picture zooms past and fades under it
-        float t = smoothstep(0, 1, TRANSITION);
-        c = lerp(PREV(0.5 + (v.uv - 0.5) * (1 - 0.1 * t)), c, t);
-    }
+    if (TRANSITION < 1) c = into(v.uv, c);
     // One bad pixel (NaN or infinity: all exponent bits set) must not spread through the feedback. A bit test, as the
     // compiler assumes floats are never NaN and would drop isnan().
     if (any((asuint(c) & 0x7F800000) == 0x7F800000)) c = 0;

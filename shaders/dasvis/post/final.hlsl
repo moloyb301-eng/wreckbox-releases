@@ -26,20 +26,28 @@ float4 ring(float2 p) {
 }
 
 float4 main(VsOut v) : SV_Target {
-    float2 d = v.uv - 0.5;
+    float2 d = v.uv - 0.5, uv = v.uv;
     float ca = u_key.w;
+    // The drop's shockwave: a ring of refraction running out from the middle over the bar, splitting the colours.
+    if ((EVENT == 1 || EVENT == 3) && DROP > 0) {
+        float2 pd = d * float2(ASPECT, 1);
+        float x = (length(pd) - (1 - DROP) * 1.2) / 0.05;
+        float band = exp(-x * x) * DROP;
+        uv -= normalize(pd + 1e-5) / float2(ASPECT, 1) * band * 0.04;
+        ca += band * 0.03;
+    }
     float3 c;
     if (ca > 0) {
-        c.r = t_src.SampleLevel(s_clamp, v.uv - d * ca, 0).r;
-        c.g = t_src.SampleLevel(s_clamp, v.uv, 0).g;
-        c.b = t_src.SampleLevel(s_clamp, v.uv + d * ca, 0).b;
+        c.r = t_src.SampleLevel(s_clamp, uv - d * ca, 0).r;
+        c.g = t_src.SampleLevel(s_clamp, uv, 0).g;
+        c.b = t_src.SampleLevel(s_clamp, uv + d * ca, 0).b;
     } else {
-        c = t_src.SampleLevel(s_clamp, v.uv, 0).rgb;
+        c = t_src.SampleLevel(s_clamp, uv, 0).rgb;
     }
     if (QUALITY > 0.5) {  // sharpen: the scene was drawn smaller than the screen
         float2 t = u_pass.xy;
-        float3 nb = t_src.SampleLevel(s_clamp, v.uv + float2(t.x, 0), 0).rgb + t_src.SampleLevel(s_clamp, v.uv - float2(t.x, 0), 0).rgb +
-                    t_src.SampleLevel(s_clamp, v.uv + float2(0, t.y), 0).rgb + t_src.SampleLevel(s_clamp, v.uv - float2(0, t.y), 0).rgb;
+        float3 nb = t_src.SampleLevel(s_clamp, uv + float2(t.x, 0), 0).rgb + t_src.SampleLevel(s_clamp, uv - float2(t.x, 0), 0).rgb +
+                    t_src.SampleLevel(s_clamp, uv + float2(0, t.y), 0).rgb + t_src.SampleLevel(s_clamp, uv - float2(0, t.y), 0).rgb;
         c = max(c + (c - nb * 0.25) * 0.4, 0);
     }
     float3 b = t_bloom.SampleLevel(s_clamp, v.uv, 0).rgb / u_post.y;
@@ -47,6 +55,8 @@ float4 main(VsOut v) : SV_Target {
     c = aces(c * EXPOSURE * (1 + 0.6 * DROP * FLASH) * (1 - 0.55 * GAP));  // the drop punches; the breath before it dims
     c = lerp(c, dot(c, float3(0.2126, 0.7152, 0.0722)), 0.45 * BUILD * BUILD);  // the colour drains as a build-up rises
     c *= 1 - (0.8 + 1.4 * BUILD) * dot(d, d);  // vignette, closing in through a build-up
+    if (EVENT >= 2)  // the white-out: to white over the last beat before the drop, then back (within the flash budget)
+        c = lerp(c, 1, 0.85 * FLASH * max(TO_DROP < 0.25 ? 1 - TO_DROP * 4 : 0, DROP * DROP * DROP));
     if (u_post.w > 0) {
         float4 o = ring(d * float2(ASPECT, 1));
         c = c * (1 - o.a * u_post.w) + o.rgb * u_post.w;

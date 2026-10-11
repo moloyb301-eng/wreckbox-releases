@@ -13,7 +13,7 @@ float3 scene(float2 uv, float2 p) {
     float seg = TAU / n;
     float m = abs(frac(a / seg) - 0.5) * seg;  // the mirrored angle, 0 … seg / 2
     float2 k = float2(cos(m), sin(m)) * r;
-    float2 cuv = 0.5 + k * 0.85 + 0.12 * float2(sin(TIME * 0.11), cos(TIME * 0.07));  // drifting across the cover
+    float2 cuv = 0.5 + k * (0.65 + 0.4 * DRIFT.w) + (0.06 + 0.14 * DRIFT.z) * float2(sin(TIME * 0.11), cos(TIME * 0.07));  // drifting across the cover
     float3 img;
     if (HAS_COVER > 0.5) img = COVER(cuv);
     else {  // no cover: marbled noise in the song's colours, with dark veins for contrast

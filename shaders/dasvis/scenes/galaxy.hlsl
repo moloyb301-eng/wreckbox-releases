@@ -8,7 +8,7 @@
 #define DASVIS_SCENE
 #include "dasvis.hlsli"
 
-static const float ZOOM = 1.45;
+float zoom() { return 1.25 + 0.4 * DRIFT.z; }  // how close: it drifts
 float squash() { return 0.62 + 0.12 * sin(TIME * 0.05 + SEED * TAU) - 0.2 * BUILD; }  // how flat it's seen
 float roll() { return TIME * 0.015 + SEED * TAU; }
 float arms() {  // the arms' turn: a step on each bar
@@ -17,7 +17,7 @@ float arms() {  // the arms' turn: a step on each bar
 }
 
 float3 scene(float2 uv, float2 p) {
-    float2 g = mul(float2(p.x, p.y / squash()) / ZOOM, rot(-roll()));  // the galaxy's plane
+    float2 g = mul(float2(p.x, p.y / squash()) / zoom(), rot(-roll()));  // the galaxy's plane
     float a = length(g);
     float dust = fbm(mul(g, rot(a * 16 + arms())) * 7 + SEED * 10, STEPS(3, 5));
     float3 c = PAL(0.3 + 0.4 * dust) * smoothstep(0.35, 0.8, dust) * exp(-a * 4) * 0.12;
@@ -50,7 +50,7 @@ Star vs_star(uint id : SV_VertexID) {
     }
     g = mul(g, rot(roll()));
     float sq = squash();
-    float2 s = float2(g.x, g.y * sq + h * sqrt(1 - sq * sq)) * ZOOM;
+    float2 s = float2(g.x, g.y * sq + h * sqrt(1 - sq * sq)) * zoom();
     Star o;
     o.pos = float4(s.x * 2 / ASPECT, -s.y * 2, 0, 1);
     o.col = col * bright * 256 / sqrt(u_sim.x);  // more stars: each fainter

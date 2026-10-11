@@ -738,7 +738,55 @@ Every phase has to pass the **Low-tier check** (§12) before it ships, not just 
 - **Reaction-diffusion:** Gray-Scott at 128²–512², 2–8 steps a frame by tier.
 - Scenes: **Ink Ocean, Coral, Galaxy, Ridge Lines**, and the **Particles** mid layer.
 
-### Phase 5: the director
+### Phase 5: the director ✅ 2026-10-11
+**Built:**
+- **`dasvis::Director`** (`director.*`), pure C++ with no GPU, so it's tested on its own:
+  - **Tags** for each built-in scene: the energy it suits (calm / mid / peak), its cost class, *hero* (Neon Tunnel,
+    Galaxy), whether the particle layer may go over it, whether the spectrum ring suits it. Your own scenes count as
+    light ones that suit anything.
+  - **Picking:** among the scenes that fit (measured cost at the tier's smallest render size within the frame budget;
+    not measured yet: anything but a heavy scene on Low), never the one on screen nor one of the last 4 if there's
+    anything else; weighted ×3 for the right energy (×0.4 otherwise) and by your taste. A drop gets a hero. The random
+    numbers come from the song's seed and the pick's number, so a song plays out the same way every time.
+  - **Layers:** the particle layer (now its own simulation, over Feedback Classic, Neon Tunnel or Kaleido Cover) never
+    on chill, half the time on normal outside calm parts, always on insane when there's room (the scene costs at most
+    70 % of the budget). The spectrum ring where the scene suits it, and on every peak on insane.
+  - **Transitions:** crossfade (calm to calm, 4 beats), noise wipe (the default, 2), zoom through (build-up to drop,
+    1), shatter (into a drop, 2: Voronoi shards with lit cracks), glitch (dubstep / drum & bass, 1: bands shifted and
+    split into red, green and blue).
+  - **Events on drops:** shockwave (a refraction ring with a colour split), white-out (to white over the last beat,
+    back over the bar, within the flash budget), or both; chill gets only the shockwave.
+- **When it picks** (`dasvis.cpp`): as each part of the song map starts (they start on a 4-bar downbeat); on a 16-bar
+  phrase when a scene has been on for 64 / 32 / 16 bars (chill / normal / insane), not in a drop; without a map, when
+  the scene's time is up (×2 on chill, ×½ on insane), on a bar's downbeat. N / P step to the next scene that fits.
+- **Drift:** four slow waves (tens of seconds, from the song's seed) as `DRIFT`; every built-in scene lets one or two
+  things wander with them (the swirl, the tunnel's lean, the kaleidoscope's path, the ink's current, the coral's
+  colour, the galaxy's distance, the ridges' height).
+- **You:** **F** likes the scene (×1.5, up to ×4) and **X** skips it (×0.6, down to ×0.15, and another one now), for
+  the song's genre; a heart button in the panel and both in the right-click menu. Saved in the settings
+  (`visualizer.dasvis.taste`), with what each scene measured per graphics card (`visualizer.dasvis.costs`), so the
+  director knows what fits from the first frame next time.
+
+**Measured:**
+- **Tests:** the same seed gives the same 200 picks, another seed others; no repeats within 4; every drop gets a
+  hero; on Low a scene measured over budget and a heavy one not measured yet are never picked; a liked scene came up
+  73 times against 17 for a skipped one; chill has no white-out. In the renderer (WARP, a hand-made 88-bar map): the
+  scene changes exactly at the parts' starts (16, 80, 96, 128, 160 s) and on the 16-bar phrase at 64 s, nowhere else;
+  the drop gets a hero; the same song plays out the same twice. All 12 suites pass.
+- **In the app** (*Fake Acid*, muted): Kaleido Cover through the breakdown; at the build-up a wipe; the colour drains
+  and the vignette closes; the last beat whites out; Galaxy arrives with the drop. F filled the heart; X showed "Less
+  Neon Tunnel" and moved to Coral; both were saved.
+- **Low-tier check:** CPU 9–11 % of one core with the PC at 41 % load (the same as phase 4), memory +19.5 to +20 MB,
+  back after closing.
+
+**Changed from the plan:**
+- **Two worlds never render at once.** A transition shows the new scene over the last picture (the feedback buffer
+  keeps whatever the new one hasn't replaced yet), so a change costs nothing and the render scale doesn't dip; the Low
+  tier's "cut through the white-out" for heavy scenes isn't needed.
+- **Likes, skips and costs live in the settings** with the tiers, not in a separate `dasvis.json`.
+- **Intensity scales the layers, cuts and drops,** not the particle count (the count follows the tier).
+
+**As planned:**
 - §9 in full:
   - budget-aware picking
   - layering (world + mid + overlay)
