@@ -897,6 +897,22 @@ drop (Intro → Verse → Chorus); without a known tempo it finds one. Worth a l
     490 LEDs (`sync_tests`); the options round-trip (`player_tests`). In the app: 92-byte packets (30 LEDs) at 44 a
     second while DasVis played, brightness moving 99–147; toggling the lights changed only that setting.
   - Not done: Philips Hue (needs a Hue bridge: say if you have one).
+- **Video export** ✅ 2026-10-12:
+  - `dasvis/video.*`: one pass through the song. Media Foundation decodes it to 48 kHz stereo; for each frame the
+    analysis gets the same 2,048-sample window the live player would, DasVis renders on its own Direct3D device at High,
+    full size (`Config::fixed_scale`), every scene allowed; the frame is read back and written with the sound up to
+    its time by Media Foundation's sink writer: H.264 (on the graphics card when it can; ~15 Mbps at 1080p60, up to
+    100) and AAC 192 kbps, in an MP4. Memory stays small however long the song is. Cancel deletes the part-written file.
+  - Right-click a downloaded song → *Export DasVis video* → 720p30, 1080p60, 1440p60 or 4K60 → a save dialog (Videos).
+    It runs on its own thread at below-normal priority; the sidebar shows how far it's got, with *Cancel*; the folder
+    opens when it's done. The cover, the song's key, its map, your intensity and likes, and the title card (drawn once
+    by the app, handed over as pixels) make it look as it does in the app.
+  - **Measured:** *Afterhours* (2:20) at 1080p60 on the Intel UHD in 160 s (1.1× the song's length), 266 MB; frames
+    upright, colours right, the scenes changing as in the app.
+  - **Tested:** a 16 s song on WARP at 320 × 180 becomes an MP4 with H.264 of that size, AAC and the song's length
+    (read back with Windows' reader); cancelling leaves no file. `dasvis_tests --video` / `--frame` export a real song
+    and pull a frame out as a picture.
+  - Not done: HEVC (H.264 plays everywhere; say if you want HEVC for smaller 4K files).
 
 - **Phone VJ deck:**
   - a page served by the existing `sync_server`, on the local network, protected by the pairing that already exists

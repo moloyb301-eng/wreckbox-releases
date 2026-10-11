@@ -6,6 +6,9 @@
 #include <psapi.h>
 
 #include <d3d11.h>
+#include <mfapi.h>
+#include <mfidl.h>
+#include <mfreadwrite.h>
 #include <wrl/client.h>
 
 #include <algorithm>
@@ -27,6 +30,7 @@
 #include "dasvis/features.h"
 #include "dasvis/palette.h"
 #include "dasvis/songmap.h"
+#include "dasvis/video.h"
 #include "engine/decode.h"
 
 using namespace wb::dasvis;
@@ -800,6 +804,69 @@ void cover_shatter() {
     std::printf("  cover shatter: dark vs light cover differ %.3f before the drop, %.3f after\n", before, after);
 }
 
+// Video export: a short song becomes an MP4 with H.264 video of the size asked for, AAC sound, and the song's length;
+// cancelling leaves no file. On WARP, small, so it runs anywhere.
+void video() {
+    const Synth song(8);  // 15 s at 128 BPM
+    const fs::path dir = fs::temp_directory_path() / L"wb-dasvis-video";
+    fs::create_directories(dir);
+    const fs::path wav = dir / L"song.wav", mp4 = dir / L"song.mp4", cancelled = dir / L"cancelled.mp4";
+    {  // 16-bit mono WAV at the synth's 22.05 kHz: the export converts it to 48 kHz stereo
+        std::ofstream o(wav, std::ios::binary);
+        const auto u32 = [&](uint32_t v) { o.write(reinterpret_cast<const char*>(&v), 4); };
+        const auto u16 = [&](uint16_t v) { o.write(reinterpret_cast<const char*>(&v), 2); };
+        const uint32_t n = uint32_t(song.s.size()), rate = uint32_t(Synth::kRate);
+        o.write("RIFF", 4), u32(36 + n * 2), o.write("WAVEfmt ", 8), u32(16), u16(1), u16(1), u32(rate), u32(rate * 2), u16(2), u16(16);
+        o.write("data", 4), u32(n * 2);
+        for (const float v : song.s) u16(uint16_t(int16_t(std::clamp(v, -1.f, 1.f) * 32000)));
+    }
+    VideoOptions o;
+    o.width = 320, o.height = 180, o.fps = 30, o.song_id = "video-test", o.software = true, o.bpm = 128;
+    int calls = 0;
+    const auto t0 = std::chrono::steady_clock::now();
+    const std::string err = export_video(wav, mp4, o, nullptr, [&](double) { return ++calls, true; });
+    const double secs = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
+    CHECK(err.empty() && fs::exists(mp4), "export: %s", err.c_str());
+    // Read it back with Windows' own reader.
+    CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+    MFStartup(MF_VERSION, MFSTARTUP_NOSOCKET);
+    {
+        ComPtr<IMFSourceReader> r;
+        if (SUCCEEDED(MFCreateSourceReaderFromURL(mp4.c_str(), nullptr, &r))) {
+            ComPtr<IMFMediaType> v, a;
+            UINT32 w = 0, h = 0;
+            GUID sub{};
+            const bool has_v = SUCCEEDED(r->GetNativeMediaType(DWORD(MF_SOURCE_READER_FIRST_VIDEO_STREAM), 0, &v));
+            if (has_v) MFGetAttributeSize(v.Get(), MF_MT_FRAME_SIZE, &w, &h), v->GetGUID(MF_MT_SUBTYPE, &sub);
+            const bool has_a = SUCCEEDED(r->GetNativeMediaType(DWORD(MF_SOURCE_READER_FIRST_AUDIO_STREAM), 0, &a));
+            PROPVARIANT d;
+            PropVariantInit(&d);
+            r->GetPresentationAttribute(DWORD(MF_SOURCE_READER_MEDIASOURCE), MF_PD_DURATION, &d);
+            const double len = double(d.uhVal.QuadPart) / 1e7;
+            PropVariantClear(&d);
+            CHECK(has_v && sub == MFVideoFormat_H264 && w == 320 && h == 180, "H.264 at 320 x 180 (%u x %u)", w, h);
+            CHECK(has_a, "with its sound");
+            CHECK(std::fabs(len - double(song.s.size()) / Synth::kRate) < 0.25, "as long as the song: %.2f s", len);
+            std::printf("  video export: %.1f s of song in %.1f s (WARP, 320 x 180, 30 fps), %.0f KB, %d progress calls\n", len, secs,
+                        double(fs::file_size(mp4)) / 1024, calls);
+        } else {
+            CHECK(false, "the MP4 doesn't open");
+        }
+    }
+    MFShutdown();
+    CoUninitialize();
+    const std::string why = export_video(wav, cancelled, o, nullptr, [&](double p) { return p < 0.3; });
+    CHECK(why == "cancelled" && !fs::exists(cancelled), "cancelled: %s, file left: %d", why.c_str(), int(fs::exists(cancelled)));
+    fs::remove_all(dir);
+}
+
+std::wstring widen_arg(const char* s) {  // a command-line argument (the system code page) as a path
+    const int n = MultiByteToWideChar(CP_ACP, 0, s, -1, nullptr, 0);
+    std::wstring w(size_t(std::max(n, 1)) - 1, L'\0');
+    MultiByteToWideChar(CP_ACP, 0, s, -1, w.data(), n);
+    return w;
+}
+
 // dasvis_tests --map <audio file> [bpm]: prints a real song's map instead of testing (for tuning the analysis).
 int print_map(const fs::path& file, double bpm) {
     const auto t0 = std::chrono::steady_clock::now();
@@ -814,9 +881,72 @@ int print_map(const fs::path& file, double bpm) {
     return 0;
 }
 
+// dasvis_tests --video <audio> <out.mp4> [width height fps]: a real song exported on this PC's graphics card (timing).
+int dev_video(int argc, char** argv) {
+    VideoOptions o;
+    if (argc >= 7) o.width = std::atoi(argv[4]), o.height = std::atoi(argv[5]), o.fps = std::atoi(argv[6]);
+    o.song_id = argv[2];
+    const auto t0 = std::chrono::steady_clock::now();
+    const std::string err = export_video(argv[2], argv[3], o, nullptr, [&](double p) {
+        std::printf("\r  %3.0f %%", p * 100);
+        return true;
+    });
+    const double secs = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
+    std::printf("\n%s in %.1f s\n", err.empty() ? "done" : err.c_str(), secs);
+    return err.empty() ? 0 : 1;
+}
+
+// dasvis_tests --frame <video> <seconds> <out.bmp>: one frame of a video as a picture (to look at an export).
+int dev_frame(char** argv) {
+    CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+    MFStartup(MF_VERSION, MFSTARTUP_NOSOCKET);
+    ComPtr<IMFAttributes> at;
+    MFCreateAttributes(&at, 1);
+    at->SetUINT32(MF_SOURCE_READER_ENABLE_VIDEO_PROCESSING, TRUE);
+    ComPtr<IMFSourceReader> r;
+    if (FAILED(MFCreateSourceReaderFromURL(widen_arg(argv[2]).c_str(), at.Get(), &r))) return std::puts("can't open"), 1;
+    const DWORD vs = DWORD(MF_SOURCE_READER_FIRST_VIDEO_STREAM);
+    ComPtr<IMFMediaType> want;
+    MFCreateMediaType(&want);
+    want->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video), want->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_RGB32);
+    r->SetStreamSelection(DWORD(MF_SOURCE_READER_ALL_STREAMS), FALSE), r->SetStreamSelection(vs, TRUE);
+    if (FAILED(r->SetCurrentMediaType(vs, nullptr, want.Get()))) return std::puts("no RGB"), 1;
+    ComPtr<IMFMediaType> got;
+    r->GetCurrentMediaType(vs, &got);
+    UINT32 w = 0, h = 0;
+    MFGetAttributeSize(got.Get(), MF_MT_FRAME_SIZE, &w, &h);
+    PROPVARIANT pos;
+    PropVariantInit(&pos);
+    pos.vt = VT_I8, pos.hVal.QuadPart = LONGLONG(std::atof(argv[3]) * 1e7);
+    r->SetCurrentPosition(GUID_NULL, pos);
+    for (;;) {
+        DWORD flags = 0;
+        LONGLONG ts = 0;
+        ComPtr<IMFSample> smp;
+        if (FAILED(r->ReadSample(vs, 0, nullptr, &flags, &ts, &smp)) || (flags & MF_SOURCE_READERF_ENDOFSTREAM)) return std::puts("no frame"), 1;
+        if (!smp || ts < pos.hVal.QuadPart) continue;
+        ComPtr<IMFMediaBuffer> buf;
+        smp->ConvertToContiguousBuffer(&buf);
+        BYTE* p = nullptr;
+        DWORD n = 0;
+        buf->Lock(&p, nullptr, &n);
+        std::ofstream o(argv[4], std::ios::binary);
+        const auto u32 = [&](uint32_t v) { o.write(reinterpret_cast<const char*>(&v), 4); };
+        const auto u16 = [&](uint16_t v) { o.write(reinterpret_cast<const char*>(&v), 2); };
+        o.write("BM", 2), u32(54 + w * h * 4), u32(0), u32(54), u32(40), u32(w), u32(uint32_t(-int32_t(h))), u16(1), u16(32), u32(0), u32(w * h * 4);
+        u32(2835), u32(2835), u32(0), u32(0);
+        o.write(reinterpret_cast<const char*>(p), std::streamsize(std::min<DWORD>(n, w * h * 4)));
+        buf->Unlock();
+        std::printf("%ux%u frame at %.2f s\n", w, h, double(ts) / 1e7);
+        return 0;
+    }
+}
+
 int main(int argc, char** argv) {
     SetConsoleOutputCP(CP_UTF8);
     if (argc >= 3 && std::string(argv[1]) == "--map") return print_map(fs::path(argv[2]), argc >= 4 ? std::atof(argv[3]) : 0);
+    if (argc >= 4 && std::string(argv[1]) == "--video") return dev_video(argc, argv);
+    if (argc >= 5 && std::string(argv[1]) == "--frame") return dev_frame(argv);
     songmap_cost();  // first: it reads the process's peak memory
     songmap();
     songmap_off_grid();
@@ -829,6 +959,7 @@ int main(int argc, char** argv) {
     lights();
     director_timing();
     cover_shatter();
+    video();
     gpu(false);
     gpu(true);
     if (failures) {

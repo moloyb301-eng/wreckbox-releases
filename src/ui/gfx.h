@@ -152,6 +152,7 @@ private:
     ComPtr<ID2D1RenderTarget> target_;  // what drawing goes to: the window, or a bitmap while cached() records
     ComPtr<ID2D1SolidColorBrush> brush_;
     bool occluded_ = false;
+    bool drawing_ = false;  // between begin() and end()
     int generation_ = 0;
     bool vsync_ = false, fast_gpu_ = false;
     UINT interval_ = 1;

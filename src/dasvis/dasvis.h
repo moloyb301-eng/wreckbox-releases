@@ -34,6 +34,7 @@ struct Config {
     double auto_advance = 30;   // seconds per scene, 0 = stay
     std::filesystem::path user_dir;  // the user's own scenes (.hlsl); empty = none
     std::map<std::string, float> costs;  // what each scene measured on this graphics card before (costs())
+    float fixed_scale = 0;  // > 0: always this render scale (video export: 1, full size), never adjusted
 };
 
 // What the app knows this frame.

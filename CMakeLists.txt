@@ -85,9 +85,10 @@ add_library(wbdasvis STATIC
   src/dasvis/songmap.cpp
   src/dasvis/palette.cpp
   src/dasvis/director.cpp
+  src/dasvis/video.cpp
   ${DASVIS_GENERATED})
 target_include_directories(wbdasvis PUBLIC src PRIVATE ${CMAKE_BINARY_DIR})
-target_link_libraries(wbdasvis PUBLIC wbengine d3d11 dxgi)
+target_link_libraries(wbdasvis PUBLIC wbengine d3d11 dxgi PRIVATE mfplat mfreadwrite mfuuid)
 
 # The app: Win32 window + Direct2D UI. Fonts and icon are embedded via res/app.rc.
 add_executable(wreckbox WIN32
@@ -166,6 +167,6 @@ vlc_deploy(player_tests)
 milkdrop_deploy(player_tests)
 add_test(NAME player_tests COMMAND player_tests)
 add_executable(dasvis_tests tests/dasvis_tests.cpp)
-target_link_libraries(dasvis_tests PRIVATE wbdasvis psapi)
+target_link_libraries(dasvis_tests PRIVATE wbdasvis psapi mfplat mfreadwrite mfuuid)
 target_compile_definitions(dasvis_tests PRIVATE WB_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures")
 add_test(NAME dasvis_tests COMMAND dasvis_tests)

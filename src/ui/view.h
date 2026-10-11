@@ -11,6 +11,8 @@
 #include <vector>
 
 #include <chrono>
+#include <thread>
+#include <atomic>
 #include <filesystem>
 #include <future>
 #include <memory>
@@ -380,6 +382,21 @@ private:
     bool wled_busy_ = false;
     std::chrono::steady_clock::time_point wled_at_;  // the last frame sent
     void das_lights();
+    // Video export (dasvis/video.h): one at a time, on its own thread; the sidebar shows how far it's got.
+    struct VideoJob {
+        std::thread thread;
+        std::atomic<double> progress{0};
+        std::atomic<bool> cancel{false}, finished{false};
+        std::string error;
+        std::filesystem::path out;
+        ~VideoJob() {
+            cancel = true;
+            if (thread.joinable()) thread.join();
+        }
+    };
+    std::unique_ptr<VideoJob> video_;
+    void export_video(const std::string& id, int preset);  // preset: 0 720p30, 1 1080p60, 2 1440p60, 3 4K60
+    float video_status(const Rect& r);                     // the sidebar's line while one runs: its height
     void das_request_map(const player::Item& item, double bpm);
     void das_prepare_next();     // the next song in the queue, so its map is ready when it starts
     void das_dev_view(float W);

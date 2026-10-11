@@ -18,7 +18,11 @@
 
 #include <qrcodegen.hpp>
 
+#include "dasvis/video.h"
 #include "net/sync_server.h"
+
+#include <shlobj.h>
+#include <shobjidl.h>
 
 #include <psapi.h>
 
@@ -580,6 +584,127 @@ bool View::das_screen() {
                                  frame_interval(), das_hz_, das_->flash_budget()));
     }
     return true;
+}
+
+// MARK: Video export
+
+namespace {
+
+std::optional<std::filesystem::path> save_video_dialog(HWND owner, const std::wstring& name) {
+    Microsoft::WRL::ComPtr<IFileSaveDialog> dlg;
+    if (FAILED(CoCreateInstance(CLSID_FileSaveDialog, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&dlg)))) return std::nullopt;
+    const COMDLG_FILTERSPEC types[] = {{L"MP4 video", L"*.mp4"}};
+    dlg->SetFileTypes(1, types);
+    dlg->SetDefaultExtension(L"mp4");
+    dlg->SetFileName(name.c_str());
+    dlg->SetTitle(L"Export DasVis video");
+    Microsoft::WRL::ComPtr<IShellItem> videos;
+    if (SUCCEEDED(SHGetKnownFolderItem(FOLDERID_Videos, KF_FLAG_DEFAULT, nullptr, IID_PPV_ARGS(&videos)))) dlg->SetFolder(videos.Get());
+    Microsoft::WRL::ComPtr<IShellItem> item;
+    PWSTR path = nullptr;
+    if (FAILED(dlg->Show(owner)) || FAILED(dlg->GetResult(&item)) || FAILED(item->GetDisplayName(SIGDN_FILESYSPATH, &path))) return std::nullopt;
+    std::filesystem::path out(path);
+    CoTaskMemFree(path);
+    return out;
+}
+
+}  // namespace
+
+void View::export_video(const std::string& id, int preset) {
+    if (video_) return show_toast(L"A video is already being made");
+    const auto tr = store_.row(id);
+    if (!tr || !tr->state || !tr->state->local_path) return;
+    static constexpr int kSizes[][3] = {{1280, 720, 30}, {1920, 1080, 60}, {2560, 1440, 60}, {3840, 2160, 60}};
+    std::string artists;
+    for (const auto& a : tr->track.artists) artists += (artists.empty() ? "" : ", ") + a;
+    std::wstring name = widen(artists.empty() ? tr->track.title : artists + " - " + tr->track.title) + L" (DasVis).mp4";
+    for (wchar_t& c : name)
+        if (wcschr(L"\\/:*?\"<>|", c)) c = L'_';
+    const auto out = save_video_dialog(hwnd_, name);
+    if (!out) return;
+
+    dasvis::VideoOptions o;
+    o.width = kSizes[preset][0], o.height = kSizes[preset][1], o.fps = kSizes[preset][2];
+    const player::VisOptions vo = player::VisOptions::from_json(Settings::current().extra.value("visualizer", json::object()));
+    o.intensity = vo.das_intensity;
+    o.bpm = tr->bpm().value_or(0);
+    if (!tr->camelot().empty()) o.camelot = tr->camelot();
+    o.song_id = id;  // the same seed as in the app: the same look
+    std::string genre = tr->genre;
+    std::transform(genre.begin(), genre.end(), genre.begin(), [](char c) { return char(std::tolower(static_cast<unsigned char>(c))); });
+    if (const auto g = vo.das_taste.find(genre.empty() ? "any" : genre); g != vo.das_taste.end() && g->is_object())
+        for (const auto& [scene, w] : g->items())
+            if (w.is_number()) o.taste[scene] = w.get<float>();
+    // The title card: drawn once here (it needs the app's fonts) and handed over as pixels.
+    {
+        D3D11_TEXTURE2D_DESC td{768, 192, 1, 1, DXGI_FORMAT_B8G8R8A8_UNORM, {1, 0}, D3D11_USAGE_DEFAULT, D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE};
+        Microsoft::WRL::ComPtr<ID3D11Texture2D> tex, staging;
+        Microsoft::WRL::ComPtr<ID3D11DeviceContext> ctx;
+        int letters = 0;
+        if (g_.d3d() && SUCCEEDED(g_.d3d()->CreateTexture2D(&td, nullptr, &tex)) && !tr->track.title.empty() &&
+            g_.draw_title_card(tex.Get(), widen(tr->track.title), widen(artists), &letters)) {
+            td.Usage = D3D11_USAGE_STAGING, td.BindFlags = 0, td.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+            g_.d3d()->GetImmediateContext(&ctx);
+            D3D11_MAPPED_SUBRESOURCE m;
+            if (SUCCEEDED(g_.d3d()->CreateTexture2D(&td, nullptr, &staging)) && (ctx->CopyResource(staging.Get(), tex.Get()), true) &&
+                SUCCEEDED(ctx->Map(staging.Get(), 0, D3D11_MAP_READ, 0, &m))) {
+                o.title.resize(768 * 192 * 4);
+                for (UINT y = 0; y < 192; ++y) std::memcpy(&o.title[size_t(y) * 768 * 4], static_cast<const uint8_t*>(m.pData) + size_t(y) * m.RowPitch, 768 * 4);
+                ctx->Unmap(staging.Get(), 0);
+                o.title_w = 768, o.title_h = 192, o.title_letters = letters, o.title_share = Gfx::kTitleShare;
+            }
+        }
+    }
+    video_ = std::make_unique<VideoJob>();
+    video_->out = *out;
+    show_toast(L"Making the video… you can keep using WreckBox");
+    video_->thread = std::thread([this, job = video_.get(), o, file = std::filesystem::path(widen(*tr->state->local_path)), track = tr->track, id,
+                                  hwnd = hwnd_]() mutable {
+        SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_BELOW_NORMAL);  // the app stays smooth while it works
+        if (SUCCEEDED(CoInitializeEx(nullptr, COINIT_MULTITHREADED))) {  // the cover (WIC)
+            if (const auto art = store_.ensure_artwork(track))
+                if (const auto bmp = decode_image(*art, 512); bmp && SUCCEEDED(bmp->GetSize(reinterpret_cast<UINT*>(&o.cover_w), reinterpret_cast<UINT*>(&o.cover_h)))) {
+                    o.cover.resize(size_t(o.cover_w) * size_t(o.cover_h) * 4);
+                    if (FAILED(bmp->CopyPixels(nullptr, UINT(o.cover_w) * 4, UINT(o.cover.size()), o.cover.data()))) o.cover.clear();
+                }
+            CoUninitialize();
+        }
+        const auto map = map_for(id, file, o.bpm);
+        job->error = dasvis::export_video(file, job->out, o, map.get(), [job, hwnd](double p) {
+            job->progress = p;
+            InvalidateRect(hwnd, nullptr, FALSE);
+            return !job->cancel.load();
+        });
+        job->finished = true;
+        InvalidateRect(hwnd, nullptr, FALSE);
+    });
+}
+
+float View::video_status(const Rect& r) {
+    if (!video_) return 0;
+    if (video_->finished) {
+        const std::string err = video_->error;
+        const auto out = video_->out;
+        video_.reset();  // joins: the thread has finished
+        if (err.empty()) {
+            show_toast(L"Video saved: " + out.filename().wstring());
+            show_in_folder(narrow(out.wstring()));
+        } else if (err != "cancelled") {
+            show_toast(L"The video couldn't be made: " + widen(err));
+        }
+        return 0;
+    }
+    const float p = float(video_->progress.load());
+    g_.fill_round(r.inset(0, 4), 10, theme::hover);
+    g_.fill_round(Rect{r.l + 10, r.b - 10, r.l + 10 + (r.w() - 20) * p, r.b - 7}, 2, lilac);
+    g_.icon(icon::video, r.l + 18, r.t + 18, 14, lilac);
+    g_.text(std::format(L"Video {:.0f} %", p * 100), Rect{r.l + 36, r.t + 6, r.r - 70, r.t + 30}, {Font::ui, 13, 500, text});
+    const Rect cancel{r.r - 68, r.t + 6, r.r - 6, r.t + 30};
+    g_.text(L"Cancel", cancel, {Font::ui, 12.5f, 600, ui_.hover(cancel) ? text : text3, Align::center});
+    ui_.click(cancel, [this] {
+        if (video_) video_->cancel = true;
+    });
+    return r.h();
 }
 
 void View::das_lights() {

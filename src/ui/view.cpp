@@ -215,7 +215,8 @@ void View::sidebar(const Rect& r) {
     ui_.logo(r.l + 18, r.t + 24, 34);
     g_.text(L"WRECKBOX", Rect{r.l + 62, r.t + 24, r.r, r.t + 58}, {Font::dot, 17, 700, text, Align::left, 2});
 
-    const Rect area{r.l + 8, r.t + 72, r.r - 8, r.b - 52};
+    const float vh = video_status(Rect{r.l + 8, r.b - 52 - 40, r.r - 8, r.b - 52});  // a video being made: above "Report a bug"
+    const Rect area{r.l + 8, r.t + 72, r.r - 8, r.b - 52 - vh};
     // Report a bug: pinned to the bottom of the sidebar, under the scrolling list.
     {
         const Rect br{r.l + 8, r.b - 46, r.r - 8, r.b - 12};

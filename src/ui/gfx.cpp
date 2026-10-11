@@ -200,6 +200,7 @@ void Gfx::set_fast_gpu(bool on) {
 bool Gfx::begin() {
     if (!create_target()) return false;
     rt_->BeginDraw();
+    drawing_ = true;
     rt_->SetTransform(D2D1::Matrix3x2F::Identity());
     // A screen needs ~200 layouts; keep a few screens' worth (scrolling back is common) and start over beyond that.
     if (layouts_.size() > 800) layouts_.clear();
@@ -207,6 +208,7 @@ bool Gfx::begin() {
 }
 
 void Gfx::end() {
+    drawing_ = false;
     HRESULT hr = rt_->EndDraw();
     if (SUCCEEDED(hr)) hr = swap_->Present(vsync_ ? interval_ : 0, 0);
     occluded_ = hr == DXGI_STATUS_OCCLUDED;
@@ -437,6 +439,8 @@ bool Gfx::draw_title_card(ID3D11Texture2D* target, const std::wstring& title, co
     const float W = float(td.Width), H = float(td.Height), split = H * kTitleShare;
     dc->SetTarget(bmp.Get());
     dc->SetTextAntialiasMode(D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE);  // the channels carry data: no colour fringes
+    const bool own_frame = !drawing_;  // called from a command, not a paint (the video export)
+    if (own_frame) dc->BeginDraw();
     dc->Clear(D2D1::ColorF(0, 0, 0, 0));
     struct Line {
         const std::wstring& s;
@@ -471,7 +475,8 @@ bool Gfx::draw_title_card(ID3D11Texture2D* target, const std::wstring& title, co
         }
         dc->DrawTextLayout(D2D1::Point2F(8, ln.top), lay.Get(), brushes.empty() ? nullptr : brushes.front().Get());
     }
-    dc->Flush();  // into the texture now: DasVis reads it this frame
+    if (own_frame) dc->EndDraw();
+    else dc->Flush();  // into the texture now: DasVis reads it this frame
     dc->SetTarget(window.Get());
     dc->SetTransform(transform);
     dc->SetTextAntialiasMode(aa);

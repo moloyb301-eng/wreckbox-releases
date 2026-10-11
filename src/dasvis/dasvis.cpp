@@ -452,7 +452,7 @@ struct DasVis::Impl {
     // MARK: Frame
 
     void resize(int w, int h) {
-        const float s = qc.scale();
+        const float s = render_scale();
         const int cw = std::max(16, int(std::lround(w * s))) & ~1, ch = std::max(16, int(std::lround(h * s))) & ~1;
         out_w = w, out_h = h;
         if (comp[0].w != cw || comp[0].h != ch) {
@@ -653,6 +653,8 @@ struct DasVis::Impl {
     }
 
     // Everything this pipeline needs, set every frame: Direct2D shares the device and may have left its own state.
+    float render_scale() const { return cfg.fixed_scale > 0 ? cfg.fixed_scale : qc.scale(); }
+
     void bind_pipeline() {
         ctx->IASetInputLayout(nullptr);
         ctx->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
@@ -794,11 +796,11 @@ struct DasVis::Impl {
         // What this scene costs here, for the director: measured once it's settled, scaled to the tier's smallest size
         // (cost goes roughly with the pixels).
         if (transition >= 1 && since_switch > 3 && gpu_ms > 0 && frame % 30 == 0) {
-            const float smin = tier_spec(qc.tier()).scale_min, sc = qc.scale();
+            const float smin = tier_spec(qc.tier()).scale_min, sc = render_scale();
             dir.set_cost(scenes[current].name, qc.tier(), gpu_ms * (smin / sc) * (smin / sc));
         }
         bind_pipeline();
-        const bool changed = gpu_ms > 0 && qc.update(gpu_ms, in.budget_ms, dt);  // acts on real measurements only
+        const bool changed = gpu_ms > 0 && cfg.fixed_scale <= 0 && qc.update(gpu_ms, in.budget_ms, dt);  // real measurements only
         if (changed || out_w != w || out_h != h || !comp[0].tex) resize(w, h);
         if (!comp[0].tex || !lum.tex) return;
 
@@ -962,7 +964,7 @@ size_t DasVis::scene_count() const { return p_->scenes.size(); }
 std::string DasVis::reload_user_scenes() { return ok() ? p_->reload_user() : p_->error; }
 const std::string& DasVis::user_errors() const { return p_->user_errors; }
 Tier DasVis::tier() const { return p_->qc.tier(); }
-float DasVis::scale() const { return p_->qc.scale(); }
+float DasVis::scale() const { return p_->render_scale(); }
 float DasVis::gpu_ms() const { return p_->gpu_ms; }
 bool DasVis::tier_settled() const { return p_->qc.settled(); }
 float DasVis::flash_budget() const { return p_->limiter.budget(); }

@@ -216,6 +216,8 @@ the screen. The bar fades when the mouse is still. Its ⌄ button, or **H**, hid
   dubstep and drum & bass) a glitch.
 - **N / P** or a click change the scene, **L** locks it, **F** likes it and **X** skips it: likes and skips are kept per
   genre, so the director learns what you want to see.
+- **Video export:** right-click a song → *Export DasVis video* (720p to 4K, 60 fps) makes an MP4 of DasVis with the
+  song: every frame exact, at full quality on any PC (a slower one just takes longer).
 - **Room lights:** a WLED LED strip on your Wi-Fi can follow DasVis (Settings → *Room lights*): the song's colours,
   pulsing with the kick and the bass, lit up on drops.
 - **Phone VJ deck:** right-click → DasVis → *Phone VJ deck…* shows a QR code; scan it with a phone on the same Wi-Fi to
