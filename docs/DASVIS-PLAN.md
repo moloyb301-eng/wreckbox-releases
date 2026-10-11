@@ -635,7 +635,43 @@ Every phase has to pass the **Low-tier check** (§12) before it ships, not just 
   - Also: the cache round-trips, a changed version rebuilds the map, and peak memory during analysis stays under the
     budget.
 
-### Phase 3: stems drive the layers
+### Phase 3: stems drive the layers ✅ 2026-10-11
+**Built:**
+- **`dasvis::drive()`** (`dasvis.*`), what moves the pictures each frame:
+  - **With a map:** kick / snare / hats are the map's envelopes, with 60 % of the live ones on top for anything the map
+    missed. Bass and lead are the map's harmonic envelopes. The hits are the map's in the frame's (t0, t1], none
+    across a seek. *Time since the last kick* comes from the map's hits.
+  - **Without a map:** the live features, and its own count of time since the last kick.
+- **Shaders:** `u_hits` (KICK_HIT, SNARE_HIT, HATS_HIT, SINCE_KICK); BASS and LEAD are documented as the harmonic
+  stems.
+  - **Neon Tunnel:** each kick's pulse races down the tunnel at a constant speed (from SINCE_KICK, not the fading
+    envelope); the snare flashes the seams; the lead shifts the ring colours.
+  - **Feedback Classic:** the snare flashes a wider ring that the zoom carries outwards; the lead turns the ink's
+    colours.
+  - **Kaleido Cover:** the hats scatter glints over the pattern (mirrored with it).
+  - **Spectrum ring:** the rim flashes on the snare.
+- **Palette from the cover** (`palette.*`):
+  - k-means (k = 5, started from lightness quantiles, so the same cover always gives the same colours) in Oklab on a
+    ≤ 64² thumbnail in linear light, with hue counted double
+  - the clusters sorted dark → light, set on a fixed lightness ladder, chroma lifted 30 %, kept inside sRGB
+  - grey covers (black-and-white photos) give none: the key's palette then
+  - the palette on screen fades to a new one over about a second
+- **Key colour:** the Camelot hue; minor keys are nudged a sixth of the way towards blue and softened.
+
+**Measured:**
+- **In the app** with *Afterhours* (a red / cream neon cover): the kaleidoscope is the cover itself, Feedback Classic
+  and Neon Tunnel take its colours, and the spectrum ring spins it in the tunnel. The map labelled the song's parts
+  and analysed the next song in the queue in the background.
+- **Tests:** a red / blue / white cover gives a red and a blue, dark → light, inside sRGB, the same every time; a grey
+  cover and no cover give none; 1A is cooler than 1B. A kick from the map fires on the frame after it, the snare
+  likewise, a seek fires nothing, time since the kick counts right, live and map alike. All 12 suites pass.
+- **Low-tier check:** 8–9 % of one core this time, against 5.5–5.9 % in phase 2. An A/B with the phase 2 shaders on
+  the same build measured the same (8.9–11.5 %). The difference is the PC's state, not phase 3: the CPU was at 54 % load
+  from other apps, and warm after an hour of builds. The UI thread's own work per frame is unchanged at ~0.5 ms.
+  Memory: +18.7 MB, unchanged.
+- **Still to do by you:** look at a few songs with colourful covers, and a few with black-and-white ones.
+
+**As planned:**
 - The five pseudo-stem envelopes and the `kick_hit` events come from the map in step with the heard position, with
   live amplitude on top.
 - Every phase 1 scene is rewired to use stems (tunnel pulses on kick, rings flash on snare, and so on).

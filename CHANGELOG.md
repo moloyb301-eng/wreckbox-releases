@@ -15,6 +15,9 @@ Day-to-day work goes on `main`; bigger features on a branch (`feature/<name>`), 
 
 ## Unreleased
 
+- **DasVis takes its colours from the album cover**: five colours picked from the cover (k-means in Oklab), from dark
+  to light; black-and-white covers fall back to the song's key, and minor keys look cooler. The kick, snare, hats, bass
+  and lead found by the song map each move something different, on the song's exact timing.
 - **DasVis knows the song** (the song map): each song is analysed once in the background while DasVis is open (about
   5 s and 6 MB for a 6-minute song), then cached.
   - It finds the beats, bars, parts (intro, build-up, drop, breakdown …), each drop and the quiet bars before it.

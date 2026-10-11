@@ -18,6 +18,7 @@
 
 #include "dasvis/control.h"
 #include "dasvis/features.h"
+#include "dasvis/palette.h"
 #include "dasvis/songmap.h"
 
 namespace wb::dasvis {
@@ -45,6 +46,17 @@ struct Inputs {
     double song_time = 0;
 };
 
+// What moves the pictures this frame: the kick, snare, hats, bass and lead. From the song map when there is one (exact
+// timing, each stem separated from the rest), with the live analysis on top for anything the map missed; else from the
+// live analysis alone.
+struct Drive {
+    float kick = 0, snare = 0, hats = 0, bass = 0, lead = 0;  // envelopes, 0–1
+    bool kick_hit = false, snare_hit = false, hats_hit = false;  // a hit in this frame
+    float since_kick = 10;                                       // seconds since the last kick (10: a while)
+};
+// `t0` / `t1`: the song time of the last frame and of this one; the map's hits in (t0, t1] fire now (none on a seek).
+Drive drive(const Features& live, const SongMap* map, double t0, double t1, const Drive& last, float dt);
+
 class DasVis {
 public:
     DasVis(ID3D11Device* device, const Config& cfg);
@@ -61,7 +73,8 @@ public:
     // Draws the last frame into `target` again, without moving it on (paused: the back buffer is refilled each paint).
     void redraw(ID3D11Texture2D* target);
 
-    // The current song's cover: opaque BGRA, any size (a square ~512 px is plenty). nullptr: no cover.
+    // The current song's cover: opaque BGRA, any size (a square ~512 px is plenty). nullptr: no cover. Its colours become
+    // the palette (fading in over about a second), unless it's grey.
     void set_cover(const uint8_t* bgra, int w, int h);
 
     void next();

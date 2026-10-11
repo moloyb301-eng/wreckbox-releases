@@ -31,7 +31,7 @@ namespace {
 
 // Mirrors the cbuffer in dasvis.hlsli: float4s only, so the C++ and HLSL layouts can't drift apart.
 struct Uniforms {
-    float time[4], res[4], out[4], beat[4], drums[4], tone[4], look[4], post[4], key[4], pal[5][4], pass[4], song[4], drop[4];
+    float time[4], res[4], out[4], beat[4], drums[4], tone[4], look[4], post[4], key[4], pal[5][4], pass[4], song[4], drop[4], hits[4];
 };
 static_assert(sizeof(Uniforms) % 16 == 0);
 
@@ -68,20 +68,32 @@ uint32_t fnv1a(const std::string& s) {
     return h;
 }
 
-void hsv(float h, float s, float v, float* out) {
-    h = h - std::floor(h);
-    const auto f = [&](float n) {
-        const float k = std::fmod(n + h * 6, 6.f);
-        return v - v * s * std::max(0.f, std::min({k, 4 - k, 1.f}));
-    };
-    for (int i = 0; i < 3; ++i) {
-        const float c = f(i == 0 ? 5.f : i == 1 ? 3.f : 1.f);
-        out[i] = c * c;  // to linear (≈ gamma 2)
-    }
-    out[3] = 1;
-}
-
 }  // namespace
+
+Drive drive(const Features& live, const SongMap* map, double t0, double t1, const Drive& last, float dt) {
+    Drive d;
+    if (map && map->beats.size() >= 16) {
+        const SongMap::State s = map->at(t1);
+        d.kick = std::max(s.stems[SongMap::kick], 0.6f * live.kick);
+        d.snare = std::max(s.stems[SongMap::snare], 0.6f * live.snare);
+        d.hats = std::max(s.stems[SongMap::hats], 0.6f * live.hats);
+        d.bass = s.stems[SongMap::bass];
+        d.lead = s.stems[SongMap::lead];
+        const bool on = t1 > t0 && t1 - t0 < 0.25;  // playing on, not a seek (which would fire every hit it jumped over)
+        d.kick_hit = on && map->hits_between(SongMap::kick, t0, t1) > 0;
+        d.snare_hit = on && map->hits_between(SongMap::snare, t0, t1) > 0;
+        d.hats_hit = on && map->hits_between(SongMap::hats, t0, t1) > 0;
+        const auto& kh = map->hits[SongMap::kick];
+        const auto it = std::upper_bound(kh.begin(), kh.end(), t1);
+        d.since_kick = it == kh.begin() ? 10.f : float(t1 - *(it - 1));
+    } else {
+        d.kick = live.kick, d.snare = live.snare, d.hats = live.hats, d.bass = live.bass, d.lead = live.lead;
+        d.kick_hit = live.kick_hit, d.snare_hit = live.snare_hit, d.hats_hit = live.hats_hit;
+        d.since_kick = live.kick_hit ? 0.f : last.since_kick + dt;
+    }
+    d.since_kick = std::min(d.since_kick, 10.f);
+    return d;
+}
 
 struct DasVis::Impl {
     ComPtr<ID3D11Device> dev;
@@ -127,6 +139,12 @@ struct DasVis::Impl {
     std::string song, camelot;
     float seed = 0;
     Uniforms u{};
+    Drive drv;
+    double last_t = 0;
+    // The palette: the cover's when it has colours, else the key's; the one on screen fades towards it.
+    std::optional<Palette> cover_pal;
+    Palette pal_target{}, pal{};
+    bool pal_set = false;
 
     explicit Impl(const Config& c) : cfg(c), qc(c.start, c.auto_tier, c.max_tier), limiter(c.reduce_flash ? 1 : 3) {}
 
@@ -267,22 +285,21 @@ struct DasVis::Impl {
         if (!locked) switch_to(size_t(seed * float(scenes.size())));
     }
 
-    // The palette: five colours around the song's key on the Camelot wheel (minor keys cooler and softer), or around a
-    // hue from the seed when the key isn't known. Phase 3 takes them from the cover instead.
+    // The palette the picture fades towards: the cover's, or five colours around the song's key.
     void palette(const std::optional<std::string>& key) {
         camelot = key.value_or("");
-        float h = seed;
-        bool minor = false;
-        if (key && key->size() >= 2) {
-            const int n = std::atoi(key->c_str());
-            minor = key->back() == 'A';
-            if (n >= 1 && n <= 12) h = float(n - 1) / 12.f;
+        pal_target = cover_pal ? *cover_pal : key_palette(key, seed);
+        const Rgb tint = key_tint(key, seed);
+        for (size_t i = 0; i < 3; ++i) u.key[i] = tint[i];
+    }
+
+    void fade_palette(float dt) {
+        const float k = pal_set ? 1 - std::exp(-dt / 0.4f) : 1.f;  // ~1 s to settle; the very first one at once
+        for (size_t i = 0; i < 5; ++i) {
+            for (size_t c = 0; c < 3; ++c) pal[i][c] += (pal_target[i][c] - pal[i][c]) * k, u.pal[i][c] = pal[i][c];
+            u.pal[i][3] = 1;
         }
-        // Neighbouring hues, dark → light, and one accent opposite (the brightest): colours that sit together.
-        const float s = minor ? 0.85f : 1.f;
-        const float offs[] = {0.0f, -0.05f, 0.06f, 0.12f, 0.5f}, sats[] = {0.85f, 0.8f, 0.7f, 0.55f, 0.6f}, vals[] = {0.4f, 0.62f, 0.8f, 0.92f, 1.f};
-        for (int i = 0; i < 5; ++i) hsv(h + offs[i], sats[i] * s, vals[i], u.pal[i]);
-        hsv(h, 0.45f, 1.f, u.key);
+        pal_set = true;
     }
 
     // MARK: Frame
@@ -408,7 +425,7 @@ struct DasVis::Impl {
         const float dt = std::clamp(in.dt, 0.f, 0.1f);
         time += dt;
         const Features& f = *in.f;
-        if (in.song != song || frame == 0) new_song(in), palette(in.camelot);
+        if (in.song != song || frame == 0) cover_pal.reset(), new_song(in), palette(in.camelot);  // the new cover arrives later
         else if (in.camelot.value_or("") != camelot) palette(in.camelot);  // the analysis finished while it played
 
         // Where the song is: from the map when there is one, else the live clock.
@@ -434,6 +451,10 @@ struct DasVis::Impl {
             beats = ms.beats + beats_shift, beat_phase = ms.beat_phase, bar = ms.bar_phase;
         }
         had_map = has_map;
+        const double now_t = in.song_time + map_offset;
+        drv = drive(f, has_map ? in.map : nullptr, last_t, now_t, drv, dt);
+        last_t = now_t;
+        fade_palette(dt);
 
         // Auto-advance: when it's time, on the next bar's downbeat (with the map: the next 4-bar boundary). And with
         // the map, a new scene on each drop (if the last change wasn't just now).
@@ -461,14 +482,15 @@ struct DasVis::Impl {
         set(u.time, float(time), dt, seed, ts.quality);
         set(u.out, float(w), float(h), float(w) / float(h), transition);
         set(u.beat, float(beat_phase), float(bar), float(beats), float(has_map ? in.map->bpm : f.bpm));
-        set(u.drums, f.kick, f.snare, f.hats, f.kick_hit ? 1.f : 0.f);
-        set(u.tone, f.bass, f.lead, f.energy, has_map ? 0.f : 1.f);
+        set(u.drums, drv.kick, drv.snare, drv.hats, drv.kick_hit ? 1.f : 0.f);
+        set(u.tone, drv.bass, drv.lead, f.energy, has_map ? 0.f : 1.f);
+        set(u.hits, drv.kick_hit ? 1.f : 0.f, drv.snare_hit ? 1.f : 0.f, drv.hats_hit ? 1.f : 0.f, drv.since_kick);
         set(u.song, float(ms.phrase_phase), float(int(ms.section)), ms.section_t, ms.build);
         set(u.drop, ms.drop, std::min(ms.to_drop, 99.f), ms.gap ? 1.f : 0.f, ms.energy);
         set(u.look, intensity, flash, limiter.gain(), has_cover ? 1.f : 0.f);
         const float ring = scenes[previous].ring + (float(scenes[current].ring) - float(scenes[previous].ring)) * transition;
         set(u.post, 0.08f + 0.04f * f.energy, float(std::max<size_t>(1, bloom.size())), 0.018f, ring);
-        u.key[3] = ts.quality >= 0.5f ? 0.0015f + 0.005f * f.kick * intensity + 0.008f * ms.drop * flash : 0.f;
+        u.key[3] = ts.quality >= 0.5f ? 0.0015f + 0.005f * drv.kick * intensity + 0.008f * ms.drop * flash : 0.f;
 
         float sp[Features::kBins * 2];
         for (size_t i = 0; i < Features::kBins; ++i) sp[2 * i] = f.spectrum()[i], sp[2 * i + 1] = f.spectrum_peaks()[i];
@@ -495,6 +517,8 @@ struct DasVis::Impl {
     void set_cover(const uint8_t* bgra, int w, int h) {
         has_cover = false;
         cover = {};
+        cover_pal = cover_palette(bgra, w, h);  // nullopt without a cover, or for a grey one: the key's colours then
+        palette(camelot.empty() ? std::nullopt : std::optional<std::string>(camelot));
         if (!bgra || w <= 0 || h <= 0) return;
         UINT support = 0;
         dev->CheckFormatSupport(DXGI_FORMAT_B8G8R8A8_UNORM, &support);

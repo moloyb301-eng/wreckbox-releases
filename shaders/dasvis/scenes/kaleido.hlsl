@@ -1,6 +1,6 @@
 // Kaleido Cover: a kaleidoscope of the album art (or of the song's colours when there's no cover). It turns a step on
 // each beat, the number of mirrors changes every 8 bars, the bass zooms it, the snare lights the seams, kicks light
-// the centre.
+// the centre, the hats glint across it, the lead brightens it.
 #define DASVIS_SCENE
 #include "dasvis.hlsli"
 
@@ -25,5 +25,10 @@ float3 scene(float2 uv, float2 p) {
     float d = r * sin(min(m, seg * 0.5 - m));  // distance to the nearest mirror line
     c += PAL(BEATS * 0.05) * smoothstep(0.005, 0, d) * (0.35 + 1.6 * SNARE * FLASH);
     c *= 1 + 0.8 * KICK * FLASH * exp(-r * 5);
+    // The hats: tiny glints scattered over the pattern (mirrored with it), each catching the light on a hat.
+    float2 cell = floor(k * 46);
+    float g = hash12(cell + floor(BEATS * 2) * 7.31);
+    float2 f = frac(k * 46) - 0.5;
+    c += PAL(0.95) * step(0.965, g) * smoothstep(0.35, 0, length(f)) * HATS * 2.5;
     return lerp(c, PREV(0.5 + (uv - 0.5) * 0.99), 0.25);  // a little feedback for softness
 }

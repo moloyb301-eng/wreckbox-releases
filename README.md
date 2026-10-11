@@ -190,6 +190,9 @@ the screen. The bar fades when the mouse is still. Its ⌄ button, or **H**, hid
 - A PC without OpenGL 3.3 gets the bars automatically. `WRECKBOX_NO_MILKDROP=1` forces them.
 
 **DasVis** (preview) is WreckBox's own visualizer: **D**, or the *DasVis* chip on the player bar.
+- **Its colours come from the album cover** (or from the song's key when the cover is black and white), and each part
+  of the drums moves something different: the kick sends light down the tunnel, the snare flashes, the hats glint, the
+  vocals and lead shift the colours.
 - Three scenes so far:
   - *Feedback Classic*: MilkDrop-style trails and a waveform ring
   - *Neon Tunnel*: one ring per beat, with a spectrum ring round the cover

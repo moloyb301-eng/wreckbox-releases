@@ -21,6 +21,7 @@
 #include "dasvis/control.h"
 #include "dasvis/dasvis.h"
 #include "dasvis/features.h"
+#include "dasvis/palette.h"
 #include "dasvis/songmap.h"
 #include "engine/decode.h"
 
@@ -379,6 +380,76 @@ void songmap() {
     CHECK(!analyse_file(fs::path(WB_FIXTURES) / "audio" / "tone.wav", 0, &why) && !why.empty(), "a tone has no beat: %s", why.c_str());
 }
 
+// MARK: Colours and stems
+
+float luminance(const Rgb& c) { return 0.2126f * c[0] + 0.7152f * c[1] + 0.0722f * c[2]; }
+
+void colours() {
+    // A cover: half red, half blue, a white band along the top.
+    std::vector<uint8_t> px(128 * 128 * 4, 255);
+    for (int y = 0; y < 128; ++y)
+        for (int x = 0; x < 128; ++x) {
+            uint8_t* p = &px[(size_t(y) * 128 + size_t(x)) * 4];
+            if (y < 16) p[0] = p[1] = p[2] = 245;
+            else if (x < 64) p[0] = 30, p[1] = 30, p[2] = 220;  // BGRA: red
+            else p[0] = 200, p[1] = 60, p[2] = 40;              // blue
+        }
+    const auto p = cover_palette(px.data(), 128, 128);
+    CHECK(p.has_value(), "a colourful cover gives a palette");
+    if (p) {
+        bool red = false, blue = false, ordered = true;
+        for (size_t i = 0; i < 5; ++i) {
+            red |= (*p)[i][0] > 2 * (*p)[i][2] && (*p)[i][0] > (*p)[i][1];
+            blue |= (*p)[i][2] > 1.5f * (*p)[i][0];
+            if (i) ordered &= luminance((*p)[i]) > luminance((*p)[i - 1]);
+            for (const float v : (*p)[i]) CHECK(v >= 0 && v <= 1, "inside sRGB");
+        }
+        CHECK(red && blue, "the cover's red and blue are in its palette");
+        CHECK(ordered, "dark to light");
+        CHECK(cover_palette(px.data(), 128, 128) == p, "the same cover, the same colours");
+    }
+    // A grey cover (black and white photo): no palette from it; the key's colours are used instead.
+    std::vector<uint8_t> grey(64 * 64 * 4, 255);
+    for (size_t i = 0; i < 64 * 64; ++i) grey[i * 4] = grey[i * 4 + 1] = grey[i * 4 + 2] = uint8_t(i % 251);
+    CHECK(!cover_palette(grey.data(), 64, 64), "a grey cover gives no palette");
+    CHECK(!cover_palette(nullptr, 0, 0), "no cover, no palette");
+    // The key: minor keys are cooler (bluer) than the major key with the same number.
+    const Rgb minor = key_tint(std::string("1A"), 0), major = key_tint(std::string("1B"), 0);
+    CHECK(minor[2] / (minor[0] + minor[1] + minor[2]) > major[2] / (major[0] + major[1] + major[2]), "1A cooler than 1B");
+    CHECK(key_palette(std::string("8A"), 0) != key_palette(std::string("3A"), 0), "different keys, different colours");
+}
+
+void drives() {
+    SongMap m;
+    m.bpm = 120;
+    for (int i = 0; i < 40; ++i) m.beats.push_back(0.5 * i);
+    for (int i = 2; i < 40; ++i) m.hits[SongMap::kick].push_back(0.5 * i);
+    m.hits[SongMap::snare] = {1.25};
+    const Features live;  // silent: everything below comes from the map
+    Drive d;
+    int kicks = 0, snares = 0;
+    double t = 0.9, hit_at = -1;
+    for (int i = 0; i < 30; ++i) {
+        const double next = t + 1 / 60.0;
+        d = drive(live, &m, t, next, d, 1 / 60.f);
+        if (d.kick_hit) ++kicks, hit_at = next;
+        snares += d.snare_hit;
+        t = next;
+    }
+    CHECK(kicks == 1 && hit_at >= 1.0 && hit_at < 1.0 + 1 / 60.0 + 1e-9, "one kick, on the frame after 1.0 s (%d, at %.3f)", kicks, hit_at);
+    CHECK(snares == 1, "the snare at 1.25 s: %d", snares);
+    CHECK(std::fabs(d.since_kick - float(t - 1.0)) < 1e-3f, "time since the kick: %.3f", d.since_kick);
+    d = drive(live, &m, 3.1, 9.3, d, 1 / 60.f);  // a seek over many kicks
+    CHECK(!d.kick_hit, "a seek doesn't fire the kicks it jumped over");
+    Features f;  // without a map: the live analysis, counting its own time since a kick
+    f.kick = 0.7f, f.kick_hit = true;
+    Drive l = drive(f, nullptr, 0, 0, d, 1 / 60.f);
+    CHECK(l.kick == 0.7f && l.kick_hit && l.since_kick == 0, "live");
+    f.kick_hit = false;
+    l = drive(f, nullptr, 0, 0, l, 0.5f);
+    CHECK(std::fabs(l.since_kick - 0.5f) < 1e-6f, "live time since the kick: %.2f", l.since_kick);
+}
+
 // MARK: GPU
 
 struct Stats {
@@ -507,6 +578,8 @@ int main(int argc, char** argv) {
     if (argc >= 3 && std::string(argv[1]) == "--map") return print_map(fs::path(argv[2]), argc >= 4 ? std::atof(argv[3]) : 0);
     songmap_cost();  // first: it reads the process's peak memory
     songmap();
+    colours();
+    drives();
     features();
     limiter();
     quality();

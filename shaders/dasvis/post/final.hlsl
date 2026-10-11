@@ -21,7 +21,7 @@ float4 ring(float2 p) {
     // The cover, turning; without one, a dark disc lit softly from the middle in the song's colour.
     float3 cover = HAS_COVER > 0.5 ? COVER(mul(p / (R * 2), rot(TIME * 0.25)) + 0.5) : u_pal[0].rgb * (0.05 + 0.25 * (1 - r / R)) * (1 + KICK);
     o += float4(cover * disc, disc);
-    o.rgb += PAL(0.7) * smoothstep(0.003 + aa, 0, abs(r - R)) * 0.9;  // the rim
+    o.rgb += PAL(0.7) * smoothstep(0.003 + aa, 0, abs(r - R)) * (0.9 + 1.2 * SNARE * FLASH);  // the rim, flashing on the snare
     return o;
 }
 

@@ -28,6 +28,7 @@ cbuffer DasVis : register(b0) {
                      // 5 chorus, 6 outro), progress through it (0→1), build (0→1 up to the drop)
     float4 u_drop;   // drop (1 on its first beat, gone a bar later), bars to the next drop (99: none), gap (1 in the
                      // quiet bars before a drop), the part's energy (0–1)
+    float4 u_hits;   // kick, snare, hats hit in this frame (1 / 0), seconds since the last kick
 };
 
 #define TIME u_time.x
@@ -41,12 +42,16 @@ cbuffer DasVis : register(b0) {
 #define BAR u_beat.y
 #define BEATS u_beat.z
 #define BPM u_beat.w
+// The stems: from the song map when it's ready (exact timing, each separated from the rest of the mix), else live.
 #define KICK u_drums.x
 #define SNARE u_drums.y
 #define HATS u_drums.z
 #define KICK_HIT u_drums.w
-#define BASS u_tone.x
-#define LEAD u_tone.y
+#define SNARE_HIT u_hits.y
+#define HATS_HIT u_hits.z
+#define SINCE_KICK u_hits.w   // seconds: for things that travel after each kick
+#define BASS u_tone.x         // the bass line (harmonic, under 250 Hz)
+#define LEAD u_tone.y         // the lead / vocals (harmonic, 300 Hz – 4 kHz)
 #define ENERGY u_tone.z
 #define LIVE u_tone.w
 #define INTENSITY u_look.x
@@ -82,6 +87,7 @@ float SPEC_PEAK(float x) { return t_spec.SampleLevel(s_clamp, float2(x, 0.5), 0)
 float WAVE(float x) { return t_wave.SampleLevel(s_clamp, float2(x, 0.5), 0).r; }
 
 // The palette, wrapping smoothly through its five colours as t goes 0 → 1.
+// The palette comes from the album cover (or the song's key when there's no colourful cover).
 float3 PAL(float t) {
     t = frac(t) * 5;
     int i = int(t);

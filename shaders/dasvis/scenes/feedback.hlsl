@@ -1,6 +1,7 @@
 // Feedback Classic: MilkDrop's soul in HDR. Each frame is the last one warped (zoomed in, turned, swirled) and faded,
 // with new ink drawn on top: the waveform as a glowing ring. The bass pulls the zoom, each beat turns it a step, the
-// hats make it shimmer, kicks thicken and brighten the ring.
+// hats make it shimmer, kicks thicken and brighten the ring, the snare flashes a wider ring around it, the lead turns
+// the colours.
 #define DASVIS_SCENE
 #include "dasvis.hlsli"
 
@@ -27,8 +28,11 @@ float3 scene(float2 uv, float2 p) {
     float rr = (0.2 + 0.07 * w + 0.05 * KICK * INTENSITY) * (1 - 0.35 * BUILD) * (1 + 0.6 * DROP);  // tightens, then bursts
     float width = 0.002 + 0.006 * KICK;
     float ring = smoothstep(width + 0.003, width * 0.3, abs(r - rr));
-    float3 ink = PAL(a * 0.5 + TIME * 0.05 + BEATS * 0.03) * (1.4 + 2.5 * KICK * FLASH);
+    float3 ink = PAL(a * 0.5 + TIME * 0.05 + BEATS * 0.03 + LEAD * 0.2) * (1.4 + 2.5 * KICK * FLASH);
     c = max(c, ink * ring);
+    // The snare: a thin outer ring that flashes and is carried outwards by the zoom.
+    float outer = smoothstep(0.004, 0.0012, abs(r - rr * 1.55)) * SNARE * FLASH;
+    c = max(c, PAL(0.85 + a * 0.3) * 1.8 * outer);
     // A small core that breathes with the lead.
     c = max(c, PAL(0.9 + TIME * 0.02) * (0.15 + 0.6 * LEAD) * 0.02 / (r * r * 80 + 0.02));
     return c;

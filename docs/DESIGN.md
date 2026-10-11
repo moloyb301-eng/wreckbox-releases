@@ -206,6 +206,10 @@ libVLC (decode, resample to 48 kHz, equalizer, normvol)
     pseudo-stems' envelopes and hits.
     - **Built** while DasVis is open, on a worker at background priority: the current song first, then the next in the
       queue. The samples stream through (`decode_mono_stream`), so it needs a few MB, never the whole song.
+    - **Drive** (`dasvis::drive`): the map's stems move the scenes (live ones fill in), with per-drum hit flags and
+      the time since the last kick.
+    - **Palette** (`dasvis/palette.*`): from the cover (k-means in Oklab, dark → light, kept in sRGB), or the key's
+      when the cover is grey; it fades over ~1 s.
     - **Used:** the renderer looks it up at the heard time (`player.time_ms()` + one refresh − calibration), corrected
       by the live kicks, and passes the beat, bar, phrase, section, build-up and drop to the shaders.
 - **Threads:** libVLC's events and Windows' media-control button presses arrive on other threads and are posted to
