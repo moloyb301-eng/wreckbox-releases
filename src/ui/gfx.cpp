@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <format>
+#include <iterator>
 #include <vector>
 
 #include "../res/resource.h"
@@ -54,22 +55,78 @@ bool Gfx::load_fonts() {
 
 bool Gfx::create_target() {
     if (rt_) return true;
-    RECT rc;
-    GetClientRect(hwnd_, &rc);
-    // WRECKBOX_SOFTWARE=1 draws on the CPU: an escape hatch for old PCs with broken or flaky graphics drivers.
-    wchar_t sw[4]{};
-    const bool software = GetEnvironmentVariableW(L"WRECKBOX_SOFTWARE", sw, 4) && sw[0] == L'1';
-    const auto props = D2D1::RenderTargetProperties(software ? D2D1_RENDER_TARGET_TYPE_SOFTWARE : D2D1_RENDER_TARGET_TYPE_DEFAULT,
-                                                    D2D1::PixelFormat(), dpi_, dpi_);
-    // Normally don't block the UI thread waiting for the monitor's refresh (the desktop compositor already prevents
-    // tearing); the moving visualizer does want to wait, so its frames are paced by the refresh (set_vsync).
-    const auto hprops = D2D1::HwndRenderTargetProperties(hwnd_, D2D1::SizeU(UINT(rc.right - rc.left), UINT(rc.bottom - rc.top)),
-                                                         vsync_ ? D2D1_PRESENT_OPTIONS_NONE : D2D1_PRESENT_OPTIONS_IMMEDIATELY);
-    if (FAILED(d2d_->CreateHwndRenderTarget(props, hprops, &rt_))) return false;
+    if (!create_device()) {
+        drop_target();
+        return false;
+    }
+    rt_->SetDpi(dpi_, dpi_);
     rt_->SetTextAntialiasMode(D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE);  // ClearType fringes look wrong on translucent fills
     rt_->CreateSolidColorBrush(D2D1::ColorF(1, 1, 1), &brush_);
     target_ = rt_;
     ++generation_;
+    return true;
+}
+
+// A Direct3D 11 device, a swap chain on the window and a Direct2D device context drawing into it. The swap chain uses
+// the bit-block-transfer model, as Direct2D's own window target did: the screen, child windows (the search box),
+// PrintWindow and the visualizer's beat-sync timing behave exactly as before.
+bool Gfx::create_device() {
+    const auto env = [](const wchar_t* name) {
+        wchar_t v[4]{};
+        return GetEnvironmentVariableW(name, v, 4) && v[0] == L'1';
+    };
+    // WRECKBOX_SOFTWARE=1 draws on the CPU (WARP): an escape hatch for old PCs with broken or flaky graphics drivers.
+    // WRECKBOX_FL10=1 limits the GPU to Direct3D feature level 10_0, the oldest one supported (for testing old PCs).
+    const bool software = env(L"WRECKBOX_SOFTWARE"), fl10 = env(L"WRECKBOX_FL10");
+    static const D3D_FEATURE_LEVEL levels[] = {D3D_FEATURE_LEVEL_11_1, D3D_FEATURE_LEVEL_11_0, D3D_FEATURE_LEVEL_10_1,
+                                               D3D_FEATURE_LEVEL_10_0};
+    const D3D_FEATURE_LEVEL* first = fl10 ? &levels[3] : levels;
+    const UINT count = fl10 ? 1 : UINT(std::size(levels));
+    D3D_FEATURE_LEVEL level{};
+    HRESULT hr = E_FAIL;
+    for (const auto type : {D3D_DRIVER_TYPE_HARDWARE, D3D_DRIVER_TYPE_WARP}) {  // WARP: no usable GPU (Remote Desktop, a broken driver)
+        if (type == D3D_DRIVER_TYPE_HARDWARE && software) continue;
+        hr = D3D11CreateDevice(nullptr, type, nullptr, D3D11_CREATE_DEVICE_BGRA_SUPPORT, first, count, D3D11_SDK_VERSION, &d3d_,
+                               &level, &d3d_ctx_);
+        if (SUCCEEDED(hr)) break;
+    }
+    if (FAILED(hr)) return false;
+
+    ComPtr<IDXGIDevice1> dxgi;
+    ComPtr<IDXGIAdapter> adapter;
+    ComPtr<IDXGIFactory2> factory;
+    if (FAILED(d3d_.As(&dxgi)) || FAILED(dxgi->GetAdapter(&adapter)) || FAILED(adapter->GetParent(IID_PPV_ARGS(&factory)))) return false;
+    dxgi->SetMaximumFrameLatency(1);  // a vsync'd frame waits for the refresh with nothing queued behind it (beat sync)
+    DXGI_ADAPTER_DESC ad{};
+    adapter->GetDesc(&ad);
+    char name[128]{};
+    WideCharToMultiByte(CP_UTF8, 0, ad.Description, -1, name, int(sizeof name) - 1, nullptr, nullptr);
+    device_name_ = std::format("{}, feature level {}_{}", name, (level >> 12) & 0xF, (level >> 8) & 0xF);
+
+    // Normally the UI thread doesn't wait for the monitor's refresh (the desktop compositor already prevents tearing);
+    // the moving visualizer does, so its frames are paced by the refresh (set_vsync, end()).
+    DXGI_SWAP_CHAIN_DESC1 desc{};  // width / height 0: the window's client size
+    desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+    desc.SampleDesc.Count = 1;
+    desc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+    desc.BufferCount = 1;
+    desc.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
+    if (FAILED(factory->CreateSwapChainForHwnd(d3d_.Get(), hwnd_, &desc, nullptr, nullptr, &swap_))) return false;
+    factory->MakeWindowAssociation(hwnd_, DXGI_MWA_NO_ALT_ENTER);  // full screen is the app's own (F11), not DXGI's
+
+    ComPtr<ID2D1Device> device;
+    if (FAILED(d2d_->CreateDevice(dxgi.Get(), &device)) || FAILED(device->CreateDeviceContext(D2D1_DEVICE_CONTEXT_OPTIONS_NONE, &rt_)))
+        return false;
+    return attach_back_buffer();
+}
+
+bool Gfx::attach_back_buffer() {
+    ComPtr<IDXGISurface> surface;
+    const auto props = D2D1::BitmapProperties1(D2D1_BITMAP_OPTIONS_TARGET | D2D1_BITMAP_OPTIONS_CANNOT_DRAW,
+                                               D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_IGNORE), dpi_, dpi_);
+    if (FAILED(swap_->GetBuffer(0, IID_PPV_ARGS(&surface))) || FAILED(rt_->CreateBitmapFromDxgiSurface(surface.Get(), &props, &back_)))
+        return false;
+    rt_->SetTarget(back_.Get());
     return true;
 }
 
@@ -84,11 +141,19 @@ void Gfx::drop_target() {
     layer_.Reset();
     brush_.Reset();
     target_.Reset();
+    back_.Reset();
     rt_.Reset();
+    swap_.Reset();
+    if (d3d_ctx_) d3d_ctx_->ClearState(), d3d_ctx_->Flush();  // so the old swap chain is really gone before a new one
+    d3d_ctx_.Reset();
+    d3d_.Reset();
 }
 
 void Gfx::resize(UINT w, UINT h) {
-    if (rt_) rt_->Resize(D2D1::SizeU(w, h));
+    if (!swap_) return;
+    rt_->SetTarget(nullptr);  // the buffers can only be resized once nothing holds them
+    back_.Reset();
+    if (FAILED(swap_->ResizeBuffers(0, w, h, DXGI_FORMAT_UNKNOWN, 0)) || !attach_back_buffer()) drop_target();
 }
 
 void Gfx::set_dpi(float dpi) {
@@ -111,7 +176,7 @@ float Gfx::height() const {
 void Gfx::set_vsync(bool on) {
     if (on == vsync_) return;
     vsync_ = on;
-    drop_target();  // made again with the other present option on the next begin()
+    drop_target();  // made again on the next begin()
 }
 
 bool Gfx::begin() {
@@ -124,7 +189,9 @@ bool Gfx::begin() {
 }
 
 void Gfx::end() {
-    if (rt_->EndDraw() == HRESULT(D2DERR_RECREATE_TARGET)) {
+    HRESULT hr = rt_->EndDraw();
+    if (SUCCEEDED(hr)) hr = swap_->Present(vsync_ ? 1 : 0, 0);
+    if (hr == D2DERR_RECREATE_TARGET || hr == DXGI_ERROR_DEVICE_REMOVED || hr == DXGI_ERROR_DEVICE_RESET) {
         // The GPU was reset or changed: drop everything tied to the old target; it's rebuilt on the next paint.
         drop_target();
         InvalidateRect(hwnd_, nullptr, FALSE);

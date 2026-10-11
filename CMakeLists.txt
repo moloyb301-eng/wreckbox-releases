@@ -95,7 +95,7 @@ add_executable(wreckbox WIN32
   res/app.rc
   res/app.manifest)
 target_compile_definitions(wreckbox PRIVATE "WB_VER_COMMA=${PROJECT_VERSION_MAJOR},${PROJECT_VERSION_MINOR},${PROJECT_VERSION_PATCH},0")
-target_link_libraries(wreckbox PRIVATE wbplayer unofficial::nayuki-qr-code-generator::nayuki-qr-code-generator d2d1 dwrite windowscodecs dwmapi shell32 ole32 comctl32 runtimeobject shlwapi shcore)
+target_link_libraries(wreckbox PRIVATE wbplayer unofficial::nayuki-qr-code-generator::nayuki-qr-code-generator d2d1 d3d11 dxgi dwrite windowscodecs dwmapi shell32 ole32 comctl32 runtimeobject shlwapi shcore)
 # libVLC loads on first use (the first play), not at startup: ~3 MB of DLLs off the cold-start path.
 target_link_options(wreckbox PRIVATE /DELAYLOAD:libvlc.dll)
 target_link_libraries(wreckbox PRIVATE delayimp)

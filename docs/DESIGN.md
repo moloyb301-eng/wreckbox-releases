@@ -90,10 +90,22 @@ would have made the port hard to check against the original. So instead:
   scrollable regions; input is matched against the last paint's regions.
 - **Painting happens only after an invalidation**: input that changes what's under the pointer, a store change, or a
   finished job. There is no frame loop, so **idle CPU is 0** (measured).
-- `ID2D1HwndRenderTarget` with `D2D1_PRESENT_OPTIONS_IMMEDIATELY`, so the UI thread never waits for the monitor's
-  refresh. The desktop compositor prevents tearing for windowed apps anyway.
-- **`WRECKBOX_SOFTWARE=1`** renders on the CPU instead, an escape hatch for broken or flaky GPU drivers on old PCs.
-  It's about 1.5× slower to paint and uses ~14 MB less memory.
+- **The app owns its Direct3D 11 device** (DasVis phase 0, 2026-10-11).
+  - `Gfx` creates the device (feature level 11_1 down to 10_0), a swap chain on the window and an
+    `ID2D1DeviceContext` drawing into it, so GPU work such as DasVis can share textures with the UI instead of reading
+    pixels back.
+  - The swap chain uses the bit-block-transfer model (`DXGI_SWAP_EFFECT_DISCARD`, one buffer), as
+    `ID2D1HwndRenderTarget` did. The screen, the `EDIT` child windows, PrintWindow and the visualizer's beat-sync
+    timing behave as before; screenshots of the pages are pixel-identical to the old target.
+  - It presents with sync interval 0, so the UI thread never waits for the monitor's refresh; the desktop compositor
+    prevents tearing for windowed apps anyway. Full screen presents on the refresh (`Gfx::set_vsync`), with a maximum
+    frame latency of 1.
+  - **Going into or out of full screen rebuilds the device**, as the old target was rebuilt. This starts the GPU caches
+    (covers, gradients, text) over. Keeping them made full-screen MilkDrop cost ~40 MB more (151 vs 111 MB private).
+  - The adapter and feature level are logged with the first paint, e.g. `Intel(R) UHD Graphics, feature level 11_1`.
+- **`WRECKBOX_SOFTWARE=1`** renders on the CPU instead (WARP, "Microsoft Basic Render Driver"), an escape hatch for
+  broken or flaky GPU drivers on old PCs; WARP is also used when no GPU device can be made.
+- **`WRECKBOX_FL10=1`** limits the device to feature level 10_0, the oldest DasVis supports, to check old PCs here.
 - **Caches are what make it fast.** The first scroll test averaged 49 ms per frame, because every frame recreated
   ~125 gradient brushes and ~200 text layouts and drew the pixel logo as 800 rectangles. Now:
   - gradient brushes are kept per colour set and only moved

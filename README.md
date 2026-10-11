@@ -270,7 +270,7 @@ The output goes to `build\Release\` (or `build\Debug\`):
     library, or a demo.
   - `--background` opens the window behind the others without taking focus.
   - Any other arguments are files, folders or URLs to play, as if you'd dropped them on the window.
-  - `WRECKBOX_PERF=1` logs paint times to `wreckbox.log`. `WRECKBOX_SOFTWARE=1` draws on the CPU, for drivers that misbehave.
+  - `WRECKBOX_PERF=1` logs paint times to `wreckbox.log`. `WRECKBOX_SOFTWARE=1` draws on the CPU, for drivers that misbehave. `WRECKBOX_FL10=1` limits the GPU to Direct3D feature level 10_0 (for testing what old PCs get).
 - Next to it: `libvlc.dll`, `libvlccore.dll`, `plugins\` (keep these together), `milkdrop\` (presets and textures) and
   `licenses\`.
 - **`wbcore.exe`**: the engine's command line.

@@ -15,6 +15,12 @@ Day-to-day work goes on `main`; bigger features on a branch (`feature/<name>`), 
 
 ## Unreleased
 
+- **Groundwork for DasVis**, WreckBox's own visualizer (`docs/DASVIS-PLAN.md`). The window now draws through a
+  Direct3D 11 device the app owns, so the visualizer will be able to share the GPU with the interface without copying
+  pictures back. Nothing looks different, and memory and start-up time are unchanged. Old graphics cards (Direct3D
+  feature level 10_0) and PCs with no usable GPU (Windows' software renderer) both work. The log names the graphics card
+  in use.
+
 ## 0.7.3 — 2026-10-09
 
 - **Download queue page, rebuilt.**

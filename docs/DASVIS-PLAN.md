@@ -1,0 +1,646 @@
+# DasVis — WreckBox's own visualizer: the build plan
+
+Status: **plan, nothing built yet** (2026-10-11; revised the same day: runs on old PCs, low RAM and CPU). It sits next
+to MilkDrop (`docs/MILKDROP-PLAN.md`) and doesn't replace it.
+
+## 1. What and why
+
+MilkDrop (projectM) is from 2001:
+- **Colour:** 8-bit, so gradients band.
+- **Audio:** only three bands (bass / mid / treble), read from the last few milliseconds.
+- **Looks:** 2D only, and the preset changes at random times.
+- **Cost:** heavy for what it shows. Its per-vertex equations run on the CPU: **26–30 % of one core** here at 720p,
+  plus a 4 ms GPU read-back, and **~60 MB** more memory while it's open (`docs/DESIGN.md`).
+
+WreckBox can do much better, because **the songs are files on your PC.** DasVis analyses the whole song before it
+plays:
+- It knows where every beat, bar, build-up and drop is, and what the kick, snare, hats, bass and vocals are doing.
+- It can **anticipate**. In a build-up the picture tightens, and on the drop's first beat it lets go.
+
+It draws everything on the GPU:
+- HDR with bloom
+- particles
+- fluid
+- fractals
+- motion blur
+
+An **auto-director** cuts between scenes on phrase boundaries, the way a real VJ does.
+
+**The goal, in one line:** every frame looks like a music video someone edited to this exact song, and it runs on a
+ten-year-old laptop using less CPU and memory than MilkDrop.
+
+### Why that's possible: what makes it look good is cheap
+
+What makes DasVis better than MilkDrop is mostly **brains, not GPU power:**
+- knowing the song (the beats, the sections, the drops)
+- smooth springs instead of jitter
+- cuts on phrases
+- palettes taken from the cover
+
+All of that runs once per song or costs microseconds a frame. The expensive GPU effects (fractals, a million
+particles) are the **top layer**, scaled to what each PC can do. An old PC gets the same director, timing and
+palettes, so the same "edited to the song" feel; it just gets simpler scenes and a lower internal resolution.
+
+### What makes the animation *good* (the rules every scene follows)
+
+1. **Nothing jumps. Everything springs.**
+   - Audio drives motion through envelopes with a fast attack and a slow release, and through critically damped
+     springs.
+   - Raw amplitude never moves anything directly: that's the jitter that makes most visualizers look cheap.
+2. **Movement locks to the beat's phase, not its loudness.** The camera travels one ring per beat and turns on the
+   bar, so it moves smoothly *with* the music.
+3. **Anticipation and release.** Build-ups compress (speed, saturation, field of view, a riser glow). Drops release
+   (flash, shockwave, a new scene).
+4. **Contrast over time.** Breakdowns are calm and sparse. Drops are dense and bright. When everything is loud all the
+   time, nothing is.
+5. **Each song has its own look.** A seed made from the track's id picks the palette offsets, camera path and scene
+   order. The same song looks like itself every time, and different songs look different.
+6. **Film finish on every frame:**
+   - HDR colour, bloom, ACES tone mapping
+   - a touch of grain, chromatic aberration and vignette
+   - motion blur from the feedback loop
+   
+   All of it is cheap enough for the lowest tier.
+7. **Smooth or it doesn't ship.** Dynamic resolution keeps the frame time. A stutter is worse than a slightly softer
+   picture.
+8. **Safe flashing.** A limiter keeps full-screen brightness flashes to 3 a second at most (WCAG 2.3.1). *Reduce
+   flashing* lowers them further.
+9. **Light on every PC** (§4). Every pass has a cost class and a quality knob. Nothing runs on the CPU per pixel or per
+   vertex. Every resource is freed when full screen closes.
+
+## 2. Where it starts from (today's code)
+
+| Piece | Today | DasVis uses it for |
+|---|---|---|
+| `player/milkdrop.*` | projectM in an OpenGL pbuffer; pixels read back (4 ms a frame) and drawn as a Direct2D bitmap | Kept as its own mode, and later as one layer inside DasVis |
+| `ui/gfx.*` | `ID2D1HwndRenderTarget` | Phase 0 moves it onto a D3D11 device, so DasVis's texture is drawn with **no read-back** |
+| `AudioOutput::tap_until` / `heard_index` | The exact samples heard while a frame is on screen (beat sync, phase 5c) | The live audio feed, already in sync |
+| `player::Visualizer` | 2,048-point FFT for the Winamp bars | The same FFT feeds DasVis, so nothing is computed twice |
+| `wb::decode_mono` (22.05 kHz mono) and `wb::tempo` / `key` | BPM and key analysis | The song map builds on them |
+| `ArtworkCache`, the album colours | Covers and their colours | Cover textures and the palette |
+| `View` full-screen screen | The panel, keys, menu, Bars / MilkDrop chips; it stops drawing when paused and settled | A third chip: **DasVis**; the same pause rule |
+| `sync_server` (phone over Wi-Fi) | Phone sync | Phase 7: the phone as a VJ deck |
+
+The dev PC (GTX 1650 Ti + Intel UHD, i5-10300H) is a **new-ish laptop**. Old PCs are covered by the tiers in §4 and
+the tests in §12.
+
+## 3. Decisions (defaults I've taken; any of them can change)
+
+| Question | Default | Why |
+|---|---|---|
+| Graphics API | **Direct3D 11 at feature level 10_0: Shader Model 4, pixel and vertex shaders only, no compute shaders** | Runs on every GPU since about 2008: Intel HD 2000 onward, GeForce 8, Radeon HD 2000. Simulations (particles, fluid, reaction-diffusion) run as pixel shaders on ping-pong textures, the classic way, which is just as fast at these sizes. One code path for every PC. |
+| Colour format | **R11G11B10_FLOAT** (4 bytes a pixel) for HDR targets | HDR at half the memory of RGBA16F; on integrated graphics GPU memory *is* your RAM |
+| Shaders | **HLSL**, compiled at build time with `fxc` (`ps_4_0` / `vs_4_0`) into `.cso` files next to the exe. Your own scenes compile at run time with `d3dcompiler_47.dll` (part of Windows 10), which is loaded **only if you have your own scenes**. | No compiler in memory normally; the build fails if a shader doesn't compile |
+| Stems (kick / snare / hats / bass / vocals) | **DSP pseudo-stems:** harmonic–percussive separation plus band splits, streamed through the song (§6) | A few seconds of one background core a song, under 2 MB of memory, no new dependencies |
+| When songs are analysed | **Only while DasVis is open:** the current song at once (it plays *Live* for those few seconds), then the next one in the queue | Never costs anything if you don't use DasVis |
+| Default visualizer | **MilkDrop until DasVis has 12+ scenes and the director**, then DasVis | Don't swap in something half-finished |
+| Graphics card | On laptops with two GPUs, DasVis asks for the **fast one** while full screen is open, and goes back when it closes | Battery life the rest of the time |
+| On battery | **30 fps cap** and one tier lower (setting: *Full / Save battery*) | Half the power for a picture that still moves smoothly |
+| No usable GPU (Remote Desktop, a broken driver) | The **Winamp bars**, as MilkDrop does today | Software rendering would burn the CPU |
+| Third-party shader code | **None copied from Shadertoy** (its default licence is CC BY-NC-SA, which is not OK to ship). Our own code, or MIT sources (Ashima noise, AMD FSR 1's sharpen), with licences in `licenses\` | It's distributed |
+| New dependencies | **None** for phases 0–7 | D3D11, DXGI, d3dcompiler and Media Foundation are part of Windows |
+
+## 4. Runs on any PC: tiers and budgets
+
+### Tiers, measured rather than guessed
+
+DasVis doesn't look up your GPU's name. It measures:
+1. It starts in **Medium** and times every pass on the GPU (timestamp queries, read back three frames late so it never
+   stalls).
+2. After 2 seconds it settles on a tier, and keeps adjusting the render scale within that tier as it runs.
+3. The result is remembered per graphics card in `dasvis.json`, so the next start is right from the first frame.
+
+| Tier | Typical PC | Output | Internal render | Frame rate | Scenes allowed | Particles | Fluid / RD grid | Bloom |
+|---|---|---|---|---|---|---|---|---|
+| **Low** | Intel HD 4000 / HD 520, GT 710; 2 cores, 4 GB | up to 1080p | 33–60 % of output | 30–60 | Light + Medium (Medium at low quality) | 16k–64k | 128² | 3 levels, quarter res |
+| **Medium** | Intel UHD 620, Vega 8, GTX 750–1050 | up to 1440p | 50–85 % | 60 | all; Heavy at low quality | 256k | 256² | 5 levels |
+| **High** | GTX 1650 Ti and up | up to 4K | 70–100 % | 60 (or display rate) | all | 1M | 512² | 6 levels |
+
+**Below Low** (no feature level 10_0, or Low can't hold 25 fps at 33 % scale): the Winamp bars, with a one-line note.
+
+### Budgets: what DasVis may cost, measured on top of the app with the visualizer closed
+
+| | Low tier (old PC) | High tier (this PC) | MilkDrop today, for comparison |
+|---|---|---|---|
+| **CPU, per frame** | < 0.5 ms | < 0.5 ms | |
+| **CPU, overall** | < 5 % of one core at 60 fps | < 3 % of one core | 26–30 % of one core |
+| **App memory (private RAM) while open** | **≤ +20 MB** | ≤ +30 MB | about +60 MB |
+| **GPU memory** | ≤ 24 MB | ≤ 128 MB | |
+| **Song analysis** | < 15 s of one core, at background priority | < 5 s | none |
+| **After closing full screen** | back to where it was | back to where it was | back to where it was |
+
+### How it stays light
+
+**CPU**
+- Nothing per pixel or per vertex runs on the CPU. A frame's CPU work is:
+  - one shared FFT
+  - ~20 envelopes and springs
+  - a song map lookup (binary search)
+  - the director's decision (a few comparisons)
+  - one 256-byte constant buffer upload
+- Frames are paced by the display's refresh (a vsync'd present with a frame latency of 1), so the CPU sleeps between
+  frames and never busy-waits.
+- Drawing stops when it should:
+  - **paused:** once the picture settles
+  - **minimized or covered:** right away (the same rules as MilkDrop)
+- Song analysis runs on one background thread at the lowest priority (`THREAD_MODE_BACKGROUND_BEGIN`), one song at a
+  time, so playback and the UI never feel it, even on two cores.
+
+**Memory**
+- **Few targets.** The render targets are:
+  - two feedback buffers (ping-pong)
+  - one scratch buffer
+  - the bloom chain (a third the size of one target)
+  - the simulation grids, which exist only while their scene is on screen
+- **Small format.** R11G11B10 is 4 bytes a pixel. At Low tier, 1080p output rendered at 50 % is 960×540: about 2 MB a
+  target.
+- **Streamed analysis.**
+  - Harmonic–percussive separation needs only a sliding window of 17 spectra, not the whole song's spectrogram
+    (~70 KB, not ~40 MB).
+  - The only big buffer is the decoded song (~20 MB for 4 minutes), held for a few seconds.
+  - Option, if that's still too much on 4 GB PCs: decode in 30-second chunks.
+- **Small song maps.** Envelopes are stored as bytes at 43 per second, with beats and sections as short lists: about
+  60 KB a song. It's read from disk when the song starts; only the current song and the next stay in memory.
+- **Covers** go up as one 512² texture with mipmaps (~1.4 MB). The cover's 5-colour palette is computed from a 64²
+  thumbnail.
+- **No compiler** loaded unless you have your own scenes; shipped shaders are precompiled `.cso` files (a few hundred
+  KB in all).
+
+**GPU** (quality without the cost)
+- **Feedback is the best value in graphics.**
+  - It's one texture read per pixel, and gives motion trails, tunnels and smears for free. MilkDrop proves how far it
+    goes.
+  - Most scenes are built on it, with a few cheap shapes or noise on top.
+- **One quality knob for everything.** Every shader reads `quality` (0–1) and scales its loops: ray-march steps,
+  noise octaves, blur taps. One shader serves Low and High. There are never two versions to keep in step.
+- **Render low, finish high.**
+  - Scenes draw at the internal resolution.
+  - Bloom works at quarter resolution.
+  - Grain, vignette and the final sharpen (FSR 1's RCAS, one cheap pass) run at full output, so edges and text stay
+    crisp.
+- **Simulations scale by grid size, not by code.** Particles live in a texture (16k = 128², 1M = 1024²), as do the
+  fluid and reaction-diffusion grids.
+- **Heavy scenes** (fractals, chrome) render at a lower scale and are given more steps only when the measured frame
+  time has room.
+
+## 5. Architecture
+
+```
+                         ┌──────── only while DasVis is open, background thread, low priority ────────┐
+ current / next song ──► │ decode_mono → streaming STFT → HPSS (17-frame window) → pseudo-stems       │
+                         │ → onsets → events → beat grid → bars / phrases → sections → drops          │
+                         │ → song map  (cache: _cache\dasvis\maps\<id>.bin, ~60 KB)                   │
+                         └───────────────────────────────────┬────────────────────────────────────────┘
+                                                             ▼
+ AudioOutput::tap_until ─► Features (the shared FFT,  ─► Uniforms (one 256-byte cbuffer)
+   (what's heard now)       envelopes, springs) +         beat/bar/phrase phase, stems,
+                            SongMap lookup                anticipation, palette, quality …
+                                                             ▼
+                         Director: which scene(s) fit the tier and the moment; transitions on phrase boundaries
+                                                             ▼
+ GPU frame (D3D11, FL 10_0, pixel shaders): simulations (ping-pong textures) → world layer → feedback warp
+   → mid layer (particles) → overlay → transition blend → bloom (¼ res) → tone map + finish + flash limiter
+   → upscale + sharpen → swap-chain back buffer
+                                                             ▼
+ Direct2D (same device): the glass player panel drawn on top → Present (paced by the refresh)
+```
+
+### Files
+
+```
+src/dasvis/                 library wbdasvis: no UI dependencies (like player/milkdrop)
+  dasvis.h / .cpp           public API: DasVis(cfg), frame(features, dt) → draws into a texture; next / prev / lock;
+                            tier measurement and the render scale
+  gpu.h / .cpp              D3D11 helpers: targets, ping-pong pairs, timestamp queries, .cso loading, hot reload
+  features.h / .cpp         live audio features from the tap (FFT bands, envelopes, springs, beat PLL)
+  songmap.h / .cpp          streaming analysis → SongMap (HPSS + pseudo-stems inside); binary cache with a version
+  director.h / .cpp         scene choice within the tier, transitions, intensity, likes / skips
+  post.h / .cpp             bloom, tone map, finish, flash limiter, upscale + sharpen
+shaders/dasvis/
+  dasvis.hlsli              the uniform block + shared library (noise, SDF, palettes, easing, ray march, colour)
+  post/*.hlsl
+  sims/*.hlsl               particles (state textures), fluid, reaction-diffusion: all pixel shaders
+  scenes/<name>/scene.json + *.hlsl
+src/ui/view_visualizer.cpp  + DasVis mode, chip, keys, menu, HUD line
+tests/dasvis_tests.cpp
+cmake/dasvis.cmake          fxc compile of every .hlsl → <exe>\dasvis\*.cso (+ sources, for hot reload)
+```
+
+`DasVis` exists only while full screen is open in DasVis mode, as MilkDrop does today. When it closes, every GPU
+resource is released, and so are the song maps and the analysis thread's buffers.
+
+## 6. The song map (the brain)
+
+Built **only while DasVis is open:**
+- The current song is analysed at once. It plays *Live* (§6, "Using it") for those few seconds, then switches over
+  smoothly.
+- The next song in the queue follows on the same background thread.
+
+It's cached in `_cache\dasvis\maps\<track id>.bin` (about 60 KB a song), with a version number so better analysis
+rebuilds old maps. A song is analysed once, ever.
+
+### The steps (one streaming pass through the song)
+
+1. **Decode:** `decode_mono` (22.05 kHz), the existing decoder.
+2. **STFT:** 2,048-sample window, 512 hop (23 ms), log-magnitude, computed frame by frame.
+3. **HPSS** (harmonic–percussive separation, Fitzgerald 2010), over a sliding window of 17 frames:
+   - A median over the 17 frames along time keeps what's *harmonic*.
+   - A median over 17 bins along frequency keeps what's *percussive*.
+   - Soft masks split the frame in two.
+4. **Pseudo-stems**, each an onset envelope (half-wave rectified spectral flux) plus a list of events (adaptive
+   threshold, peak picking). Envelopes are stored as bytes:
+
+   | Stem | Source | Range |
+   |---|---|---|
+   | kick | percussive | 40–120 Hz |
+   | snare / clap | percussive | 150–400 Hz + 1.5–4 kHz |
+   | hats / cymbals | percussive | 6–11 kHz |
+   | bass | harmonic | 40–250 Hz (envelope plus a rough pitch) |
+   | lead / vocals | harmonic | 300 Hz–4 kHz (envelope plus chroma) |
+
+5. **Beat grid:**
+   - The BPM comes from the existing `tempo()`.
+   - Beat times come from dynamic-programming beat tracking (Ellis 2007) on the combined onset envelope.
+   - **Downbeats:** the beat offset (0–3) whose kick and bass onsets are strongest, bar by bar.
+   - **Phrases:** 8 and 16 bars from the first strong downbeat.
+6. **Energy:** loudness per beat (RMS, K-weighted like the LUFS measure), smoothed over 4 beats.
+7. **Sections:**
+   - Beat-synchronous features (32 log-mel bands + 12 chroma, a few KB) go into a self-similarity matrix, and Foote
+     novelty (a 16-beat checkerboard kernel) finds the section boundaries. A 4-minute song at 128 BPM is about 500
+     beats: a 1 MB matrix for a moment.
+   - Boundaries snap to the nearest phrase start.
+   - Each section is labelled from its energy and density:
+
+     | Label | What it looks like |
+     |---|---|
+     | `intro` / `outro` | quiet, at the ends |
+     | `breakdown` | low energy, few kicks |
+     | `build` | energy rising, snare / hat density rising, high-frequency riser energy rising |
+     | `drop` | a big energy jump after a build, or the loudest section |
+     | `verse` / `chorus` | the rest, by energy |
+8. **Drops:**
+   - A drop is the start of a `drop` section, scored by how big the jump is.
+   - The two bars before a drop often go quiet (the "silence before the drop"). That gap is marked, so the visuals can
+     hold their breath too.
+
+### Using it while the song plays
+
+**Position.** The heard position = the playing position of the sample on screen now. It comes from the same
+`heard_index` that MilkDrop's beat sync uses, so the map and the picture can't drift apart. A seek just looks up the
+new position.
+
+**Live mode.** Internet radio, or a song still being analysed, runs **live-only**:
+- a phase-locked loop on the live kick onsets gives the beat phase
+- energy-only sections, and no anticipation
+
+The HUD says *Live* in that case.
+
+## 7. The uniform block (what every shader can read)
+
+Like Shadertoy's built-ins, plus the music. One 256-byte constant buffer, updated once a frame:
+
+```hlsl
+cbuffer DasVis : register(b0) {
+    float  time, dt;              // seconds since the scene started; frame time
+    float2 res;                   // internal render size in pixels (after dynamic resolution)
+    float  quality;               // 0–1: scales loops (march steps, octaves, taps). Low tier ≈ 0.3, High = 1
+    float  seed;                  // from the track id: this song's look
+    float  bpm;
+    float  beat;                  // 0→1 across each beat (sawtooth); beat_i = whole beats so far
+    float  bar, phrase;           // 0→1 across each bar / 16-bar phrase
+    float  beat_i, bar_i;
+    float  kick, snare, hats, bass, lead;   // envelopes 0–1: fast attack, ~150–400 ms release
+    float  kick_hit;              // 1 on the frame of a kick, else 0 (for spawning)
+    float  energy;                // section-smoothed loudness 0–1
+    float  section, section_t;    // section kind (enum) and 0→1 progress through it
+    float  build;                 // 0 outside a build, rises to 1 at the drop
+    float  drop;                  // 1 on the drop's first beat, decays over a bar
+    float  to_drop;               // bars until the next drop (99 = none)
+    float  live;                  // 1 when there's no song map
+    float3 key_tint;              // from the key: Camelot wheel → hue; minor cooler, major warmer
+    float3 pal[5];                // from the cover art (k-means in Oklab), sorted dark → light
+    float  intensity;             // the user's Chill 0.5 / Normal 1 / Insane 1.6
+    float  flash_budget;          // what the limiter still allows this second (0–1)
+};
+Texture2D spectrum;   // 256 log bins (R) and smoothed (G): 2 KB
+Texture2D wave;       // 512 samples, trigger-aligned
+Texture2D history;    // the last 128 spectra (a scrolling spectrogram: terrain, ridges): 64 KB
+Texture2D cover;      // album art, 512² with mipmaps
+Texture2D prev;       // last frame's composite (feedback)
+Texture2D noise;      // 128² tiling blue noise (3D noise is computed, not stored)
+```
+
+`dasvis.hlsli` holds the shared library, all our own code or MIT:
+- noise: simplex, curl, fbm, Voronoi
+- SDF primitives and operators, a ray marcher with a `quality`-scaled step count
+- Oklab colour, cosine palettes, ACES
+- easing curves and hashes
+
+## 8. Scenes: the launch set
+
+Scene layers:
+- **World:** fills the screen.
+- **Mid:** particles and shapes, drawn additively over the world.
+- **Overlay:** rings, titles and type.
+- **Event:** one-shot moments, used at drops.
+
+Each scene has a `scene.json` (name, layer, tags, energy range, **cost**, passes, resources) and one or more `.hlsl`
+files. Shaders read the uniforms directly; there's no mapping language to learn.
+
+**Cost classes** (measured on the Intel UHD at 720p, `quality` 0.3):
+
+| Class | Measured cost | Where it runs |
+|---|---|---|
+| **L** (light) | < 2 ms | everywhere |
+| **M** (medium) | < 5 ms | Low tier at low quality, everything else fully |
+| **H** (heavy) | anything more | Medium and High tiers; on Low only if the measured frame time allows it at 33 % scale |
+
+**A Low-tier PC still gets 15 of the 21 scenes.**
+
+### World
+
+| # | Scene | Cost | Look | What the music does |
+|---|---|---|---|---|
+| 1 | **Feedback Classic** | L | MilkDrop's soul in HDR: a warp field (zoom, rotation, swirl) over the last frame, with waveforms drawn in | bass = zoom pull, beat = rotation step, hats = shimmer, drop = the warp inverts for a bar |
+| 2 | **Neon Tunnel** | L | Endless tunnel of glowing rings and panels (worked out in polar space, no ray marching) | one ring per beat; kick sends a light pulse down the tunnel; build narrows it and speeds up; drop shatters the walls into particles (event 19) |
+| 3 | **Mandelbox Flight** | H | Fractal fly-through, glossy, with ambient occlusion and fog | bass changes the fold scale; the camera path changes on each phrase; snare = specular glints; key tint lights the fog |
+| 4 | **Ink Ocean** | M | Fluid simulation with dye in the cover's colours | kick = radial pressure burst; lead = curl streams following the melody; drop = all five palette dyes at once |
+| 5 | **Ridge Lines** | L | The *Unknown Pleasures* ridges in 3D from the spectrogram history (line strips, not ray marching), flown over at dusk | the bass lights the sun on the horizon; hats sparkle the ridge tops; build lifts the camera |
+| 6 | **Aurora** | M | Layered curtains over a night lake with reflections | lead brightens and folds the curtains; key sets the hue; calm sections only |
+| 7 | **Coral** | M | Reaction-diffusion growing organic patterns, lit as relief | energy moves feed / kill between "spots" and "maze"; kicks seed new growth |
+| 8 | **Synthwave** | L | Outrun sun, neon grid floor, mountains made from the spectrum | grid scrolls on the beat; sun stripes pulse with bass; drop = the sun flares |
+| 9 | **Liquid Chrome** | H | Ray-marched metaballs reflecting the cover art | one blob per stem, size from its envelope; they merge on the bar |
+| 10 | **Galaxy** | M | Spiral arms of particles (16k on Low, 1M on High) | arms turn on the bar; kick = a density wave; drop = supernova (core flash, outward shell) |
+| 11 | **Kaleido Cover** | L | Kaleidoscope of the album art, 6–12 segments | segments change on the phrase; rotation on the beat; bass zooms |
+| 12 | **Storm** | H | Clouds lit from inside, procedural lightning | snare = a bolt (within the flash budget); bass = thunder rumble on the camera |
+| 13 | **Hyperspace** | L | Starfield, then streaks | build stretches the stars; drop = jump to light speed |
+
+### Mid and overlay
+
+| # | Layer | Cost | What |
+|---|---|---|---|
+| 14 | **Particles** | L–M | 16k–1M particles on a curl-noise field: kicks emit, hats sparkle, lead steers the flow; coloured from the palette |
+| 15 | **Spectrum Ring** | L | A circle of bars round a spinning disc of the cover, with peak caps (Winamp's bars, grown up) |
+| 16 | **Ribbon** | L | The waveform as a glowing 3D ribbon trailing through space |
+| 17 | **Title Card** | L | At each song's start: the title and artist in kinetic type (drawn once with DirectWrite into a small texture), letters arriving on the beats, then dissolving into particles |
+| 18 | **Beat Sigils** | L | Geometric marks (rings, triangles) that stamp on kicks and fade out |
+
+### Event (one-shots at drops)
+
+| # | Event | Cost | What |
+|---|---|---|---|
+| 19 | **Cover Shatter** | M | The cover breaks into Voronoi shards that fly at the camera on the drop and reassemble over the next phrase |
+| 20 | **Shockwave** | L | A refraction ring from the centre, plus chromatic split |
+| 21 | **White-out** | L | Bloom to white over one beat, then the new scene fades in from it (within the flash budget) |
+
+## 9. The director
+
+1. **Tags.** Each scene declares:
+   - its layer
+   - the energy it suits (calm / mid / peak)
+   - a tempo range
+   - its cost class; its measured cost on *this* PC is kept in `dasvis.json`
+2. **Picking.** At each **section boundary** (snapped to a phrase), it picks a world scene for the new section's energy,
+   plus mid and overlay layers.
+   - Only scenes **that fit the frame budget on this PC** are picked: world + layers + post must fit, at the current
+     render scale.
+   - The pick is weighted-random from the track seed, and never repeats one of the last 4.
+   - Drops get a *hero* world and an event:
+     - heroes: Tunnel, Galaxy, Hyperspace, plus Mandelbox where it fits
+     - events: Shatter, Shockwave, White-out
+   - Breakdowns get calm worlds (Aurora, Ink Ocean, Ridge Lines).
+3. **Transitions** happen on the phrase's downbeat and last 1–4 beats:
+
+   | Transition | When |
+   |---|---|
+   | crossfade | calm to calm |
+   | noise-luma wipe | default |
+   | zoom-through (into the feedback) | build to drop |
+   | shatter | drops |
+   | glitch (pixel-sort, RGB split) | genre tags: dubstep, DnB |
+
+   - Two worlds render at once only during a transition, and the render scale dips for those beats.
+   - On Low tier, a transition with a heavy scene on either side becomes a **cut through the white-out**: one world at
+     a time.
+4. **Within a section,** scene parameters drift from the track seed, so a long section keeps evolving and doesn't loop.
+5. **You:**
+   - **N / P:** next / previous scene
+   - **L:** lock
+   - **❤ (F):** like this scene
+   - **Skip (X)**
+   
+   Likes and skips change that scene's weight for the current genre; they're saved in `dasvis.json` in the settings
+   folder.
+6. **Intensity:** **Chill / Normal / Insane**. It scales how many layers run, particle counts, cut frequency and how
+   far the drop goes, always within the tier's budget.
+
+## 10. The phases (each one ships as a release: 0.7.4, 0.7.5, …)
+
+Every phase has to pass the **Low-tier check** (§12) before it ships, not just look good on this PC.
+
+### Phase 0: the foundation (no visible change) ✅ 2026-10-11
+- `Gfx` moved from `ID2D1HwndRenderTarget` to **a D3D11 device (feature level 11_1 down to 10_0) + a DXGI swap chain
+  + `ID2D1DeviceContext`** (`src/ui/gfx.*`).
+  - `ID2D1DeviceContext` *is an* `ID2D1RenderTarget`, so `Gfx`'s drawing code didn't change.
+  - Device loss uses the same recreate path (the bitmap generation counter); so do DPI changes and going into or out of
+    full screen.
+- **Changed from the plan while building it:**
+  - **The swap chain uses the bit-block-transfer model** (`DXGI_SWAP_EFFECT_DISCARD`), not flip model. It's what
+    Direct2D's window target used, so the `EDIT` child windows, PrintWindow and the beat-sync timing are unchanged.
+    Flip model (waitable, a frame less latency) can come in phase 1, for the full-screen window only, once beat sync
+    can be re-measured with it.
+  - **The fast-GPU switch moved to phase 1.** Nothing uses it until DasVis exists; full screen already rebuilds the
+    device, so phase 1 only has to pick the adapter there.
+- **Checks, measured:**
+  - **Memory walk** (`build/dev/memtest.ps1`, 287-track copy, private MB, old → new):
+
+    | Step | Old | New |
+    |---|---|---|
+    | Home, playing | 42.6 | 42.6 |
+    | All tracks | 48.3 | 49.0 |
+    | Scrolled (covers) | 55.1 | 55.5 |
+    | Details open | 53.5 | 53.7 |
+    | Full-screen MilkDrop | 110.5 | 111.6 |
+    | Back from full screen | 43.4 | 37.0 |
+    | In use again | 50.4 | 47.9 |
+
+    The first try cost +40 MB in full screen: the device was kept across full screen, and with it every cached cover
+    and text layout. Going into and out of full screen now rebuilds it, as the old target was rebuilt.
+  - **First paint:** median 119 ms old, 124 ms new over 10 launches each (both with occasional 300 ms outliers):
+    within noise. Creating the D3D11 device takes ~45 ms, as it did inside the old target.
+  - **Screenshots:** Home, All tracks and Soulseek are pixel-identical to the old build; Settings differs only at the
+    scrollbar's end (content still settling). Resizing the window redraws correctly.
+  - **Full screen:** a steady 16.6 ms a frame (60 fps), vsync-paced.
+  - **Feature level 10_0** (`WRECKBOX_FL10=1`) draws the same pixels; **WARP** (`WRECKBOX_SOFTWARE=1`, "Microsoft Basic
+    Render Driver") works.
+  - All test suites pass.
+  - Still to do by you: listen to MilkDrop with real music; beat sync should feel the same as before.
+
+### Phase 1: the engine and the first three scenes
+- **GPU choice** (moved from phase 0): `IDXGIFactory6::EnumAdapterByGpuPreference`.
+  - The window runs on the power-saving GPU.
+  - Opening DasVis builds the full-screen device on the fast one (full screen already rebuilds the device), and closing
+    it goes back.
+  - A setting overrides this: *Always / Only for visuals / Never*.
+- `gpu.*`: R11G11B10 targets, ping-pong pairs, timestamp queries per pass, `.cso` loading, hot reload of user scenes.
+  - User scenes live in `%APPDATA%\local.wreckbox\wreckbox\dasvis\scenes`.
+  - **F5** reloads them; compile errors show on screen, not as a crash.
+- **Tiers** (§4): measured, remembered per GPU, dynamic render scale, the `quality` knob, the 30 fps cap on battery.
+- Post chain:
+  - bloom at quarter resolution, 3–6 levels by tier
+  - ACES tone mapping with exposure
+  - finish: grain, chromatic aberration, vignette
+  - the **flash limiter**
+  - upscale + RCAS sharpen
+- **Live features:** from the shared FFT; kick / snare / hats onsets from live band flux; envelopes and springs; a
+  phase-locked loop for the beat.
+- Scenes (all Light): **Feedback Classic, Neon Tunnel, Kaleido Cover**, plus the Spectrum Ring overlay.
+- UI:
+  - a **DasVis** chip next to MilkDrop / Bars
+  - **D** switches to it
+  - the panel shows the scene's name
+  - a right-click menu with Intensity, Quality (Auto / Low / Medium / High), Save battery, Reduce flashing and Open
+    scenes folder
+- DasVis is drawn straight from the shared texture: no read-back, and one frame less latency than MilkDrop.
+
+### Phase 2: the song map
+- §6 in full: streaming STFT and HPSS, pseudo-stems, beat grid, downbeats, phrases, sections, drops; the binary cache;
+  analysis only while DasVis is open, at background priority.
+- The uniforms gain `bar`, `phrase`, `section`, `build`, `drop` and `to_drop`.
+- **HUD** on the panel's preset line: *Build-up · drop in 4 bars*, *Drop*, *Breakdown*, *Live*.
+- A dev view (**Ctrl+Shift+D**) draws the map over the picture: beats, bars, sections, drop markers, and the playhead.
+- Tests use synthetic songs generated in the test:
+  - a 128 BPM kick, 16 quiet bars, an 8-bar riser, then a loud section
+  - Assert: beats within 20 ms, downbeats right, the build found, the drop within one beat of the truth.
+  - Also: the cache round-trips, a changed version rebuilds the map, and peak memory during analysis stays under the
+    budget.
+
+### Phase 3: stems drive the layers
+- The five pseudo-stem envelopes and the `kick_hit` events come from the map in step with the heard position, with
+  live amplitude on top.
+- Every phase 1 scene is rewired to use stems (tunnel pulses on kick, rings flash on snare, and so on).
+- **Palette from the cover:** k-means (k = 5) in Oklab on a 64² thumbnail, once per album.
+- **Key colour:** Camelot number → hue, minor shifts cooler.
+
+### Phase 4: simulations (pixel shaders, scaled by grid size)
+- **Particles:**
+  - Positions and velocities live in two state textures (128² to 1024² by tier), updated by a pixel shader.
+  - They're drawn as point sprites: a vertex shader reads the state with `Load` (SV_VertexID).
+  - Emit, curl, attract, die; additive in HDR.
+- **Fluid:** stable fluids at 128²–512²: advect, divergence, 8–20 Jacobi pressure iterations by tier, subtract
+  gradient. The dye is twice the grid size.
+- **Reaction-diffusion:** Gray-Scott at 128²–512², 2–8 steps a frame by tier.
+- Scenes: **Ink Ocean, Coral, Galaxy, Ridge Lines**, and the **Particles** mid layer.
+
+### Phase 5: the director
+- §9 in full:
+  - budget-aware picking
+  - layering (world + mid + overlay)
+  - transitions on phrase downbeats
+  - drop events
+  - intensity
+  - likes and skips
+  - parameter drift from the track seed
+- Deterministic for a given seed, map and tier, so it's testable.
+
+### Phase 6: hero scenes and type
+- **Synthwave, Hyperspace** (Light); **Aurora** (Medium); **Mandelbox Flight, Liquid Chrome, Storm** (Heavy).
+- Events: **Cover Shatter, Shockwave, White-out**.
+- Overlays: **Title Card**, **Ribbon**, **Beat Sigils**.
+- **DasVis becomes the default visualizer** (decision 6 in §3). MilkDrop stays one key away.
+
+### Phase 7: over the top
+- **Phone VJ deck:**
+  - a page served by the existing `sync_server`, on the local network, protected by the pairing that already exists
+  - XY pad (camera), scene buttons, intensity slider, *Drop now* button, ❤ / skip
+  - shake the phone for a shockwave (the browser's motion events)
+- **Room lights:** **WLED** first (UDP realtime over the local network, no account, a few bytes a frame); then
+  Philips Hue (local bridge, Entertainment API) if you own one. Colours come from the palette, brightness from the
+  stems.
+- **Video export:**
+  - Renders a song **offline at up to 4K60**, at High quality even on a slow PC: it just takes longer. The song map
+    makes every frame exact.
+  - Encoding uses Windows' **Media Foundation** H.264 / HEVC encoder, with the song's audio muxed in. No new
+    dependency.
+  - It's in the right-click menu on any song: *Export DasVis video…*
+- **Spout output** (shares the texture with OBS / Resolume): the Spout SDK is BSD, a small drop-in.
+- **Live wallpaper:**
+  - renders behind the desktop icons (the WorkerW window)
+  - Low tier, 30 fps, at the most
+  - pauses when a full-screen app or game runs, or on battery
+- **Multi-monitor:** span, or a different scene on each screen.
+- **Synced lyrics** from LRCLIB in kinetic type. This sends song titles to an outside service, so it's **off until you
+  turn it on**.
+
+### Phase 8: optional, later
+- **Real stems:**
+  - Demucs (htdemucs) via ONNX Runtime + DirectML, about 1 minute a song on the GTX, cached.
+  - About 80 MB of model plus the runtime, downloaded on first use and checked by SHA-256. It uses a lot of memory
+    while it runs, so it's **High tier only, and opt-in**.
+  - Only if the pseudo-stems turn out to be too rough on real music.
+- **MilkDrop as a DasVis layer:** projectM's frame as a texture, through DasVis's post chain and transitions.
+- **Not planned:** real-time AI image generation. It's far too heavy for the PCs this is meant to run on.
+
+## 11. Frame budgets
+
+### High tier (GTX 1650 Ti, 1080p, 16.6 ms)
+
+| Pass | Budget |
+|---|---|
+| Simulations (only what's on screen) | 3 ms |
+| World scene (at the render scale) | 6 ms |
+| Feedback + mid + overlay | 1.5 ms |
+| Bloom + tone map + finish + limiter + sharpen | 1.5 ms |
+| Direct2D panel + present | 1 ms |
+
+### Low tier (Intel HD 4000-class, 1080p output at 50 %, 33.3 ms at 30 fps / 16.6 ms at 60 fps)
+
+| Pass | Budget at 60 fps |
+|---|---|
+| Simulations (128² grids, 16k particles) | 2 ms |
+| World scene (Light / Medium at `quality` 0.3) | 7 ms |
+| Feedback + mid + overlay | 2 ms |
+| Bloom (3 levels, ¼ res) + finish + sharpen | 3 ms |
+| Direct2D panel + present | 2 ms |
+
+If 60 fps doesn't fit at 33 % scale, Low runs at a steady 30 fps rather than an uneven 40–50.
+
+`WRECKBOX_PERF=1` logs each pass's GPU time, the tier, the render scale, CPU time per frame and memory to
+`wreckbox.log`, as it does for MilkDrop today.
+
+## 12. Tests
+
+All in `tests/dasvis_tests.cpp`, run by `scripts/build.ps1` and CI:
+
+| What | How |
+|---|---|
+| Song map | Synthetic songs (see phase 2): beat grid, downbeats, builds, drops, the breath before the drop, cache version |
+| Pseudo-stems | A kick-only, hats-only and bass-only signal each light up only their own stem |
+| Analysis memory | Peak extra memory while analysing a 6-minute song stays under 30 MB, and drops back afterwards |
+| Features | Envelopes rise within 1 frame and fall at their release rate; springs settle with no overshoot |
+| Director | Same seed + map + tier → same scene list; no repeats within 4; drops get hero scenes; transitions only on phrase downbeats; **Low tier never picks a scene that doesn't fit** |
+| Flash limiter | A strobing input is held to ≤ 3 big brightness changes a second |
+| Shaders | Every `.hlsl` compiles at build time for `ps_4_0` / `vs_4_0` (`fxc`); the build fails otherwise. Shader Model 4 is enforced, so nothing needs a new GPU. |
+| GPU render | On a device **forced to feature level 10_0**, and on **WARP** (so CI without a GPU works too): each scene renders 60 frames at 320×180 from fake features, at `quality` 0.3 and 1. Checks: no NaN, not all black, not all white, the picture changes between frames, and the feedback stays bounded. |
+| Resources released | Open and close DasVis 20 times: GPU memory and private RAM return to where they started (±2 MB) |
+
+**Low-tier check, every phase:**
+1. Run on the **Intel UHD** with tier forced to Low (`WRECKBOX_DASVIS_TIER=low`), on a device forced to feature level
+   10_0, with the CPU limited to 2 cores (process affinity).
+2. Log CPU %, private RAM, GPU memory and frame times over a fixed 3-minute walk.
+3. Compare against §4's budgets. A phase doesn't ship if it's over budget.
+4. Screenshots on the muted `build\dev\playroot` with `--background` (shot.ps1 / input.ps1), at Low and High side by
+   side.
+
+A real old PC is the final check (question 6 below).
+
+## 13. Open questions for you (I've assumed the defaults above)
+
+1. Make DasVis the default once phase 6 is done? (Assumed: yes.)
+2. Lyrics need LRCLIB (an outside service). OK to add as an opt-in? (Assumed: opt-in, phase 7.)
+3. Which smart lights do you have, if any: WLED, Hue, Nanoleaf, Razer / Corsair keyboard?
+4. Real Demucs stems (an ~80 MB download, High tier only) if the pseudo-stems aren't good enough? (Assumed: decide
+   after phase 3.)
+5. *Reduce flashing* on by default? (Assumed: off, but the 3-a-second cap always applies.)
+6. Do you have an older PC or laptop to try it on? Until then, the Low-tier check on this PC's Intel UHD with 2 cores
+   is the stand-in.

@@ -1,8 +1,12 @@
 // Drawing layer: Direct2D + DirectWrite with the app's embedded fonts. Everything is in DIPs (device-independent
 // pixels; 1 DIP = 1 px at 100 % scaling), so layout code never thinks about DPI.
+// Direct2D draws through a Direct3D 11 device the app owns (a device context on the window's swap chain), so GPU work
+// such as the DasVis visualizer can share textures with it instead of reading pixels back.
 #pragma once
 #include <d2d1_1.h>
+#include <d3d11.h>
 #include <dwrite_3.h>
+#include <dxgi1_2.h>
 #include <wincodec.h>
 #include <wrl/client.h>
 
@@ -47,8 +51,9 @@ public:
     float width() const;   // client size in DIPs
     float height() const;
 
-    // Present on the display's refresh (EndDraw waits for it) instead of at once: the full-screen visualizer's frames
-    // then land exactly on each refresh. Changing it rebuilds the render target.
+    // Present on the display's refresh (end() waits for it) instead of at once: the full-screen visualizer's frames
+    // then land exactly on each refresh. Changing it rebuilds the device: going into or out of full screen starts the
+    // GPU caches (covers, gradients, text) over, which keeps the full-screen visit from adding to memory (~40 MB).
     void set_vsync(bool on);
     bool begin();  // false if the render target couldn't be created
     void end();    // handles device loss by recreating the target next frame
@@ -57,6 +62,8 @@ public:
     IWICImagingFactory* wic() const { return wic_.Get(); }
     // Bumped whenever the render target is (re)created: bitmaps made on an older target must be dropped.
     int generation() const { return generation_; }
+    // The graphics card and Direct3D feature level in use, e.g. "NVIDIA GeForce GTX 1650 Ti, feature level 11_1".
+    const std::string& device_name() const { return device_name_; }
 
     // Shapes
     void fill(const Rect& r, D2D1_COLOR_F c);
@@ -99,6 +106,8 @@ public:
 
 private:
     bool create_target();
+    bool create_device();
+    bool attach_back_buffer();
     void drop_target();
     bool load_fonts();
     IDWriteTextFormat* format(const TextStyle& st, bool wrap);
@@ -108,15 +117,20 @@ private:
 
     HWND hwnd_ = nullptr;
     float dpi_ = 96;
-    ComPtr<ID2D1Factory> d2d_;
+    ComPtr<ID2D1Factory1> d2d_;
     ComPtr<IDWriteFactory5> dw_;
     ComPtr<IDWriteFontCollection1> fonts_;
     ComPtr<IWICImagingFactory> wic_;
-    ComPtr<ID2D1HwndRenderTarget> rt_;
+    ComPtr<ID3D11Device> d3d_;
+    ComPtr<ID3D11DeviceContext> d3d_ctx_;
+    ComPtr<IDXGISwapChain1> swap_;
+    ComPtr<ID2D1DeviceContext> rt_;
+    ComPtr<ID2D1Bitmap1> back_;         // the swap chain's buffer, as rt_'s target
     ComPtr<ID2D1RenderTarget> target_;  // what drawing goes to: the window, or a bitmap while cached() records
     ComPtr<ID2D1SolidColorBrush> brush_;
     int generation_ = 0;
     bool vsync_ = false;
+    std::string device_name_;
     std::unordered_map<std::wstring, ComPtr<IDWriteTextFormat>> formats_;
     std::unordered_map<std::wstring, float> widths_;  // measure() cache
     // Per-target caches: creating Direct2D resources every frame is what makes a frame slow, so they're kept and only
