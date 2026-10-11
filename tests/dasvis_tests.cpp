@@ -30,6 +30,7 @@
 #include "dasvis/features.h"
 #include "dasvis/palette.h"
 #include "dasvis/songmap.h"
+#include "dasvis/spout.h"
 #include "dasvis/video.h"
 #include "engine/decode.h"
 
@@ -867,6 +868,63 @@ std::wstring widen_arg(const char* s) {  // a command-line argument (the system 
     return w;
 }
 
+// Spout output: a receiver (written as Spout's receivers work) finds the sender in the list, reads its details, opens the
+// shared texture on its own device and sees the frame; the sender leaves the list when it goes.
+void spout() {
+    const auto make = [](D3D_DRIVER_TYPE type, ComPtr<ID3D11Device>& d) {
+        return SUCCEEDED(D3D11CreateDevice(nullptr, type, nullptr, D3D11_CREATE_DEVICE_BGRA_SUPPORT, nullptr, 0, D3D11_SDK_VERSION, &d, nullptr, nullptr));
+    };
+    ComPtr<ID3D11Device> a, b;
+    if (!make(D3D_DRIVER_TYPE_HARDWARE, a) || !make(D3D_DRIVER_TYPE_HARDWARE, b)) return void(std::puts("  spout: no graphics card here, skipped"));
+    std::vector<uint32_t> px(64 * 32);
+    for (size_t i = 0; i < px.size(); ++i) px[i] = 0xFF000000u | uint32_t(i * 2654435761u >> 8);
+    D3D11_TEXTURE2D_DESC td{64, 32, 1, 1, DXGI_FORMAT_B8G8R8A8_UNORM, {1, 0}, D3D11_USAGE_DEFAULT, D3D11_BIND_RENDER_TARGET};
+    const D3D11_SUBRESOURCE_DATA init{px.data(), 64 * 4, 0};
+    ComPtr<ID3D11Texture2D> frame;
+    a->CreateTexture2D(&td, &init, &frame);
+    const std::string name = "WreckBox DasVis test " + std::to_string(GetCurrentProcessId());
+    const auto listed = [&] {
+        HANDLE m = OpenFileMappingA(FILE_MAP_READ, FALSE, "SpoutSenderNames");
+        bool found = false;
+        if (m) {
+            if (const char* p = static_cast<const char*>(MapViewOfFile(m, FILE_MAP_READ, 0, 0, 0))) {
+                for (size_t i = 0; i < 64 && p[i * 256]; ++i) found |= name == std::string(p + i * 256);
+                UnmapViewOfFile(p);
+            }
+            CloseHandle(m);
+        }
+        return found;
+    };
+    {
+        SpoutSender sender(name);
+        CHECK(sender.send(a.Get(), frame.Get()), "spout: sent");
+        CHECK(listed(), "spout: in the list of senders");
+        uint32_t info[5]{};
+        if (HANDLE m = OpenFileMappingA(FILE_MAP_READ, FALSE, name.c_str())) {
+            if (const void* p = MapViewOfFile(m, FILE_MAP_READ, 0, 0, 280)) std::memcpy(info, p, sizeof info), UnmapViewOfFile(p);
+            CloseHandle(m);
+        }
+        CHECK(info[1] == 64 && info[2] == 32 && info[3] == DXGI_FORMAT_B8G8R8A8_UNORM && info[0], "spout: details %u x %u, format %u", info[1], info[2], info[3]);
+        ComPtr<ID3D11Texture2D> opened, staging;
+        const bool open = SUCCEEDED(b->OpenSharedResource(reinterpret_cast<HANDLE>(uintptr_t(info[0])), IID_PPV_ARGS(&opened)));
+        CHECK(open, "spout: the receiver opens the shared texture");
+        if (open) {
+            td.Usage = D3D11_USAGE_STAGING, td.BindFlags = 0, td.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+            b->CreateTexture2D(&td, nullptr, &staging);
+            ComPtr<ID3D11DeviceContext> ctx;
+            b->GetImmediateContext(&ctx);
+            ctx->CopyResource(staging.Get(), opened.Get());
+            D3D11_MAPPED_SUBRESOURCE m;
+            bool same = SUCCEEDED(ctx->Map(staging.Get(), 0, D3D11_MAP_READ, 0, &m));
+            for (UINT y = 0; same && y < 32; ++y) same = std::memcmp(static_cast<const uint8_t*>(m.pData) + y * m.RowPitch, &px[y * 64], 64 * 4) == 0;
+            if (m.pData) ctx->Unmap(staging.Get(), 0);
+            CHECK(same, "spout: the receiver sees the frame");
+        }
+    }
+    CHECK(!listed(), "spout: gone from the list when the sender goes");
+    std::puts("  spout: a receiver found the sender, opened its texture and saw the frame");
+}
+
 // dasvis_tests --map <audio file> [bpm]: prints a real song's map instead of testing (for tuning the analysis).
 int print_map(const fs::path& file, double bpm) {
     const auto t0 = std::chrono::steady_clock::now();
@@ -960,6 +1018,7 @@ int main(int argc, char** argv) {
     director_timing();
     cover_shatter();
     video();
+    spout();
     gpu(false);
     gpu(true);
     if (failures) {

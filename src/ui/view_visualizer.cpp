@@ -397,6 +397,7 @@ void View::das_free() {
         vj_->state = R"({"open":false})", vj_->commands.clear();
     }
     vj_card_ = false;
+    spout_.reset();
     das_cover_for_.clear();
     das_map_.reset();  // in memory only; it's in the cache for next time
     das_map_for_.clear();
@@ -570,6 +571,7 @@ bool View::das_screen() {
         }
         vj_apply();
         das_->render(in, back.Get());
+        if (spout_) spout_->send(g_.d3d(), back.Get());  // before the player panel is drawn over it
         das_lights();
         // Remember the measured tier for this graphics card, so the next visit starts there.
         if (!das_tier_saved_ && o.das_quality == 0 && das_->tier_settled()) {
@@ -1192,6 +1194,7 @@ void View::vis_menu() {
     AppendMenuW(das, MF_STRING | (das_ && das_->ok() ? 0 : MF_GRAYED), kDas + 6, L"Like this scene\tF");
     AppendMenuW(das, MF_STRING | (das_ && das_->ok() ? 0 : MF_GRAYED), kDas + 7, L"Skip this scene\tX");
     radio(das, kDas + 8, L"Phone VJ deck…", vj_card_);
+    radio(das, kDas + 9, L"Spout output (OBS, Resolume…)", spout_ != nullptr);
     AppendMenuW(das, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(das, MF_STRING, kDas + 3, L"Open my scenes folder…");
     AppendMenuW(das, MF_STRING | (das_ && das_->ok() ? 0 : MF_GRAYED), kDas + 4, L"Reload my scenes\tF5");
@@ -1281,7 +1284,11 @@ void View::vis_menu() {
             } else if (i == 4) return das_reload();
             else if (i == 5 && das_) return das_->lock(!das_->locked());
             else if (i == 6 || i == 7) return das_rate(i == 6);
-            else if (i == 8) {  // the deck's page is on the phone-sync server: start it if it isn't running
+            else if (i == 9) {
+                if (spout_) spout_.reset();
+                else spout_ = std::make_unique<dasvis::SpoutSender>(), show_toast(L"Sharing as Spout sender \"WreckBox DasVis\"");
+                return;
+            } else if (i == 8) {  // the deck's page is on the phone-sync server: start it if it isn't running
                 if (!vj_card_ && sync_ && !sync_->running() && !sync_->start()) return show_toast(L"Couldn't start the phone server (port in use?)");
                 vj_card_ = !vj_card_;
                 return;

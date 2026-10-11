@@ -15,6 +15,7 @@ Day-to-day work goes on `main`; bigger features on a branch (`feature/<name>`), 
 
 ## Unreleased
 
+- **Spout output** (right-click → DasVis): share the picture with OBS, Resolume and other Spout programs on this PC.
 - **Export DasVis videos**: right-click a song → *Export DasVis video* → 720p, 1080p, 1440p or 4K. An MP4 (H.264, AAC)
   of the song with DasVis, full quality and frame-exact on any PC; it works in the background, about as long as the
   song at 1080p60 on an Intel laptop GPU.

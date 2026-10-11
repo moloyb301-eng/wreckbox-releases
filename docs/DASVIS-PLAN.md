@@ -913,6 +913,12 @@ drop (Intro → Verse → Chorus); without a known tempo it finds one. Worth a l
     (read back with Windows' reader); cancelling leaves no file. `dasvis_tests --video` / `--frame` export a real song
     and pull a frame out as a picture.
   - Not done: HEVC (H.264 plays everywhere; say if you want HEVC for smaller 4K files).
+- **Spout output** ✅ 2026-10-12 (`dasvis/spout.*`): the sender side of Spout 2 written here (no SDK): a shared
+  B8G8R8A8 texture (legacy shared handle), the name in "SpoutSenderNames" (under its mutex), the 280-byte details under
+  the sender's name, "ActiveSenderName" when none is active, copies under "<name>_SpoutAccessMutex". Right-click →
+  DasVis → *Spout output*, for the full-screen visit; the picture is shared before the player panel is drawn.
+  **Tested** with a stand-in receiver (finds the sender, opens the texture on another device, sees the frame; the name
+  leaves the list after). Not yet tried with OBS or Resolume.
 
 - **Phone VJ deck:**
   - a page served by the existing `sync_server`, on the local network, protected by the pairing that already exists

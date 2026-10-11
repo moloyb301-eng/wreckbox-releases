@@ -21,6 +21,7 @@
 #include "library/store.h"
 #include "net/bug_report.h"
 #include "net/wled.h"
+#include "dasvis/spout.h"
 #include "net/updates.h"
 #include "player/milkdrop.h"
 #include "player/player.h"
@@ -395,6 +396,7 @@ private:
         }
     };
     std::unique_ptr<VideoJob> video_;
+    std::unique_ptr<dasvis::SpoutSender> spout_;  // Spout output on (right-click → DasVis), for this full-screen visit
     void export_video(const std::string& id, int preset);  // preset: 0 720p30, 1 1080p60, 2 1440p60, 3 4K60
     float video_status(const Rect& r);                     // the sidebar's line while one runs: its height
     void das_request_map(const player::Item& item, double bpm);
