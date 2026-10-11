@@ -578,6 +578,26 @@ void gpu(bool fl10) {
         std::printf("  %s on %s: mean %.3f, moving %.3f\n", name.c_str(), label, two.mean, diff(a, b));
     }
     CHECK(seen.size() == dv.scene_count(), "N reaches every scene on %s (%zu seen)", label, seen.size());
+    // The phone deck: pick a scene, call a drop (a hero comes on), turn the camera (the picture moves with it).
+    const auto names = dv.scene_names();
+    const size_t kaleido = size_t(std::find(names.begin(), names.end(), "Kaleido Cover") - names.begin());
+    dv.select(kaleido);
+    CHECK(dv.scene_name() == "Kaleido Cover", "the deck picks a scene: %s", dv.scene_name().c_str());
+    dv.drop_now();
+    for (int i = 0; i < 30; ++i) frame();
+    bool hero = false;
+    for (const auto& t : builtin_scenes()) hero |= t.hero && t.name == dv.scene_name();
+    CHECK(hero, "drop now brings a hero scene on %s: %s", label, dv.scene_name().c_str());
+    dv.lock(true);
+    for (int i = 0; i < 60; ++i) frame();
+    std::vector<uint8_t> still, turned;
+    read(dev.Get(), screen.Get(), &still);
+    dv.set_camera(1, 0.5f);
+    for (int i = 0; i < 30; ++i) frame();
+    read(dev.Get(), screen.Get(), &turned);
+    CHECK(diff(still, turned) > 0.02, "the deck's camera moves the picture on %s (%.3f)", label, diff(still, turned));
+    dv.set_camera(0, 0);
+    dv.lock(false);
     // The feedback stays bounded: Feedback Classic with loud music for 10 s doesn't white out.
     while (dv.scene_name() != "Feedback Classic") dv.next();
     for (int i = 0; i < 600; ++i) frame();

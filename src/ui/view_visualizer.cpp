@@ -16,6 +16,10 @@
 #include "ui/artwork.h"
 #include "ui/view.h"
 
+#include <qrcodegen.hpp>
+
+#include "net/sync_server.h"
+
 #include <psapi.h>
 
 namespace wb::ui {
@@ -384,6 +388,11 @@ void View::das_free() {
         if (vis_.opt.das_costs.value(das_gpu_, json::object()) != costs) vis_.opt.das_costs[das_gpu_] = costs, save_vis();
     }
     das_.reset();
+    {
+        std::lock_guard lock(vj_->m);
+        vj_->state = R"({"open":false})", vj_->commands.clear();
+    }
+    vj_card_ = false;
     das_cover_for_.clear();
     das_map_.reset();  // in memory only; it's in the cache for next time
     das_map_for_.clear();
@@ -555,6 +564,7 @@ bool View::das_screen() {
                     });
             }
         }
+        vj_apply();
         das_->render(in, back.Get());
         // Remember the measured tier for this graphics card, so the next visit starts there.
         if (!das_tier_saved_ && o.das_quality == 0 && das_->tier_settled()) {
@@ -569,6 +579,61 @@ bool View::das_screen() {
                                  frame_interval(), das_hz_, das_->flash_budget()));
     }
     return true;
+}
+
+void View::vj_apply() {
+    std::vector<json> todo;
+    {
+        std::lock_guard lock(vj_->m);
+        todo.swap(vj_->commands);
+    }
+    for (const json& c : todo) {
+        const std::string cmd = c.value("cmd", "");
+        if (cmd == "next") das_->next();
+        else if (cmd == "prev") das_->previous();
+        else if (cmd == "lock") das_->lock(!das_->locked());
+        else if (cmd == "like" || cmd == "skip") das_rate(cmd == "like");
+        else if (cmd == "scene") das_->select(size_t(std::max(0, c.value("value", 0))));
+        else if (cmd == "drop") das_->drop_now();
+        else if (cmd == "shock") das_->shockwave();
+        else if (cmd == "camera") das_->set_camera(c.value("x", 0.f), c.value("y", 0.f));
+        else if (cmd == "intensity") vis_.opt.das_intensity = std::clamp(c.value("value", 1), 0, 2), save_vis();
+        if (cmd != "camera") audio_at_ = clock_t_::now();  // seen even while paused
+        vj_card_ = false;  // a phone is on the deck: the code has done its job
+    }
+    json st = {{"open", true}, {"scene", das_->scene_name()}, {"scenes", das_->scene_names()}, {"locked", das_->locked()},
+               {"intensity", vis_.opt.das_intensity}};
+    if (das_map_) {
+        const auto s = das_map_->at(das_song_t_ + das_->map_offset());
+        st["status"] = s.to_drop < 16 && (s.section == dasvis::Section::build || s.gap) ? std::format("Build-up · drop in {} bars", int(std::ceil(s.to_drop)))
+                                                                                         : std::string(dasvis::section_name(s.section));
+    }
+    std::lock_guard lock(vj_->m);
+    vj_->state = st.dump();
+}
+
+// The deck's QR code, top right over the picture: the phone opens the page (same Wi-Fi). Gone when a phone uses it.
+void View::vj_card(float W, float H) {
+    const std::string url = sync_ ? sync_->vj_url() : "";
+    const Rect card = Rect::xywh(W - 316, 70, 280, 340);
+    g_.fill_round(card, 16, argb(0xE0141219));
+    g_.text(L"Phone VJ deck", Rect{card.l + 20, card.t + 14, card.r - 20, card.t + 40}, {Font::ui, 15, 600, text});
+    if (url.empty()) {
+        g_.paragraph(L"This PC isn't on a local network the phone can reach.", card.inset(20, 60, 20, 20), {Font::ui, 13, 400, text2});
+        return;
+    }
+    const Rect box = Rect::xywh(card.l + 30, card.t + 48, 220, 220);
+    const qrcodegen::QrCode code = qrcodegen::QrCode::encodeText(url.c_str(), qrcodegen::QrCode::Ecc::MEDIUM);
+    g_.cached(L"qr:" + widen(url), box, [&](Gfx& g) {
+        g.fill(box, white);
+        const float cell = (box.r - box.l - 20) / float(code.getSize());
+        for (int cy = 0; cy < code.getSize(); ++cy)
+            for (int cx = 0; cx < code.getSize(); ++cx)
+                if (code.getModule(cx, cy)) g.fill(Rect::xywh(box.l + 10 + float(cx) * cell, box.t + 10 + float(cy) * cell, cell + 0.5f, cell + 0.5f), black);
+    });
+    g_.paragraph(L"Scan with your phone's camera, on the same Wi-Fi. Anyone with this code can control the picture.",
+                 Rect{card.l + 20, card.t + 278, card.r - 20, card.b - 8}, {Font::ui, 12, 400, text2});
+    (void)H;
 }
 
 // F / X: your taste for this genre. A like makes the scene come up more (up to 4×), a skip less (down to 0.15×) and
@@ -666,6 +731,7 @@ void View::visualizer_screen() {
     if (!want_das) das_free();  // switched away: the GPU and memory go back
     if (want_das && das_screen()) {
         if (das_dev_) das_dev_view(W);
+        if (vj_card_) vj_card(W, H);
         ui_.click(Rect{0, 0, W, H}, [this] { vis_click(); }, [this] { vis_menu(); });
         if (const float a = overlay_alpha(); a > 0) vis_overlay(Rect{0, 0, W, H}, a);
         return;
@@ -976,6 +1042,7 @@ void View::vis_menu() {
     radio(das, kDas + 5, L"Lock this scene\tL", das_ && das_->locked());
     AppendMenuW(das, MF_STRING | (das_ && das_->ok() ? 0 : MF_GRAYED), kDas + 6, L"Like this scene\tF");
     AppendMenuW(das, MF_STRING | (das_ && das_->ok() ? 0 : MF_GRAYED), kDas + 7, L"Skip this scene\tX");
+    radio(das, kDas + 8, L"Phone VJ deck…", vj_card_);
     AppendMenuW(das, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(das, MF_STRING, kDas + 3, L"Open my scenes folder…");
     AppendMenuW(das, MF_STRING | (das_ && das_->ok() ? 0 : MF_GRAYED), kDas + 4, L"Reload my scenes\tF5");
@@ -1065,6 +1132,11 @@ void View::vis_menu() {
             } else if (i == 4) return das_reload();
             else if (i == 5 && das_) return das_->lock(!das_->locked());
             else if (i == 6 || i == 7) return das_rate(i == 6);
+            else if (i == 8) {  // the deck's page is on the phone-sync server: start it if it isn't running
+                if (!vj_card_ && sync_ && !sync_->running() && !sync_->start()) return show_toast(L"Couldn't start the phone server (port in use?)");
+                vj_card_ = !vj_card_;
+                return;
+            }
             break;
         case kLock:
             if (milk_) milk_->lock(!milk_->locked());

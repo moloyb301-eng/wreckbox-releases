@@ -93,6 +93,12 @@ public:
     void next();
     void previous();
     void skip();
+    // The phone deck.
+    std::vector<std::string> scene_names() const;
+    void select(size_t scene);                // that scene now, dressed by the director
+    void drop_now();                          // a drop: a hero scene, its events, the punch, for a bar
+    void shockwave();
+    void set_camera(float turn, float zoom);  // −1…1 each, 0 at rest; eased
     void lock(bool on);
     bool locked() const;
     void set_auto_advance(double seconds);

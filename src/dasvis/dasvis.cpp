@@ -56,7 +56,7 @@ namespace {
 
 // Mirrors the cbuffer in dasvis.hlsli: float4s only, so the C++ and HLSL layouts can't drift apart.
 struct Uniforms {
-    float time[4], res[4], out[4], beat[4], drums[4], tone[4], look[4], post[4], key[4], pal[5][4], pass[4], song[4], drop[4], hits[4], sim[4], dir[4], drift[4], ext[4], title[4];
+    float time[4], res[4], out[4], beat[4], drums[4], tone[4], look[4], post[4], key[4], pal[5][4], pass[4], song[4], drop[4], hits[4], sim[4], dir[4], drift[4], ext[4], title[4], deck[4];
 };
 static_assert(sizeof(Uniforms) % 16 == 0);
 
@@ -181,6 +181,10 @@ struct DasVis::Impl {
 
     Target comp[2], lum, spec, wave, cover, title;
     double travel = 0;  // TRAVEL: how far the flights have gone
+    // The phone deck: the camera (target, eased), a shockwave's clock, a drop called by hand (seconds since, its events).
+    float cam_x = 0, cam_y = 0, cam_tx = 0, cam_ty = 0, shock = 0;
+    double manual_drop = -1;
+    uint8_t manual_events = 0;
     float kicks = 0;    // kicks so far (the sigils' random numbers)
     // The current scene's simulation: made when the scene comes on screen, at its tier's size, and dropped when it goes,
     // so a PC only ever holds the one on screen.
@@ -768,6 +772,20 @@ struct DasVis::Impl {
             events = Director::events(song_seed, k && (ms.drop > 0 || since_drop < 9) ? k - 1 : k, std::clamp(in.intensity, 0, 2));
         }
         if (title.tex && in.song_time > 10.5) title = {}, u.title[3] = 0;  // the card has played: its texture goes
+        // A drop called from the phone: it lands now, for a bar (and the cover shatter plays out over 8).
+        if (manual_drop >= 0) {
+            manual_drop += dt;
+            const double bar_s = has_map ? in.map->bar_seconds() : 240.0 / std::max(60.0, f.bpm);
+            const float b = float(manual_drop / bar_s);
+            if (b > 9) manual_drop = -1;
+            else {
+                ms.drop = std::max(ms.drop, std::max(0.f, 1 - b));
+                if (b < since_drop) since_drop = b, events = manual_events;
+            }
+        }
+        const float ease = 1 - std::exp(-dt / 0.12f);
+        cam_x += (cam_tx - cam_x) * ease, cam_y += (cam_ty - cam_y) * ease;
+        shock = std::max(0.f, shock - dt / 0.6f);
         travel += dt * (0.3 + 0.6 * f.energy + 0.6 * drv.kick + 3.0 * ms.drop);
         kicks += drv.kick_hit;
 
@@ -801,6 +819,7 @@ struct DasVis::Impl {
         set(u.post, 0.08f + 0.04f * f.energy, float(std::max<size_t>(1, bloom.size())), 0.018f, ring);
         set(u.dir, float(int(cue.transition)), float(events), cue.sigils ? 1.f : 0.f, 0);
         set(u.ext, float(std::fmod(travel, 10000.0)), kicks, float(in.song_time), since_drop);
+        set(u.deck, std::fabs(cam_x) < 1e-3f ? 0.f : cam_x, std::fabs(cam_y) < 1e-3f ? 0.f : cam_y, shock, 0);
         // Drift: four slow waves from the song's seed, so a long section keeps changing without looping.
         for (int i = 0; i < 4; ++i) {
             const float a = drift_seed[i][0], b = drift_seed[i][1];
@@ -897,6 +916,29 @@ void DasVis::skip() {
     p_->choose(m);
 }
 std::map<std::string, float> DasVis::costs() const { return p_->dir.costs(); }
+std::vector<std::string> DasVis::scene_names() const {
+    std::vector<std::string> names;
+    for (const auto& s : p_->scenes) names.push_back(s.name);
+    return names;
+}
+void DasVis::select(size_t scene) {
+    if (!ok() || scene >= p_->scenes.size()) return;
+    Moment m = p_->now;
+    m.drop = false;
+    p_->apply(p_->dir.dress(scene, m));
+}
+void DasVis::drop_now() {
+    if (!ok()) return;
+    Moment m = p_->now;
+    m.drop = true, m.section = Section::drop, m.from = Section::build, m.energy = kPeak;
+    p_->choose(m);
+    p_->manual_drop = 0;
+    p_->manual_events = Director::events(p_->song_seed, 1000 + p_->picks, m.intensity);
+}
+void DasVis::shockwave() { p_->shock = 1; }
+void DasVis::set_camera(float turn, float zoom) {
+    p_->cam_tx = std::clamp(turn, -1.f, 1.f), p_->cam_ty = std::clamp(zoom, -1.f, 1.f);
+}
 bool DasVis::particles() const { return p_->cue.mid == Mid::particles; }
 ID3D11Texture2D* DasVis::title_target(int w, int h) { return ok() ? p_->title_target(w, h) : nullptr; }
 void DasVis::show_title(int letters, float title_share) {

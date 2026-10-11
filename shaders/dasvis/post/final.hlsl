@@ -99,7 +99,23 @@ float4 title_card(float2 uv) {
 
 float4 main(VsOut v) : SV_Target {
     float2 d = v.uv - 0.5, uv = v.uv;
+    // The phone deck's camera: turn (zoomed in enough that no edge shows) and zoom in, or a fisheye pinch out.
+    if (any(u_deck.xy != 0)) {
+        float2 q = mul(d * float2(ASPECT, 1), rot(u_deck.x * 0.45));
+        float zoom = (1 + 0.55 * abs(u_deck.x)) * (1 + 0.6 * max(u_deck.y, 0));
+        q /= zoom * (1 + 1.4 * max(-u_deck.y, 0) * dot(q, q));
+        uv = q / float2(ASPECT, 1) + 0.5;
+        d = uv - 0.5;
+    }
     float ca = u_key.w;
+    // A shockwave from the deck (shake the phone): the same ring as the drop's, on its own clock.
+    if (u_deck.z > 0) {
+        float2 pd = d * float2(ASPECT, 1);
+        float x = (length(pd) - (1 - u_deck.z) * 1.2) / 0.05;
+        float band = exp(-x * x) * u_deck.z;
+        uv -= normalize(pd + 1e-5) / float2(ASPECT, 1) * band * 0.04;
+        ca += band * 0.03;
+    }
     // The drop's shockwave: a ring of refraction running out from the middle over the bar, splitting the colours.
     if ((EVENT & 1) && DROP > 0) {
         float2 pd = d * float2(ASPECT, 1);

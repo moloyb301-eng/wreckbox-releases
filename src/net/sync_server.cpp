@@ -15,6 +15,7 @@
 #include "model/paths.h"
 #include "model/settings.h"
 #include "net/oauth.h"
+#include "net/vj_page.h"
 
 namespace wb::sync {
 namespace fs = std::filesystem;
@@ -64,6 +65,11 @@ int Server::configured_port() {
         if (n > 0 && n < 65536) return n;
     }
     return kDefaultPort;
+}
+
+std::string Server::configured_host() {
+    const char* v = std::getenv("WRECKBOX_SYNC_HOST");
+    return v && *v ? v : "0.0.0.0";
 }
 
 std::string Server::new_token() {
@@ -129,6 +135,17 @@ std::string Server::pairing_uri() {
     std::string hosts;
     for (const auto& ip : local_addresses()) hosts += (hosts.empty() ? "" : ",") + ip;
     return "wreckbox://pair?hosts=" + hosts + "&port=" + std::to_string(p_->running ? p_->port : configured_port()) + "&t=" + token();
+}
+
+void Server::set_vj(std::function<std::string(const std::string&)> on_command) {
+    std::lock_guard lock(vj_m_);
+    vj_ = std::move(on_command);
+}
+
+std::string Server::vj_url() {
+    const auto ips = local_addresses();
+    if (ips.empty()) return "";
+    return "http://" + ips.front() + ":" + std::to_string(p_->running ? p_->port : configured_port()) + "/vj?t=" + token();
 }
 
 bool Server::running() const { return p_->running; }
@@ -221,6 +238,19 @@ bool Server::start(int port, const std::string& host) {
             return;
         }
         res.set_content(*bytes, "image/jpeg");
+    });
+
+    svr.Get("/vj", [](const httplib::Request&, httplib::Response& res) {
+        res.set_header("Cache-Control", "no-store");
+        res.set_content(kVjPage, "text/html; charset=utf-8");
+    });
+    svr.Post("/vj/cmd", [this](const httplib::Request& req, httplib::Response& res) {
+        std::function<std::string(const std::string&)> f;
+        {
+            std::lock_guard lock(vj_m_);
+            f = vj_;
+        }
+        res.set_content(f ? f(req.body) : std::string(R"({"open":false})"), "application/json");
     });
 
     svr.set_read_timeout(15);

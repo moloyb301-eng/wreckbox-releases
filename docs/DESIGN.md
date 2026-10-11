@@ -368,6 +368,8 @@ gets a 403.
 | `GET /crate` | `[{"id", "ext", "size", "analysis"}]` for each downloaded track whose file exists |
 | `GET /file/<id>` | the audio file. Honours `Range: bytes=a-b` (206 / 416) so the phone can seek while streaming |
 | `GET /art/<id>` | cover JPEG (downloads the 640 px Spotify cover into the cache if needed) |
+| `GET /vj` | the DasVis phone VJ deck (an HTML page) |
+| `POST /vj/cmd` | a deck command (`{"cmd":"drop"}`, `scene`, `camera`, `intensity`, …); replies with what's on screen |
 
 - Pairing URI shown as a QR code: `wreckbox://pair?hosts=<private IPv4s, comma-separated>&port=47390&t=<token>`.
 - The token is 18 random bytes, base64url without padding, stored as `desktopPairToken` in settings.

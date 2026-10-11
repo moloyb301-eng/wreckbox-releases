@@ -36,6 +36,7 @@ cbuffer DasVis : register(b0) {
     float4 u_ext;    // travel (distance flown: faster with energy, kicks and drops), kicks so far, seconds into the
                      // song, bars since the last drop (99: none yet)
     float4 u_title;  // the title card: its texture's width / height, letters, the title line's share of its height, on
+    float4 u_deck;   // the phone deck: camera turn and zoom (−1…1, 0 at rest), a shockwave (1→0 over 0.6 s), spare
 };
 
 #define TIME u_time.x

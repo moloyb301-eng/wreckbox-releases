@@ -42,6 +42,16 @@ void copy_text(HWND owner, const std::string& value) {
 void View::attach_phone(sync::Server& server, sync::Tunnel& tunnel) {
     sync_ = &server;
     tunnel_ = &tunnel;
+    // The phone VJ deck's commands: queued for the next frame; the reply is the state the deck shows.
+    server.set_vj([deck = vj_, hwnd = hwnd_](const std::string& body) {
+        const json cmd = json::parse(body, nullptr, false);
+        std::lock_guard lock(deck->m);
+        if (cmd.is_object() && cmd.value("cmd", "") != "state" && deck->commands.size() < 64) {
+            deck->commands.push_back(cmd);
+            InvalidateRect(hwnd, nullptr, FALSE);  // paused: still applied (and shown)
+        }
+        return deck->state;
+    });
 }
 
 void View::phone_message(std::string s) {

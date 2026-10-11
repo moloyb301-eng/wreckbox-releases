@@ -361,6 +361,17 @@ private:
     std::string das_genre_ = "\x01";  // the genre whose likes are loaded (lower case, "" none; "\x01" none loaded yet)
     std::map<std::string, float> das_taste_;  // that genre's likes and skips: scene → weight
     void das_rate(bool like);    // F: more of this scene for this genre; X: less, and another now
+    // The phone VJ deck: its commands arrive on the sync server's thread and wait here for the next frame; the state it
+    // shows is written here each frame. Shared with the server's handler, so either can go first.
+    struct VjDeck {
+        std::mutex m;
+        std::vector<json> commands;
+        std::string state = R"({"open":false})";
+    };
+    std::shared_ptr<VjDeck> vj_ = std::make_shared<VjDeck>();
+    bool vj_card_ = false;        // the deck's QR code over the picture
+    void vj_apply();              // runs the waiting commands and writes the state (UI thread, DasVis open)
+    void vj_card(float W, float H);
     void das_request_map(const player::Item& item, double bpm);
     void das_prepare_next();     // the next song in the queue, so its map is ready when it starts
     void das_dev_view(float W);

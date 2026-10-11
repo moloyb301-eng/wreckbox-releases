@@ -15,6 +15,12 @@ Day-to-day work goes on `main`; bigger features on a branch (`feature/<name>`), 
 
 ## Unreleased
 
+- **Phone VJ deck for DasVis**: scan a QR code with a phone on the same Wi-Fi and run the show from it: an XY pad for
+  the camera, *Drop now*, *Shockwave* (or shake the phone, where the browser allows it), scene buttons, intensity, like
+  and skip. Protected by the same pairing code as phone sync.
+- **DasVis**: drops land on the right beat (a downbeat guessed wrong could start one a bar early, or miss it); nothing
+  is drawn while the window can't be seen (it ran at full speed for nobody when the display slept); a little less
+  memory on old and fast PCs.
 - **DasVis is now the default visualizer** (MilkDrop is still on **M**), with six more scenes: *Synthwave*,
   *Hyperspace*, *Aurora*, and for faster graphics cards *Mandelbox Flight*, *Liquid Chrome* and *Storm*. Each song opens
   with its title and artist, letter by letter on the beat; drops can shatter the cover at you; kicks stamp sigils; a

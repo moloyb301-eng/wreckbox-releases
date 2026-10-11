@@ -864,7 +864,25 @@ drop (Intro → Verse → Chorus); without a known tempo it finds one. Worth a l
 - **High tier stops at 90 % render scale** (the final pass sharpens the upscale): ~3 MB less than full size, which was
   over its +30 MB budget.
 
-### Phase 7: over the top
+### Phase 7: over the top (in progress)
+**Built so far:**
+- **Phone VJ deck** ✅ 2026-10-12:
+  - A page on the phone-sync server (`src/net/vj_page.h`, plain HTML): `GET /vj?t=<token>`, commands by
+    `POST /vj/cmd`, both behind the pairing token like every other route. *Phone VJ deck…* in DasVis's right-click
+    menu starts the server if needed and shows a QR code for the page; it goes when a phone first uses it.
+  - Controls: the XY pad (the camera: turn, zoom in, or a fisheye pinch out; applied in the final pass, so it moves
+    every scene), *Drop now* (a hero scene, the punch, and that drop's events), *Shockwave*, ❤ / *Skip*, intensity,
+    *Prev* / *Lock* / *Next*, a button per scene. The page shows the scene and the section (with the countdown to the
+    drop) every 1.5 s.
+  - Shaking the phone sends a shockwave where the browser allows motion events; phone browsers mostly allow them only
+    on secure (https) pages, so the *Shockwave* button is there for the rest.
+  - Commands wait in a queue for the next frame (the UI thread applies them); the state is written back each frame.
+  - `WRECKBOX_SYNC_HOST=127.0.0.1` keeps the server on this PC (tests: no firewall prompt).
+  - **Tested:** the routes refuse a missing or wrong token, serve the page, and pass commands to the handler
+    (`sync_tests`); in the GPU test the deck picks a scene, *Drop now* brings a hero, the camera moves the picture. In
+    the app (loopback, muted): 13 scenes listed, scene 6 → Galaxy, *Drop now* → Hyperspace at light speed, intensity
+    set, the camera turned and zoomed.
+
 - **Phone VJ deck:**
   - a page served by the existing `sync_server`, on the local network, protected by the pairing that already exists
   - XY pad (camera), scene buttons, intensity slider, *Drop now* button, ❤ / skip
