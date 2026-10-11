@@ -678,7 +678,57 @@ Every phase has to pass the **Low-tier check** (§12) before it ships, not just 
 - **Palette from the cover:** k-means (k = 5) in Oklab on a 64² thumbnail, once per album.
 - **Key colour:** Camelot number → hue, minor shifts cooler.
 
-### Phase 4: simulations (pixel shaders, scaled by grid size)
+### Phase 4: simulations (pixel shaders, scaled by grid size) ✅ 2026-10-11
+**Built:**
+- **How simulations run** (`dasvis.cpp`): each built-in scene names its simulation. It's made when the scene comes on
+  screen, at the tier's size, and dropped when it goes, so a PC only holds the one on screen. Everything is pixel
+  shaders on ping-pong textures (feature level 10_0 has no compute shaders); points, stars and ridges are drawn with no
+  vertex buffers (the vertex shader works out each one from `SV_VertexID`). A shader file can now hold a scene and its
+  simulation's passes (`dasvis_shader(name file profile entry)`). New in `dasvis.hlsli`: `u_sim`, `t_sim` (t5) and
+  `hashu()`, an integer hash that stays random for big inputs (particle numbers, beat counts).
+- **Grids by tier:** 128 / 192 / 256 cells tall (Low / Medium / High).
+- **Particle layer** over Feedback Classic (`sims/particles.hlsl`): 16k / 37k / 65k particles; position and velocity in
+  an RGBA32F texture, moved by curl noise (faster with the lead), born on the ring, thrown outwards on kicks, sparkling
+  on the hats; drawn as points added to the picture, so the feedback turns them into trails. Each is fainter where
+  they're crowded.
+- **Ink Ocean** (`scenes/ink.hlsl`): stable fluids (advection, vorticity confinement, divergence, 8 / 12 / 16 Jacobi
+  steps, gradient), flow and pressure in RG16F. The kick fires three jets that move on every beat; the lead keeps a
+  current going round; the bass turns the whole ocean; the drop fires five jets, one per palette colour. The dye is the
+  picture itself (the last frame carried by the flow), so it has no texture of its own.
+- **Coral** (`scenes/coral.hlsl`): Gray-Scott, 2 / 3 / 4 steps a frame (the same growth speed on screen at every
+  tier), in RG32F (RG16F where the card can't filter 32-bit floats), lit as relief. Energy moves it from spots to
+  mazes; kicks seed growth; a patch dies back on each bar and the drop clears a ring, so it never sets solid.
+- **Galaxy** (`scenes/galaxy.hlsl`): 64k / 256k / 1M stars, each on an elliptical orbit whose tilt grows with its size
+  (the density-wave way spiral arms form); nothing is stored. Arms turn on the bar, kicks send a density wave out,
+  the bass lights the core, the drop is a supernova (a shell of stars flies out).
+- **Ridge Lines** (`scenes/ridges.hlsl`): 128 rows of spectrum history (R32F, 128 KB, a row every 1/30 s); 64 / 96 / 128
+  ridges of 96 / 160 / 224 points, each a line with a dark curtain under it, drawn back to front (no depth buffer, no
+  ray marching). Dusk sky and sun: the bass lights the sun, the hats sparkle on the ridges, a build-up lifts the camera.
+- **Fewer uploads:** the constants are only uploaded when they changed, so the fluid's many small passes cost no
+  more CPU than one.
+
+**Measured:**
+- **Low-tier check** (feature level 10_0, Low, 2 cores, same session), GPU time a frame against Neon Tunnel's 4.5 ms:
+  Coral 2.4, Ridge Lines 2.4, Ink Ocean 2.7, Galaxy 3.3, Feedback Classic with particles 4.1 ms. CPU 8–9 % of one
+  core, the same as Neon Tunnel's in an A/B (before the upload fix Ink Ocean was 13.8 %). Memory **+19 to +20 MB** while
+  open, back to where it was after closing, for every scene.
+- **High tier on the Intel GPU:** each simulation adds about 2 MB. Ink Ocean 6.2 ms (13.7 ms with 512-cell grids,
+  which is why they're capped at 256). The whole of DasVis at High and full size is +31 to +34 MB, over the +30 MB
+  budget whatever the scene (Ridge Lines measures +31.6): the full-size HDR targets from phase 1, not the
+  simulations. To fix in phase 5 or with you: cap High's render scale at 90 %, or share one HDR target.
+- **Tests:** every scene renders on WARP at Medium (Direct3D 11) and at Low (feature level 10_0): not black, not
+  white, moving; Feedback Classic with its particles stays bounded over 10 s. All 12 suites pass.
+- **In the app** (muted test library): screenshots of all seven scenes at High and Low.
+
+**Changed from the plan:**
+- **Grids up to 256, not 512, and 65k particles, not 1M:** an integrated GPU's textures come out of the PC's RAM, and
+  512 cost ~10 MB more for little visible gain (the detail on screen is the full-size picture drawn over the grid).
+- **The fluid's dye is the picture itself,** not a separate texture twice the grid's size (no memory at all).
+- **Galaxy's stars aren't simulated:** each one's place is worked out from the time, so a million stars cost no
+  memory.
+- **Points, not point sprites:** one pixel each, at the internal size, softened by the bloom and the trails.
+
+**As planned:**
 - **Particles:**
   - Positions and velocities live in two state textures (128² to 1024² by tier), updated by a pixel shader.
   - They're drawn as point sprites: a vertex shader reads the state with `Load` (SV_VertexID).

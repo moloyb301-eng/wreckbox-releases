@@ -682,7 +682,9 @@ CPU and memory than MilkDrop (≤ +20 MB and < 5 % of a core at Low tier).
       cached; scenes build and drop with the song; panel countdown; Ctrl+Shift+D. Details: `docs/DASVIS-PLAN.md`
 - [x] Phase 3: the map's stems drive the scenes (kick pulse, snare flashes, hat glints, lead colours), the palette
       from the cover (k-means in Oklab), cooler minor keys. Details: `docs/DASVIS-PLAN.md`
-- [ ] Phase 4: particles, fluid, reaction-diffusion scenes
+- [x] Phase 4: Ink Ocean (fluid), Coral (reaction-diffusion), Galaxy (a million stars on High), Ridge Lines, a particle
+      layer over Feedback Classic. Each simulation exists only while its scene is on screen. Details:
+      `docs/DASVIS-PLAN.md`
 - [ ] Phase 5: the director
 - [ ] Phase 6: hero scenes, drop events, title cards; DasVis becomes the default
 - [ ] Phase 7: phone VJ deck, room lights, video export, Spout, wallpaper, lyrics (opt-in)

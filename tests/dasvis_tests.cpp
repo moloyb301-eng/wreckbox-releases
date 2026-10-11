@@ -502,11 +502,12 @@ void gpu(bool fl10) {
     std::ofstream(dir / L"broken.hlsl") << "#define DASVIS_SCENE\n#include \"dasvis.hlsli\"\nfloat3 scene(float2 uv, float2 p) { return nope; }\n";
 
     Config cfg;
-    cfg.start = Tier::medium, cfg.auto_tier = false, cfg.auto_advance = 0, cfg.user_dir = dir;
+    // Feature level 10_0 at Low (the smallest simulations), the other at Medium.
+    cfg.start = fl10 ? Tier::low : Tier::medium, cfg.auto_tier = false, cfg.auto_advance = 0, cfg.user_dir = dir;
     DasVis dv(dev.Get(), cfg);
     CHECK(dv.ok(), "DasVis on %s: %s", label, dv.error().c_str());
     if (!dv.ok()) return;
-    CHECK(dv.scene_count() == 4, "scenes: %zu (3 built in + the example)", dv.scene_count());
+    CHECK(dv.scene_count() == 8, "scenes: %zu (7 built in + the example)", dv.scene_count());
     CHECK(dv.user_errors().find("broken.hlsl") != std::string::npos && dv.user_errors().find("nope") != std::string::npos,
           "the broken scene's error names it: %s", dv.user_errors().c_str());
 

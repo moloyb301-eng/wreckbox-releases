@@ -15,6 +15,10 @@ Day-to-day work goes on `main`; bigger features on a branch (`feature/<name>`), 
 
 ## Unreleased
 
+- **Four new DasVis scenes and a particle layer**: *Ink Ocean* (a fluid simulation), *Coral* (reaction-diffusion),
+  *Galaxy* (up to a million stars), *Ridge Lines* (the spectrum's history in 3D), and particles over *Feedback
+  Classic*. All run on old graphics cards (feature level 10_0) and are sized to the PC: on the old-PC check each new
+  scene costs less GPU time than Neon Tunnel, and DasVis stays at about +20 MB.
 - **DasVis takes its colours from the album cover**: five colours picked from the cover (k-means in Oklab), from dark
   to light; black-and-white covers fall back to the song's key, and minor keys look cooler. The kick, snare, hats, bass
   and lead found by the song map each move something different, on the song's exact timing.

@@ -29,6 +29,7 @@ cbuffer DasVis : register(b0) {
     float4 u_drop;   // drop (1 on its first beat, gone a bar later), bars to the next drop (99: none), gap (1 in the
                      // quiet bars before a drop), the part's energy (0–1)
     float4 u_hits;   // kick, snare, hats hit in this frame (1 / 0), seconds since the last kick
+    float4 u_sim;    // the built-in scenes' simulations: grid size and two values of their own (0 in your scenes)
 };
 
 #define TIME u_time.x
@@ -74,6 +75,7 @@ Texture2D t_cover : register(t1);  // the album cover (when HAS_COVER)
 Texture2D t_spec : register(t2);   // 256 × 1: spectrum now (r), slowly falling peaks (g)
 Texture2D t_wave : register(t3);   // 512 × 1: the waveform, −1…1
 Texture2D t_bloom : register(t4);  // the final pass: the bloom
+Texture2D t_sim : register(t5);    // the built-in scenes: their simulation (the fluid's flow, the reaction-diffusion …)
 SamplerState s_clamp : register(s0);
 SamplerState s_wrap : register(s1);
 
@@ -101,6 +103,12 @@ float hash12(float2 p) {
     p = frac(p * float2(123.34, 456.21));
     p += dot(p, p + 45.32);
     return frac(p.x * p.y);
+}
+
+float hashu(uint n) {  // 0–1 from a whole number (a particle's, a beat's): good at any size, where hash12 isn't (PCG)
+    n = n * 747796405u + 2891336453u;
+    n = ((n >> ((n >> 28u) + 4u)) ^ n) * 277803737u;
+    return float((n >> 22u) ^ n) * 2.3283064e-10;
 }
 
 float noise(float2 p) {  // value noise, 0–1

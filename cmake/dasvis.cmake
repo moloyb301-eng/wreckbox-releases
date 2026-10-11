@@ -14,11 +14,16 @@ set(DASVIS_GEN ${CMAKE_BINARY_DIR}/dasvis_gen)
 file(MAKE_DIRECTORY ${DASVIS_GEN})
 set(DASVIS_GENERATED "")
 
-# name: the C array is k_<name>; file: relative to shaders/dasvis; profile: vs_4_0 / ps_4_0.
+# name: the C array is k_<name>; file: relative to shaders/dasvis; profile: vs_4_0 / ps_4_0; then the entry point, if
+# it isn't main (one file can hold a scene and its simulation's passes).
 function(dasvis_shader name file profile)
+  set(entry main)
+  if(ARGC GREATER 3)
+    set(entry ${ARGV3})
+  endif()
   set(out ${DASVIS_GEN}/${name}.h)
   add_custom_command(OUTPUT ${out}
-    COMMAND ${FXC} /nologo /O3 /WX /T ${profile} /E main /Vn k_${name} /Fh ${out} /I ${DASVIS_SHADERS} ${DASVIS_SHADERS}/${file}
+    COMMAND ${FXC} /nologo /O3 /WX /T ${profile} /E ${entry} /Vn k_${name} /Fh ${out} /I ${DASVIS_SHADERS} ${DASVIS_SHADERS}/${file}
     DEPENDS ${DASVIS_SHADERS}/${file} ${DASVIS_SHADERS}/dasvis.hlsli
     COMMENT "fxc ${file}"
     VERBATIM)
@@ -29,6 +34,22 @@ dasvis_shader(vs_fullscreen fullscreen_vs.hlsl vs_4_0)
 dasvis_shader(ps_feedback scenes/feedback.hlsl ps_4_0)
 dasvis_shader(ps_tunnel scenes/tunnel.hlsl ps_4_0)
 dasvis_shader(ps_kaleido scenes/kaleido.hlsl ps_4_0)
+dasvis_shader(ps_ink scenes/ink.hlsl ps_4_0)
+dasvis_shader(ps_ink_velocity scenes/ink.hlsl ps_4_0 ps_velocity)
+dasvis_shader(ps_ink_divergence scenes/ink.hlsl ps_4_0 ps_divergence)
+dasvis_shader(ps_ink_jacobi scenes/ink.hlsl ps_4_0 ps_jacobi)
+dasvis_shader(ps_ink_gradient scenes/ink.hlsl ps_4_0 ps_gradient)
+dasvis_shader(ps_coral scenes/coral.hlsl ps_4_0)
+dasvis_shader(ps_coral_step scenes/coral.hlsl ps_4_0 ps_step)
+dasvis_shader(ps_galaxy scenes/galaxy.hlsl ps_4_0)
+dasvis_shader(vs_star scenes/galaxy.hlsl vs_4_0 vs_star)
+dasvis_shader(ps_star scenes/galaxy.hlsl ps_4_0 ps_star)
+dasvis_shader(ps_ridges scenes/ridges.hlsl ps_4_0)
+dasvis_shader(vs_ridge scenes/ridges.hlsl vs_4_0 vs_ridge)
+dasvis_shader(ps_ridge scenes/ridges.hlsl ps_4_0 ps_ridge)
+dasvis_shader(ps_particles_update sims/particles.hlsl ps_4_0 ps_update)
+dasvis_shader(vs_particles sims/particles.hlsl vs_4_0 vs_draw)
+dasvis_shader(ps_particles sims/particles.hlsl ps_4_0 ps_draw)
 dasvis_shader(ps_bloom_down post/bloom_down.hlsl ps_4_0)
 dasvis_shader(ps_bloom_up post/bloom_up.hlsl ps_4_0)
 dasvis_shader(ps_lum post/lum.hlsl ps_4_0)

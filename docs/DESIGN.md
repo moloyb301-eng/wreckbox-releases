@@ -188,7 +188,11 @@ libVLC (decode, resample to 48 kHz, equalizer, normvol)
 - **DasVis** (`dasvis/*`, plan: `docs/DASVIS-PLAN.md`) is WreckBox's own visualizer, on the app's Direct3D 11 device.
   - **Audio:** `dasvis::Features` gets the same 2,048 heard samples the bars get, one refresh ahead: drum onsets
     (spectral flux), smoothed levels, a beat clock (the library's BPM, else the kicks'), spectrum and waveform.
-  - **Each frame:** the scene shader → the bloom chain → the final pass, which draws straight into the swap chain's
+  - **Simulations** (phase 4): a scene can have one: particles, a fluid, reaction-diffusion, stars or the spectrum's
+    history. It's made when the scene comes on screen, at the tier's size (grids 128 / 192 / 256 cells tall), stepped
+    by pixel shaders on ping-pong textures before the scene is drawn, and dropped when the scene goes. Points, stars and
+    ridges are drawn without vertex buffers (`SV_VertexID`).
+  - **Each frame:** the simulation → the scene shader (and its points or lines) → the bloom chain → the final pass, which draws straight into the swap chain's
     back buffer before Direct2D draws the panel over it (`Gfx::back_buffer()`; `Gfx::flush()` first). Paused, only the
     final pass is repeated (`redraw()`), because the blt-model back buffer isn't kept between presents.
   - **Shader Model 4 only** (feature level 10_0). Shaders are compiled by `fxc` at build time into headers

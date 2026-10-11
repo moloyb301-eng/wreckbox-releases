@@ -193,10 +193,15 @@ the screen. The bar fades when the mouse is still. Its ⌄ button, or **H**, hid
 - **Its colours come from the album cover** (or from the song's key when the cover is black and white), and each part
   of the drums moves something different: the kick sends light down the tunnel, the snare flashes, the hats glint, the
   vocals and lead shift the colours.
-- Three scenes so far:
-  - *Feedback Classic*: MilkDrop-style trails and a waveform ring
+- Seven scenes so far:
+  - *Feedback Classic*: MilkDrop-style trails and a waveform ring, with particles thrown off it on the kicks
   - *Neon Tunnel*: one ring per beat, with a spectrum ring round the cover
   - *Kaleido Cover*: a kaleidoscope of the album art
+  - *Ink Ocean*: a real fluid simulation; the drums fire jets of ink in the cover's colours
+  - *Coral*: reaction-diffusion growing coral and spots, lit as relief
+  - *Galaxy*: a spiral galaxy of up to a million stars; the drop is a supernova
+  - *Ridge Lines*: the music's last few seconds as glowing ridges, flowing towards a sun at dusk
+- The simulations are sized to the PC and exist only while their scene is on screen.
 - **N / P** or a click change the scene, and **L** locks it. It changes by itself on a bar's downbeat (the same
   setting as MilkDrop's presets), and on every drop.
 - **It knows the song.** The first time a song plays in DasVis, it's analysed in the background: a few seconds, about

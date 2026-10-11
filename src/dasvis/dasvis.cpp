@@ -16,12 +16,28 @@
 #include "dasvis_gen/ps_bloom_down.h"
 #include "dasvis_gen/ps_bloom_up.h"
 #include "dasvis_gen/ps_copy.h"
+#include "dasvis_gen/ps_coral.h"
+#include "dasvis_gen/ps_coral_step.h"
 #include "dasvis_gen/ps_feedback.h"
 #include "dasvis_gen/ps_final.h"
+#include "dasvis_gen/ps_galaxy.h"
+#include "dasvis_gen/ps_ink.h"
+#include "dasvis_gen/ps_ink_divergence.h"
+#include "dasvis_gen/ps_ink_gradient.h"
+#include "dasvis_gen/ps_ink_jacobi.h"
+#include "dasvis_gen/ps_ink_velocity.h"
 #include "dasvis_gen/ps_kaleido.h"
 #include "dasvis_gen/ps_lum.h"
+#include "dasvis_gen/ps_particles.h"
+#include "dasvis_gen/ps_particles_update.h"
+#include "dasvis_gen/ps_ridge.h"
+#include "dasvis_gen/ps_ridges.h"
+#include "dasvis_gen/ps_star.h"
 #include "dasvis_gen/ps_tunnel.h"
 #include "dasvis_gen/vs_fullscreen.h"
+#include "dasvis_gen/vs_particles.h"
+#include "dasvis_gen/vs_ridge.h"
+#include "dasvis_gen/vs_star.h"
 
 namespace wb::dasvis {
 
@@ -31,7 +47,7 @@ namespace {
 
 // Mirrors the cbuffer in dasvis.hlsli: float4s only, so the C++ and HLSL layouts can't drift apart.
 struct Uniforms {
-    float time[4], res[4], out[4], beat[4], drums[4], tone[4], look[4], post[4], key[4], pal[5][4], pass[4], song[4], drop[4], hits[4];
+    float time[4], res[4], out[4], beat[4], drums[4], tone[4], look[4], post[4], key[4], pal[5][4], pass[4], song[4], drop[4], hits[4], sim[4];
 };
 static_assert(sizeof(Uniforms) % 16 == 0);
 
@@ -42,10 +58,21 @@ struct Target {
     int w = 0, h = 0;
 };
 
+// A scene's simulation, run by pixel shaders on textures (feature level 10_0 has no compute shaders), sized by the tier.
+enum class Sim {
+    none,
+    particles,  // the particle layer (Feedback Classic): position and velocity in a texture, drawn as points
+    fluid,      // Ink Ocean: stable fluids
+    coral,      // Coral: reaction-diffusion
+    galaxy,     // Galaxy: stars drawn as points, worked out from the time (nothing stored)
+    ridges,     // Ridge Lines: the spectrum's history, drawn as lines with curtains
+};
+
 struct Scene {
     std::string name;
     ComPtr<ID3D11PixelShader> ps;
     bool ring = false;  // the spectrum ring over it
+    Sim sim = Sim::none;
 };
 
 struct BuiltIn {
@@ -53,12 +80,23 @@ struct BuiltIn {
     const BYTE* code;
     size_t size;
     bool ring;
+    Sim sim;
 };
 const BuiltIn kScenes[] = {
-    {"Feedback Classic", k_ps_feedback, sizeof k_ps_feedback, false},
-    {"Neon Tunnel", k_ps_tunnel, sizeof k_ps_tunnel, true},
-    {"Kaleido Cover", k_ps_kaleido, sizeof k_ps_kaleido, false},
+    {"Feedback Classic", k_ps_feedback, sizeof k_ps_feedback, false, Sim::particles},
+    {"Neon Tunnel", k_ps_tunnel, sizeof k_ps_tunnel, true, Sim::none},
+    {"Kaleido Cover", k_ps_kaleido, sizeof k_ps_kaleido, false, Sim::none},
+    {"Ink Ocean", k_ps_ink, sizeof k_ps_ink, false, Sim::fluid},
+    {"Ridge Lines", k_ps_ridges, sizeof k_ps_ridges, false, Sim::ridges},
+    {"Coral", k_ps_coral, sizeof k_ps_coral, false, Sim::coral},
+    {"Galaxy", k_ps_galaxy, sizeof k_ps_galaxy, false, Sim::galaxy},
 };
+
+// The simulations' grids by tier, in cells tall: no bigger, as an integrated GPU's textures come out of the PC's RAM
+// (512 would cost ~10 MB more); the detail on screen comes from the picture drawn at full size over them.
+constexpr int kGrid[] = {128, 192, 256};
+constexpr int kHistory = 128;     // Ridge Lines: rows of spectrum history (128 KB)
+constexpr double kRowRate = 30;   // rows a second: 4.3 s of history
 
 constexpr float kIntensity[] = {0.5f, 1.f, 1.6f};
 
@@ -104,6 +142,8 @@ struct DasVis::Impl {
 
     ComPtr<ID3D11VertexShader> vs;
     ComPtr<ID3D11PixelShader> ps_down, ps_up, ps_lum, ps_final, ps_copy;
+    ComPtr<ID3D11PixelShader> ps_velocity, ps_divergence, ps_jacobi, ps_gradient, ps_coral_step, ps_update, ps_point, ps_star, ps_ridge;
+    ComPtr<ID3D11VertexShader> vs_point, vs_star, vs_ridge;
     ComPtr<ID3D11Buffer> cb;
     ComPtr<ID3D11SamplerState> clamp, wrap;
     ComPtr<ID3D11BlendState> add;
@@ -116,6 +156,20 @@ struct DasVis::Impl {
     float transition = 1;
 
     Target comp[2], lum, spec, wave, cover;
+    // The current scene's simulation: made when the scene comes on screen, at its tier's size, and dropped when it goes,
+    // so a PC only ever holds the one on screen.
+    struct SimState {
+        Sim kind = Sim::none;
+        Tier tier = Tier::low;
+        int w = 0, h = 0;   // the grid, in cells
+        Target a[2], b[2];  // the state, back and forth (Ridge Lines: a[0], the history); the fluid's pressure
+        int ai = 0, bi = 0;
+        uint32_t frames = 0;
+        int row = 0;        // Ridge Lines: the newest row
+        double row_t = 0;   // and how long ago it was written
+    } sim;
+    DXGI_FORMAT fine = DXGI_FORMAT_R32G32_FLOAT;  // the reaction-diffusion (16-bit floats are too coarse for it, if the
+                                                  // card can't filter 32-bit ones)
     int out_w = 0, out_h = 0;
     std::vector<Target> bloom;
     int cur = 0;
@@ -138,7 +192,8 @@ struct DasVis::Impl {
     double time = 0;
     std::string song, camelot;
     float seed = 0;
-    Uniforms u{};
+    Uniforms u{}, sent{};  // `sent`: what the GPU has
+    bool uploaded = false;
     Drive drv;
     double last_t = 0;
     // The palette: the cover's when it has colours, else the key's; the one on screen fades towards it.
@@ -182,8 +237,20 @@ struct DasVis::Impl {
         ComPtr<ID3D11PixelShader>* slots[] = {&ps_down, &ps_up, &ps_lum, &ps_final, &ps_copy};
         for (size_t i = 0; i < std::size(post); ++i)
             if (FAILED(hr = dev->CreatePixelShader(post[i].first, post[i].second, nullptr, &*slots[i]))) return fail("post shader", hr);
+        const std::pair<const BYTE*, size_t> sims[] = {
+            {k_ps_ink_velocity, sizeof k_ps_ink_velocity}, {k_ps_ink_divergence, sizeof k_ps_ink_divergence}, {k_ps_ink_jacobi, sizeof k_ps_ink_jacobi},
+            {k_ps_ink_gradient, sizeof k_ps_ink_gradient}, {k_ps_coral_step, sizeof k_ps_coral_step}, {k_ps_particles_update, sizeof k_ps_particles_update},
+            {k_ps_particles, sizeof k_ps_particles},       {k_ps_star, sizeof k_ps_star},               {k_ps_ridge, sizeof k_ps_ridge}};
+        ComPtr<ID3D11PixelShader>* sim_slots[] = {&ps_velocity, &ps_divergence, &ps_jacobi, &ps_gradient, &ps_coral_step, &ps_update, &ps_point, &ps_star, &ps_ridge};
+        for (size_t i = 0; i < std::size(sims); ++i)
+            if (FAILED(hr = dev->CreatePixelShader(sims[i].first, sims[i].second, nullptr, &*sim_slots[i]))) return fail("simulation shader", hr);
+        if (FAILED(hr = dev->CreateVertexShader(k_vs_particles, sizeof k_vs_particles, nullptr, &vs_point)) ||
+            FAILED(hr = dev->CreateVertexShader(k_vs_star, sizeof k_vs_star, nullptr, &vs_star)) ||
+            FAILED(hr = dev->CreateVertexShader(k_vs_ridge, sizeof k_vs_ridge, nullptr, &vs_ridge)))
+            return fail("vertex shader", hr);
+        if (FAILED(dev->CheckFormatSupport(fine, &support)) || !(support & D3D11_FORMAT_SUPPORT_SHADER_SAMPLE)) fine = DXGI_FORMAT_R16G16_FLOAT;
         for (const auto& s : kScenes) {
-            Scene sc{s.name, nullptr, s.ring};
+            Scene sc{s.name, nullptr, s.ring, s.sim};
             if (FAILED(hr = dev->CreatePixelShader(s.code, s.size, nullptr, &sc.ps))) return fail("scene shader", hr);
             scenes.push_back(std::move(sc));
         }
@@ -327,27 +394,154 @@ struct DasVis::Impl {
     void upload_uniforms(const Target& dst, const Target* src) {
         u.res[0] = float(dst.w), u.res[1] = float(dst.h), u.res[2] = 1.f / float(dst.w), u.res[3] = 1.f / float(dst.h);
         u.pass[0] = src ? 1.f / float(src->w) : 0, u.pass[1] = src ? 1.f / float(src->h) : 0;
+        if (uploaded && std::memcmp(&u, &sent, sizeof u) == 0) return;  // the simulations' passes: mostly the same
         D3D11_MAPPED_SUBRESOURCE m;
         if (SUCCEEDED(ctx->Map(cb.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &m))) {
             std::memcpy(m.pData, &u, sizeof u);
             ctx->Unmap(cb.Get(), 0);
+            sent = u, uploaded = true;
         }
     }
 
-    void pass(ID3D11PixelShader* ps, const Target& dst, const Target& src, const Target* bloom_src, bool additive) {
-        if (!dst.rtv) return;
-        ID3D11ShaderResourceView* none[5] = {};
-        ctx->PSSetShaderResources(0, 5, none);  // nothing bound as both input and output
+    void set_target(const Target& dst, const Target* src, bool additive) {
+        ID3D11ShaderResourceView* none[6] = {};
+        ctx->PSSetShaderResources(0, 6, none);  // nothing bound as both input and output
+        ctx->VSSetShaderResources(5, 1, none);
         ctx->OMSetRenderTargets(1, dst.rtv.GetAddressOf(), nullptr);
         const D3D11_VIEWPORT vp{0, 0, float(dst.w), float(dst.h), 0, 1};
         ctx->RSSetViewports(1, &vp);
-        upload_uniforms(dst, src.tex ? &src : nullptr);
-        ID3D11ShaderResourceView* srvs[5] = {src.srv.Get(), has_cover ? cover.srv.Get() : nullptr, spec.srv.Get(), wave.srv.Get(),
-                                             bloom_src ? bloom_src->srv.Get() : nullptr};
-        ctx->PSSetShaderResources(0, 5, srvs);
+        upload_uniforms(dst, src);
         ctx->OMSetBlendState(additive ? add.Get() : nullptr, nullptr, 0xFFFFFFFF);
+    }
+
+    // A full-screen pass. `sim_srv`: t5 (a simulation pass's second input, or what a scene shows of its simulation).
+    void pass(ID3D11PixelShader* ps, const Target& dst, const Target& src, const Target* bloom_src, bool additive,
+              ID3D11ShaderResourceView* sim_srv = nullptr) {
+        if (!dst.rtv) return;
+        set_target(dst, src.tex ? &src : nullptr, additive);
+        ID3D11ShaderResourceView* srvs[6] = {src.srv.Get(), has_cover ? cover.srv.Get() : nullptr, spec.srv.Get(), wave.srv.Get(),
+                                             bloom_src ? bloom_src->srv.Get() : nullptr, sim_srv};
+        ctx->PSSetShaderResources(0, 6, srvs);
         ctx->PSSetShader(ps, nullptr, 0);
         ctx->Draw(3, 0);
+    }
+
+    // Points or triangles over the scene (particles, stars, ridges): `count` vertices that the vertex shader works out
+    // from their number, reading `state` (t5) if it needs to. No vertex buffers.
+    void draw(ID3D11VertexShader* v, ID3D11PixelShader* ps, const Target& dst, D3D11_PRIMITIVE_TOPOLOGY topology, UINT count,
+              ID3D11ShaderResourceView* state, bool additive) {
+        if (!dst.rtv) return;
+        set_target(dst, nullptr, additive);
+        ctx->VSSetShaderResources(5, 1, &state);
+        ctx->IASetPrimitiveTopology(topology);
+        ctx->VSSetShader(v, nullptr, 0);
+        ctx->PSSetShader(ps, nullptr, 0);
+        ctx->Draw(count, 0);
+        ID3D11ShaderResourceView* none = nullptr;  // back to the full-screen passes
+        ctx->VSSetShaderResources(5, 1, &none);
+        ctx->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+        ctx->VSSetShader(vs.Get(), nullptr, 0);
+    }
+
+    // MARK: Simulations
+
+    void set_sim(float a, float b, float c, float d) { u.sim[0] = a, u.sim[1] = b, u.sim[2] = c, u.sim[3] = d; }
+
+    // Makes the simulation `kind` needs at this tier and screen shape, unless it's there already (dropping any other).
+    // Grids are kGrid cells tall; the particle layer is that number squared (16k, 37k, 65k).
+    void ensure_sim(Sim kind, float aspect) {
+        const int n = kGrid[int(qc.tier())];
+        int w = 0, h = 0;
+        if (kind == Sim::fluid || kind == Sim::coral) w = std::max(16, int(std::lround(float(n) * aspect))), h = n;
+        else if (kind == Sim::particles) w = h = n;
+        else if (kind == Sim::ridges) w = int(Features::kBins), h = kHistory;
+        if (sim.kind == kind && sim.tier == qc.tier() && sim.w == w && sim.h == h) return;
+        sim = {};
+        sim.kind = kind, sim.tier = qc.tier(), sim.w = w, sim.h = h;
+        if (!w) return;
+        const float zero[4] = {}, food[4] = {1, 0, 0, 0};
+        const auto both = [&](Target* t, DXGI_FORMAT f, const float* clear) {
+            for (int i = 0; i < 2; ++i) {
+                t[i] = make(w, h, f);
+                if (t[i].rtv) ctx->ClearRenderTargetView(t[i].rtv.Get(), clear);
+            }
+        };
+        switch (kind) {
+        case Sim::particles: both(sim.a, DXGI_FORMAT_R32G32B32A32_FLOAT, zero); break;
+        case Sim::fluid: both(sim.a, DXGI_FORMAT_R16G16_FLOAT, zero), both(sim.b, DXGI_FORMAT_R16G16_FLOAT, zero); break;
+        case Sim::coral: both(sim.a, fine, food); break;  // all food and nothing growing: the first frame seeds it
+        case Sim::ridges:
+            sim.a[0] = make(w, h, DXGI_FORMAT_R32_FLOAT);
+            if (sim.a[0].rtv) ctx->ClearRenderTargetView(sim.a[0].rtv.Get(), zero);
+            break;
+        default: break;
+        }
+    }
+
+    // One frame of the simulation, before the scene is drawn.
+    void step_sim(const Features& f, float dt) {
+        set_sim(float(sim.w), float(sim.h), float(sim.frames), 0);
+        const int level = int(sim.tier);
+        switch (sim.kind) {
+        case Sim::particles:
+            pass(ps_update.Get(), sim.a[sim.ai ^ 1], sim.a[sim.ai], nullptr, false);
+            sim.ai ^= 1;
+            break;
+        case Sim::fluid:  // the flow ends up back in a[0]
+            pass(ps_velocity.Get(), sim.a[1], sim.a[0], nullptr, false);
+            pass(ps_divergence.Get(), sim.b[sim.bi ^ 1], sim.a[1], nullptr, false, sim.b[sim.bi].srv.Get());
+            sim.bi ^= 1;
+            for (int i = 0; i < 8 + 4 * level; ++i) pass(ps_jacobi.Get(), sim.b[sim.bi ^ 1], sim.b[sim.bi], nullptr, false), sim.bi ^= 1;
+            pass(ps_gradient.Get(), sim.a[0], sim.a[1], nullptr, false, sim.b[sim.bi].srv.Get());
+            break;
+        case Sim::coral:
+            set_sim(float(sim.w), float(sim.h), sim.frames == 0 ? 1.f : 0.f, 0);
+            for (int i = 0; i < 2 + level; ++i) pass(ps_coral_step.Get(), sim.a[sim.ai ^ 1], sim.a[sim.ai], nullptr, false), sim.ai ^= 1;
+            break;
+        case Sim::ridges:  // a new row of history every 1/30 s, whatever the frame rate
+            sim.row_t += dt;
+            if (sim.row_t >= 1 / kRowRate && sim.a[0].tex) {
+                sim.row_t = std::fmod(sim.row_t, 1 / kRowRate);
+                sim.row = (sim.row + 1) % kHistory;
+                const D3D11_BOX box{0, UINT(sim.row), 0, UINT(Features::kBins), UINT(sim.row + 1), 1};
+                ctx->UpdateSubresource(sim.a[0].tex.Get(), 0, &box, f.spectrum().data(), UINT(Features::kBins * sizeof(float)), 0);
+            }
+            break;
+        default: break;
+        }
+        ++sim.frames;
+    }
+
+    // What the scene's own pass reads of its simulation (t5).
+    ID3D11ShaderResourceView* sim_view() const {
+        if (sim.kind == Sim::fluid) return sim.a[0].srv.Get();
+        if (sim.kind == Sim::coral) return sim.a[sim.ai].srv.Get();
+        return nullptr;
+    }
+
+    // The simulation's points or lines, over the scene.
+    void draw_sim(const Target& dst) {
+        const int level = int(sim.tier);
+        switch (sim.kind) {
+        case Sim::particles:
+            if (sim.a[sim.ai].srv)
+                draw(vs_point.Get(), ps_point.Get(), dst, D3D11_PRIMITIVE_TOPOLOGY_POINTLIST, UINT(sim.w * sim.h), sim.a[sim.ai].srv.Get(), true);
+            break;
+        case Sim::galaxy: {
+            const UINT stars = 65536u << (2 * level);  // 64k, 256k, 1M
+            set_sim(float(stars), 0, 0, 0);
+            draw(vs_star.Get(), ps_star.Get(), dst, D3D11_PRIMITIVE_TOPOLOGY_POINTLIST, stars, nullptr, true);
+            break;
+        }
+        case Sim::ridges:
+            if (sim.a[0].srv) {
+                const int rows = 64 + 32 * level, segs = 96 + 64 * level;
+                set_sim(float(rows), float(segs), float(sim.row), float(sim.row_t * kRowRate));
+                draw(vs_ridge.Get(), ps_ridge.Get(), dst, D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST, UINT(rows * segs * 6), sim.a[0].srv.Get(), false);
+            }
+            break;
+        default: break;
+        }
     }
 
     void read_timers() {
@@ -405,8 +599,8 @@ struct DasVis::Impl {
     void final_pass(const Target& out) {
         u.out[0] = float(out.w), u.out[1] = float(out.h), u.out[2] = float(out.w) / float(out.h);
         pass(ps_final.Get(), out, comp[cur], bloom.empty() ? &comp[cur] : &bloom[0], false);
-        ID3D11ShaderResourceView* none[5] = {};
-        ctx->PSSetShaderResources(0, 5, none);
+        ID3D11ShaderResourceView* none[6] = {};
+        ctx->PSSetShaderResources(0, 6, none);
         ctx->OMSetRenderTargets(0, nullptr, nullptr);  // Direct2D draws over it next
         ctx->OMSetBlendState(nullptr, nullptr, 0xFFFFFFFF);
     }
@@ -501,9 +695,12 @@ struct DasVis::Impl {
         const bool timing = !tm.issued;  // a query still in flight from four frames ago is skipped, not overwritten
         if (timing) ctx->Begin(tm.disjoint.Get()), ctx->End(tm.t0.Get());
 
+        ensure_sim(scenes[current].sim, float(w) / float(h));
+        step_sim(f, dt);
         const int prev = cur;
         cur ^= 1;
-        pass(scenes[current].ps.Get(), comp[cur], comp[prev], nullptr, false);
+        pass(scenes[current].ps.Get(), comp[cur], comp[prev], nullptr, false, sim_view());
+        draw_sim(comp[cur]);
         const Target* src = &comp[cur];
         for (auto& b : bloom) pass(ps_down.Get(), b, *src, nullptr, false), src = &b;
         if (!bloom.empty()) pass(ps_lum.Get(), lum, bloom.back(), nullptr, false);
