@@ -678,7 +678,8 @@ CPU and memory than MilkDrop (≤ +20 MB and < 5 % of a core at Low tier).
       screenshots unchanged; runs at feature level 10_0 and on WARP). Details: `docs/DASVIS-PLAN.md`
 - [x] Phase 1: engine, post chain, tiers and dynamic resolution, flash limiter, 3 scenes + your own, DasVis chip and
       menu. Low tier on old-PC settings: 5.1 % CPU, +19 MB. Details: `docs/DASVIS-PLAN.md`
-- [ ] Phase 2: song map (beat grid, sections, drops) + HUD
+- [x] Phase 2: song map (beat grid, sections, drops, the breath before them), streamed (6 MB for a 6-minute song),
+      cached; scenes build and drop with the song; panel countdown; Ctrl+Shift+D. Details: `docs/DASVIS-PLAN.md`
 - [ ] Phase 3: pseudo-stems, cover palette, key colour
 - [ ] Phase 4: particles, fluid, reaction-diffusion scenes
 - [ ] Phase 5: the director

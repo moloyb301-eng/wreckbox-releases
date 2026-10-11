@@ -15,6 +15,12 @@ Day-to-day work goes on `main`; bigger features on a branch (`feature/<name>`), 
 
 ## Unreleased
 
+- **DasVis knows the song** (the song map): each song is analysed once in the background while DasVis is open (about
+  5 s and 6 MB for a 6-minute song), then cached.
+  - It finds the beats, bars, parts (intro, build-up, drop, breakdown …), each drop and the quiet bars before it.
+  - Build-ups drain the colour and close in, the bar before a drop dims, the drop punches, and a new scene starts on
+    each drop.
+  - The player bar counts down to the drop; **Ctrl+Shift+D** shows the map.
 - **DasVis preview**: WreckBox's own visualizer. **D** or the *DasVis* chip in full screen.
   - Three scenes (Feedback Classic, Neon Tunnel, Kaleido Cover) that move with the kick, snare, hats, bass and the
     beat, in HDR with bloom and a filmic finish. Your own scenes from a folder, with F5 to reload.

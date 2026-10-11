@@ -348,6 +348,17 @@ private:
     float das_hz_ = 60;          // the display's refresh rate
     bool das_tier_saved_ = false;
     int das_frames_ = 0;         // WRECKBOX_PERF: logged every 300 frames
+    // The song map: analysed in the background (only while DasVis is open), cached on disk, one song at a time.
+    std::shared_ptr<const dasvis::SongMap> das_map_;
+    std::string das_map_for_;    // the song it is (or will be) for
+    bool das_map_busy_ = false;  // being analysed
+    bool das_next_busy_ = false; // the next song in the queue is being analysed (into the cache only)
+    bool das_dev_ = false;       // Ctrl+Shift+D: the map drawn over the picture
+    double das_song_t_ = 0;      // where the song is, for the frame being drawn
+    std::wstring das_status_;    // the panel's line: the section, a build-up's countdown, "Analysing the song…", "Live"
+    void das_request_map(const player::Item& item, double bpm);
+    void das_prepare_next();     // the next song in the queue, so its map is ready when it starts
+    void das_dev_view(float W);
     bool das_screen();  // false: DasVis can't run here (the bars are drawn instead)
     void das_free();
     void das_reload();                  // F5: the user's scenes again

@@ -18,6 +18,7 @@
 
 #include "dasvis/control.h"
 #include "dasvis/features.h"
+#include "dasvis/songmap.h"
 
 namespace wb::dasvis {
 
@@ -38,6 +39,10 @@ struct Inputs {
     std::string song;              // changes → a new look (seed, scene, palette)
     std::optional<std::string> camelot;  // the song's key ("8A"): the palette's hue
     int intensity = 1;             // 0 chill, 1 normal, 2 insane
+    // The song map, once it's ready (nullptr: live only), and where the song is (seconds) for the frame being drawn.
+    // The beat, bar, phrase, section, build-up and drop come from the map; the live kicks keep the two in step.
+    const SongMap* map = nullptr;
+    double song_time = 0;
 };
 
 class DasVis {
@@ -76,6 +81,7 @@ public:
     float gpu_ms() const;       // measured, smoothed
     bool tier_settled() const;  // measured long enough to remember the tier
     float flash_budget() const;
+    double map_offset() const;  // seconds the song time is moved by to match the kicks heard (the dev view shows it)
 
 private:
     struct Impl;

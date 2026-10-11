@@ -1,12 +1,15 @@
-// DasVis tests: the live audio features on synthetic drum tracks, the flash limiter against a strobe, the quality
-// controller on fake slow and fast GPUs, and every scene rendered on WARP (Windows' software GPU, so it runs on any
-// PC and in CI), at full Direct3D 11 and limited to feature level 10_0 (old graphics cards).
+// DasVis tests: the song map on a synthetic song whose structure is known, the live audio features on synthetic drum
+// tracks, the flash limiter against a strobe, the quality controller on fake slow and fast GPUs, and every scene
+// rendered on WARP (Windows' software GPU, so it runs on any PC and in CI), at full Direct3D 11 and limited to feature
+// level 10_0 (old graphics cards).
 #include <windows.h>
+#include <psapi.h>
 
 #include <d3d11.h>
 #include <wrl/client.h>
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <filesystem>
@@ -18,6 +21,8 @@
 #include "dasvis/control.h"
 #include "dasvis/dasvis.h"
 #include "dasvis/features.h"
+#include "dasvis/songmap.h"
+#include "engine/decode.h"
 
 using namespace wb::dasvis;
 using Microsoft::WRL::ComPtr;
@@ -190,6 +195,190 @@ void quality() {
     CHECK(fixed.tier == Tier::high && fixed.scale == tier_spec(Tier::high).scale_min, "a fixed tier only moves the scale");
 }
 
+// MARK: Song map
+
+// A synthetic 128 BPM song, 22.05 kHz, starting 0.37 s in, with a known structure (bars, repeating every 56):
+//   0–15 intro (soft kick, hats, bass, chords) · 16–23 build-up (a snare roll getting faster and louder, a noise
+//   riser, then bar 23 silent: the breath) · 24–39 drop (kick, bass, claps, hats) · 40–47 breakdown (chords and a
+//   melody) · 48–55 drop. The bass and the chord change on every bar's downbeat.
+struct Synth {
+    static constexpr double kRate = 22050, kBpm = 128, kBeat = 60 / kBpm, kBar = 4 * kBeat, kStart = 0.37;
+    std::vector<float> s;
+    std::mt19937 rng{3};
+    std::uniform_real_distribution<float> noise{-1, 1};
+
+    explicit Synth(int bars) : s(size_t((kStart + bars * kBar + 1) * kRate)) {
+        const double chords[4][3] = {{220, 277.2, 329.6}, {196, 246.9, 293.7}, {174.6, 220, 261.6}, {164.8, 207.7, 246.9}};
+        const double bass[4] = {55, 49, 43.65, 41.2};
+        for (int bar = 0; bar < bars; ++bar) {
+            const int b = bar % 56, c = bar % 4;
+            const double t = kStart + bar * kBar;
+            const bool intro = b < 16, build = b >= 16 && b < 23, gap = b == 23, drop = (b >= 24 && b < 40) || b >= 48, breakdown = b >= 40 && b < 48;
+            if (gap) continue;
+            if (!build) {
+                for (const double f : chords[c]) tone(t, kBar, f, breakdown ? 0.05 : 0.03);
+                tone(t, kBar * 0.9, bass[c], drop ? 0.35 : intro ? 0.12 : 0.0);
+            }
+            for (int k = 0; k < 4; ++k) {
+                const double tb = t + k * kBeat;
+                if (intro || drop) kick(tb, drop ? 0.8 : 0.35);
+                if (intro || drop || build) hit(tb + kBeat / 2, intro ? 0.06 : drop ? 0.12 : 0.08, 0.03, true);  // hats
+                if (drop && (k == 1 || k == 3)) hit(tb, 0.3, 0.08, false);                                     // claps
+                if (breakdown) tone(tb, kBeat * 0.8, 440 * std::pow(2.0, ((bar * 4 + k) * 5 % 12) / 12.0), 0.12);
+            }
+            if (build) {  // the roll: quarters, then eighths, then sixteenths, louder as it goes; and the riser
+                const int per_beat = b < 20 ? 1 : b < 22 ? 2 : 4;
+                const float amp = 0.1f + 0.25f * float(b - 16) / 7;
+                for (int k = 0; k < 4 * per_beat; ++k) hit(t + k * kBeat / per_beat, amp, 0.06, false);
+                for (size_t i = size_t(t * kRate); i < size_t((t + kBar) * kRate); ++i)
+                    s[i] += 0.15f * float((double(i) / kRate - (kStart + (bar - b + 16) * kBar)) / (7 * kBar)) * noise(rng);
+            }
+        }
+    }
+    void kick(double t, double amp) {
+        for (size_t i = 0; i < size_t(0.3 * kRate); ++i) {
+            const double x = double(i) / kRate;
+            s[size_t(t * kRate) + i] += float(amp * std::exp(-x / 0.12) * std::sin(2 * std::numbers::pi * (60 - 60 * x) * x));
+        }
+    }
+    void hit(double t, double amp, double decay, bool bright) {
+        float last = 0;
+        for (size_t i = 0; i < size_t(5 * decay * kRate); ++i) {
+            const float n = noise(rng), v = bright ? n - last : n;
+            last = n;
+            s[size_t(t * kRate) + i] += float(amp * std::exp(-double(i) / kRate / decay)) * v;
+        }
+    }
+    void tone(double t, double dur, double f, double amp) {
+        if (amp <= 0) return;
+        for (size_t i = 0; i < size_t(dur * kRate); ++i) {
+            const double x = double(i) / kRate, env = std::min({1.0, x / 0.01, (dur - x) / 0.05});
+            s[size_t(t * kRate) + i] += float(amp * env * std::sin(2 * std::numbers::pi * f * x));
+        }
+    }
+};
+
+SongMap map_of(const std::vector<float>& s, double bpm) {
+    MapBuilder b(bpm);
+    for (size_t i = 0; i < s.size(); i += 4096) b.push(&s[i], std::min<size_t>(4096, s.size() - i));  // as a decoder hands it over
+    return b.finish();
+}
+
+// Memory and time on a 6-minute song: the samples stream through, so the analysis needs only a few MB. Runs first,
+// so the process's peak memory so far is just the test song.
+void songmap_cost() {
+    const Synth song(192);  // 6 min
+    PROCESS_MEMORY_COUNTERS pm{sizeof pm};
+    GetProcessMemoryInfo(GetCurrentProcess(), &pm, sizeof pm);
+    const size_t before = pm.PagefileUsage;
+    const auto t0 = std::chrono::steady_clock::now();
+    const SongMap m = map_of(song.s, 0);
+    const double secs = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
+    GetProcessMemoryInfo(GetCurrentProcess(), &pm, sizeof pm);
+    const double extra = double(pm.PeakPagefileUsage - std::min(before, pm.PeakPagefileUsage)) / 1048576.0;
+    std::printf("  song map of a 6-minute song: %.2f s, %.1f MB at most while analysing, %zu beats, %zu parts\n", secs, extra, m.beats.size(),
+                m.parts.size());
+    CHECK(extra < 30, "analysis memory %.1f MB", extra);
+    CHECK(secs < 15, "analysis took %.1f s", secs);
+    CHECK(std::fabs(m.bpm - 128) < 1, "6-minute song: bpm %.2f", m.bpm);
+}
+
+void songmap() {
+    const Synth song(56);
+    using S = Synth;
+    const auto bar_t = [](double bar) { return S::kStart + bar * S::kBar; };
+    for (const double known : {0.0, 64.0}) {  // found by itself, and given by the library (as half: folded to 128)
+        const SongMap m = map_of(song.s, known);
+        CHECK(std::fabs(m.bpm - 128) < 0.5, "bpm %.2f (known %.0f)", m.bpm, known);
+        // Beats: every true beat has a detected one close by.
+        std::vector<double> err, signed_err;
+        for (int k = 0; k < 56 * 4; ++k) {
+            const double truth = S::kStart + k * S::kBeat;
+            double best = 1e9;
+            for (const double b : m.beats)
+                if (std::fabs(b - truth) < std::fabs(best)) best = b - truth;
+            err.push_back(std::fabs(best)), signed_err.push_back(best);
+        }
+        std::vector<double> sorted = err;
+        std::sort(sorted.begin(), sorted.end());
+        std::sort(signed_err.begin(), signed_err.end());
+        std::printf("  beats: signed median error %+.1f ms\n", signed_err[signed_err.size() / 2] * 1000);
+        const double median = sorted[sorted.size() / 2], within = double(std::count_if(err.begin(), err.end(), [](double e) { return e < 0.025; })) / double(err.size());
+        std::printf("  beats (known bpm %.0f): median error %.1f ms, %.0f %% within 25 ms\n", known, median * 1000, within * 100);
+        CHECK(median < 0.012 && within > 0.95, "beats: median %.1f ms, %.0f %% within 25 ms", median * 1000, within * 100);
+        // Downbeats: the beat at each bar start is a downbeat.
+        int down_ok = 0, down_n = 0;
+        for (int bar = 2; bar < 56; ++bar) {
+            const auto it = std::min_element(m.beats.begin(), m.beats.end(), [&](double a, double b) { return std::fabs(a - bar_t(bar)) < std::fabs(b - bar_t(bar)); });
+            ++down_n;
+            down_ok += ((it - m.beats.begin()) - m.downbeat) % 4 == 0;
+        }
+        CHECK(down_ok > down_n * 9 / 10, "downbeats right on %d of %d bars", down_ok, down_n);
+        // Sections: the build-up, both drops (within a beat), the breakdown, and the breath before the first drop.
+        const auto covers = [&](Section k, double a, double b) {
+            double in = 0;
+            for (const auto& p : m.parts)
+                if (p.kind == k) in += std::max(0.0, std::min(p.end, bar_t(b)) - std::max(p.start, bar_t(a)));
+            return in / (bar_t(b) - bar_t(a));
+        };
+        std::string parts;
+        for (const auto& p : m.parts) parts += std::string(section_name(p.kind)) + " " + std::to_string(int(std::lround((p.start - S::kStart) / S::kBar))) + ", ";
+        std::printf("  parts (bar where each starts): %s\n", parts.c_str());
+        CHECK(covers(Section::build, 16, 24) > 0.6, "build-up found (%s)", parts.c_str());
+        CHECK(covers(Section::breakdown, 40, 48) > 0.6, "breakdown found (%s)", parts.c_str());
+        CHECK(m.drops.size() == 2, "%zu drops (%s)", m.drops.size(), parts.c_str());
+        if (m.drops.size() == 2) {
+            CHECK(std::fabs(m.drops[0] - bar_t(24)) < S::kBeat && std::fabs(m.drops[1] - bar_t(48)) < S::kBeat, "drops at %.2f, %.2f s (truth %.2f, %.2f)",
+                  m.drops[0], m.drops[1], bar_t(24), bar_t(48));
+            CHECK(std::fabs(m.gaps[0] - bar_t(23)) < S::kBeat, "the breath before the drop starts at %.2f s (truth %.2f)", m.gaps[0], bar_t(23));
+        }
+        // What a frame sees: two bars before the drop; on it; in the breath.
+        const auto build = m.at(bar_t(22));
+        CHECK(build.section == Section::build && build.build > 0.5f && build.build < 1 && std::fabs(build.to_drop - 2) < 0.3f,
+              "at bar 22: %s, build %.2f, drop in %.2f bars", section_name(build.section), build.build, build.to_drop);
+        const auto drop = m.at(bar_t(24) + 0.05);
+        CHECK(drop.section == Section::drop && drop.drop > 0.9f, "on the drop: %s, drop %.2f", section_name(drop.section), drop.drop);
+        const auto gap = m.at(bar_t(23.5));
+        CHECK(gap.gap && gap.build == 1, "in the breath: gap %d, build %.2f", int(gap.gap), gap.build);
+        CHECK(drop.stems[SongMap::kick] > 0.3f || m.at(bar_t(24) + 0.02).stems[SongMap::kick] > 0.3f, "kick envelope on the drop");
+        CHECK(m.hits_between(SongMap::kick, bar_t(30), bar_t(34)) >= 15, "kick hits in 4 drop bars: %d", m.hits_between(SongMap::kick, bar_t(30), bar_t(34)));
+        CHECK(m.hits_between(SongMap::kick, bar_t(41), bar_t(47)) <= 1, "kick hits in the breakdown: %d", m.hits_between(SongMap::kick, bar_t(41), bar_t(47)));
+
+        // The cache: round-trips; another version, or a damaged file, is refused.
+        const fs::path file = fs::temp_directory_path() / L"wb-dasvis-test.map";
+        CHECK(m.save(file), "save");
+        const auto back = SongMap::load(file);
+        CHECK(back && back->beats == m.beats && back->drops == m.drops && back->parts.size() == m.parts.size() && back->env[0] == m.env[0] &&
+                  back->hits[0] == m.hits[0] && back->downbeat == m.downbeat && back->bpm == m.bpm,
+              "the map round-trips");
+        {
+            std::fstream f(file, std::ios::in | std::ios::out | std::ios::binary);
+            f.seekp(4);
+            const uint32_t old = SongMap::kVersion + 1;
+            f.write(reinterpret_cast<const char*>(&old), 4);
+        }
+        CHECK(!SongMap::load(file), "another version is made again");
+        std::ofstream(file, std::ios::binary) << "DVMP";
+        CHECK(!SongMap::load(file), "a damaged file is refused");
+        fs::remove(file);
+    }
+    // The cache name follows the song and its file.
+    const fs::path a = fs::path(WB_FIXTURES) / "audio" / "tone.wav", b = fs::path(WB_FIXTURES) / "audio" / "tone.flac";
+    CHECK(map_cache_file("x", "id1", a) != map_cache_file("x", "id2", a) && map_cache_file("x", "id1", a) != map_cache_file("x", "id1", b) &&
+              map_cache_file("x", "id1", a) == map_cache_file("x", "id1", a),
+          "cache names");
+    // Streaming decode hands over exactly what decode_mono returns.
+    for (const char* name : {"tone.wav", "tone.mp3", "tone.flac", "tone.m4a"}) {
+        const fs::path f = fs::path(WB_FIXTURES) / "audio" / name;
+        const wb::Audio whole = wb::decode_mono(f);
+        std::vector<float> streamed;
+        const double dur = wb::decode_mono_stream(f, [&](const float* s, size_t n) { streamed.insert(streamed.end(), s, s + n); });
+        CHECK(streamed == whole.samples && dur == whole.duration, "streamed %s matches", name);
+    }
+    std::string why;
+    CHECK(!analyse_file(fs::path(WB_FIXTURES) / "audio" / "tone.wav", 0, &why) && !why.empty(), "a tone has no beat: %s", why.c_str());
+}
+
 // MARK: GPU
 
 struct Stats {
@@ -299,8 +488,25 @@ void gpu(bool fl10) {
     fs::remove_all(dir);
 }
 
-int main() {
+// dasvis_tests --map <audio file> [bpm]: prints a real song's map instead of testing (for tuning the analysis).
+int print_map(const fs::path& file, double bpm) {
+    const auto t0 = std::chrono::steady_clock::now();
+    std::string why;
+    const auto m = analyse_file(file, bpm, &why);
+    if (!m) return std::printf("no map: %s\n", why.c_str()), 1;
+    std::printf("%.1f s, %.2f BPM, %zu beats, downbeat %d, analysed in %.2f s\n", m->duration, m->bpm, m->beats.size(), m->downbeat,
+                std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count());
+    for (const auto& p : m->parts) std::printf("  %6.1f - %6.1f s  %-10s energy %.2f\n", p.start, p.end, section_name(p.kind), p.energy);
+    for (size_t k = 0; k < m->drops.size(); ++k) std::printf("  drop at %.1f s (breath from %.1f)\n", m->drops[k], m->gaps[k]);
+    std::printf("  hits: %zu kicks, %zu snares, %zu hats\n", m->hits[0].size(), m->hits[1].size(), m->hits[2].size());
+    return 0;
+}
+
+int main(int argc, char** argv) {
     SetConsoleOutputCP(CP_UTF8);
+    if (argc >= 3 && std::string(argv[1]) == "--map") return print_map(fs::path(argv[2]), argc >= 4 ? std::atof(argv[3]) : 0);
+    songmap_cost();  // first: it reads the process's peak memory
+    songmap();
     features();
     limiter();
     quality();

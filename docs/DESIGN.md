@@ -201,6 +201,13 @@ libVLC (decode, resample to 48 kHz, equalizer, normvol)
   - **Its own GPU:** "Use the fast graphics card" (off by default) makes `Gfx` rebuild its device on the high-performance
     adapter while DasVis is on screen (`Gfx::set_fast_gpu`); NVIDIA's driver costs ~70 MB of RAM, which is why it's off.
   - **Frame pacing:** `Gfx::set_frame_interval` presents every n-th refresh: 60 fps on any screen, 30 on battery.
+  - **The song map** (`dasvis/songmap.*`) is the song's structure, worked out once and cached in `_cache\dasvis\maps`:
+    beats, downbeats, parts (intro, build-up, drop, breakdown …), drops and the quiet bars before them, and the
+    pseudo-stems' envelopes and hits.
+    - **Built** while DasVis is open, on a worker at background priority: the current song first, then the next in the
+      queue. The samples stream through (`decode_mono_stream`), so it needs a few MB, never the whole song.
+    - **Used:** the renderer looks it up at the heard time (`player.time_ms()` + one refresh − calibration), corrected
+      by the live kicks, and passes the beat, bar, phrase, section, build-up and drop to the shaders.
 - **Threads:** libVLC's events and Windows' media-control button presses arrive on other threads and are posted to
   the window (`WM_APP_DONE`, `WM_APP_MEDIA`); everything in `Player` runs on the UI thread.
 

@@ -11,6 +11,7 @@
 #include <wrl/client.h>
 
 #include <algorithm>
+#include <functional>
 #include <stdexcept>
 #include <string>
 
@@ -26,11 +27,16 @@ using Microsoft::WRL::ComPtr;
 namespace wb {
 namespace {
 
+using Sink = std::function<void(const float*, size_t)>;
+
 // Same state machine as decode.rs: sums source samples into the current output slot and emits their mean
-// each time the source position passes the next boundary (simple averaging resampler; fine for analysis).
+// each time the source position passes the next boundary (simple averaging resampler; fine for analysis). The output
+// goes to the sink 4,096 samples at a time.
 class Downmixer {
 public:
-    explicit Downmixer(uint32_t src_rate) : src_rate_(src_rate), ratio_(double(src_rate) / kAnalysisRate) {}
+    Downmixer(uint32_t src_rate, const Sink& sink) : src_rate_(src_rate), ratio_(double(src_rate) / kAnalysisRate), sink_(sink) {
+        out_.reserve(4096);
+    }
 
     void push(const float* interleaved, size_t frames, unsigned channels) {
         channels = std::max(channels, 1u);
@@ -46,13 +52,15 @@ public:
                 acc_ = 0;
                 count_ = 0;
                 pos_ += ratio_;
+                if (out_.size() == 4096) flush();
             }
         }
     }
 
-    Audio finish() {
-        if (out_.empty()) throw std::runtime_error("no audio decoded");
-        return Audio{std::move(out_), kAnalysisRate, double(src_index_) / src_rate_};
+    double finish() {
+        flush();
+        if (!emitted_) throw std::runtime_error("no audio decoded");
+        return double(src_index_) / src_rate_;
     }
 
 private:
@@ -62,7 +70,16 @@ private:
     size_t count_ = 0;
     double pos_ = 0;
     uint64_t src_index_ = 0;
+    const Sink& sink_;
     std::vector<float> out_;
+    size_t emitted_ = 0;
+
+    void flush() {
+        if (out_.empty()) return;
+        sink_(out_.data(), out_.size());
+        emitted_ += out_.size();
+        out_.clear();
+    }
 };
 
 std::string display(const std::filesystem::path& p) {
@@ -72,33 +89,33 @@ std::string display(const std::filesystem::path& p) {
 
 // Pulls float frames from a dr_libs decoder until it runs dry.
 template <class Read>
-Audio drain(unsigned channels, unsigned rate, Read&& read) {
+double drain(unsigned channels, unsigned rate, const Sink& sink, Read&& read) {
     if (rate == 0) throw std::runtime_error("unknown sample rate");
-    Downmixer mix(rate);
+    Downmixer mix(rate, sink);
     std::vector<float> buf(4096 * size_t(std::max(channels, 1u)));
     while (const auto got = read(4096, buf.data())) mix.push(buf.data(), size_t(got), channels);
     return mix.finish();
 }
 
-Audio decode_wav(const std::filesystem::path& path) {
+double decode_wav(const std::filesystem::path& path, const Sink& sink) {
     drwav wav;
     if (!drwav_init_file_w(&wav, path.c_str(), nullptr)) throw std::runtime_error("unsupported or corrupt audio file");
     struct Close { drwav* w; ~Close() { drwav_uninit(w); } } close{&wav};
-    return drain(wav.channels, wav.sampleRate, [&](drwav_uint64 n, float* out) { return drwav_read_pcm_frames_f32(&wav, n, out); });
+    return drain(wav.channels, wav.sampleRate, sink, [&](drwav_uint64 n, float* out) { return drwav_read_pcm_frames_f32(&wav, n, out); });
 }
 
-Audio decode_mp3(const std::filesystem::path& path) {
+double decode_mp3(const std::filesystem::path& path, const Sink& sink) {
     drmp3 mp3;
     if (!drmp3_init_file_w(&mp3, path.c_str(), nullptr)) throw std::runtime_error("unsupported or corrupt audio file");
     struct Close { drmp3* m; ~Close() { drmp3_uninit(m); } } close{&mp3};
-    return drain(mp3.channels, mp3.sampleRate, [&](drmp3_uint64 n, float* out) { return drmp3_read_pcm_frames_f32(&mp3, n, out); });
+    return drain(mp3.channels, mp3.sampleRate, sink, [&](drmp3_uint64 n, float* out) { return drmp3_read_pcm_frames_f32(&mp3, n, out); });
 }
 
-Audio decode_flac(const std::filesystem::path& path) {
+double decode_flac(const std::filesystem::path& path, const Sink& sink) {
     drflac* flac = drflac_open_file_w(path.c_str(), nullptr);
     if (!flac) throw std::runtime_error("unsupported or corrupt audio file");
     struct Close { drflac* f; ~Close() { drflac_close(f); } } close{flac};
-    return drain(flac->channels, flac->sampleRate, [&](drflac_uint64 n, float* out) { return drflac_read_pcm_frames_f32(flac, n, out); });
+    return drain(flac->channels, flac->sampleRate, sink, [&](drflac_uint64 n, float* out) { return drflac_read_pcm_frames_f32(flac, n, out); });
 }
 
 // COM + Media Foundation for the calling thread, for the duration of one decode. Both are reference-counted.
@@ -111,7 +128,7 @@ struct MfScope {
     }
 };
 
-Audio decode_mf(const std::filesystem::path& path) {
+double decode_mf(const std::filesystem::path& path, const Sink& sink) {
     MfScope scope;
     if (FAILED(scope.mf)) throw std::runtime_error("Media Foundation is not available");
 
@@ -145,7 +162,7 @@ Audio decode_mf(const std::filesystem::path& path) {
     if (!is_float && bits != 16 && bits != 24 && bits != 32) throw std::runtime_error("unsupported sample format");
     const UINT32 bytes_per_sample = bits / 8;
 
-    Downmixer mix(rate);
+    Downmixer mix(rate, sink);
     std::vector<float> converted;
     for (;;) {
         DWORD flags = 0;
@@ -181,15 +198,21 @@ Audio decode_mf(const std::filesystem::path& path) {
 
 }  // namespace
 
-Audio decode_mono(const std::filesystem::path& path) {
+double decode_mono_stream(const std::filesystem::path& path, const std::function<void(const float*, size_t)>& sink) {
     std::error_code ec;
     if (!std::filesystem::is_regular_file(path, ec)) throw std::runtime_error("can't open " + display(path));
     auto ext = path.extension().wstring();
     std::transform(ext.begin(), ext.end(), ext.begin(), ::towlower);
-    if (ext == L".wav" || ext == L".aif" || ext == L".aiff") return decode_wav(path);
-    if (ext == L".mp3") return decode_mp3(path);
-    if (ext == L".flac") return decode_flac(path);
-    return decode_mf(path);  // AAC / M4A / ALAC (and OGG/Opus where Windows has the codecs)
+    if (ext == L".wav" || ext == L".aif" || ext == L".aiff") return decode_wav(path, sink);
+    if (ext == L".mp3") return decode_mp3(path, sink);
+    if (ext == L".flac") return decode_flac(path, sink);
+    return decode_mf(path, sink);  // AAC / M4A / ALAC (and OGG/Opus where Windows has the codecs)
+}
+
+Audio decode_mono(const std::filesystem::path& path) {
+    Audio a;
+    a.duration = decode_mono_stream(path, [&](const float* s, size_t n) { a.samples.insert(a.samples.end(), s, s + n); });
+    return a;
 }
 
 }  // namespace wb

@@ -24,6 +24,10 @@ cbuffer DasVis : register(b0) {
     float4 u_key;    // key tint (rgb, linear), chromatic aberration
     float4 u_pal[5]; // the song's palette, dark → light (linear rgb)
     float4 u_pass;   // per pass: the source's texel size (xy)
+    float4 u_song;   // phrase phase (0→1 across 16 bars), section (0 intro, 1 verse, 2 build-up, 3 drop, 4 breakdown,
+                     // 5 chorus, 6 outro), progress through it (0→1), build (0→1 up to the drop)
+    float4 u_drop;   // drop (1 on its first beat, gone a bar later), bars to the next drop (99: none), gap (1 in the
+                     // quiet bars before a drop), the part's energy (0–1)
 };
 
 #define TIME u_time.x
@@ -50,6 +54,15 @@ cbuffer DasVis : register(b0) {
 #define EXPOSURE u_look.z
 #define HAS_COVER u_look.w
 #define KEY_TINT u_key.rgb
+// From the song map (all 0 / 99 until the song has been analysed, or for radio: LIVE is then 1).
+#define PHRASE u_song.x
+#define SECTION u_song.y
+#define SECTION_T u_song.z
+#define BUILD u_song.w      // tighten things as it rises: the drop lands when it reaches 1
+#define DROP u_drop.x       // let go: 1 on the drop's first beat, fading over the bar
+#define TO_DROP u_drop.y
+#define GAP u_drop.z        // the breath before the drop: hold back
+#define PART_ENERGY u_drop.w
 
 Texture2D t_src : register(t0);    // scenes: the last frame; post passes: their input
 Texture2D t_cover : register(t1);  // the album cover (when HAS_COVER)

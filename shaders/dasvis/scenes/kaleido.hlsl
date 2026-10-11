@@ -8,7 +8,7 @@ float3 scene(float2 uv, float2 p) {
     float n = 6 + 2 * floor(frac(SEED * 5.3 + floor(BEATS / 32) * 0.37) * 4);  // 6–12 mirrors, new every 8 bars
     float step_ = floor(BEATS) + smoothstep(0, 0.3, BEAT);                       // eased turn on each beat
     float spin = step_ * PI / n * 0.5;
-    float r = length(p) * (1 - 0.18 * BASS * INTENSITY);
+    float r = length(p) * (1 - 0.18 * BASS * INTENSITY) * (1 + 0.6 * BUILD) * (1 - 0.3 * DROP);  // more mirrors in view as it builds
     float a = atan2(p.y, p.x) + spin;
     float seg = TAU / n;
     float m = abs(frac(a / seg) - 0.5) * seg;  // the mirrored angle, 0 … seg / 2

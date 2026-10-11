@@ -31,7 +31,7 @@ namespace {
 
 // Mirrors the cbuffer in dasvis.hlsli: float4s only, so the C++ and HLSL layouts can't drift apart.
 struct Uniforms {
-    float time[4], res[4], out[4], beat[4], drums[4], tone[4], look[4], post[4], key[4], pal[5][4], pass[4];
+    float time[4], res[4], out[4], beat[4], drums[4], tone[4], look[4], post[4], key[4], pal[5][4], pass[4], song[4], drop[4];
 };
 static_assert(sizeof(Uniforms) % 16 == 0);
 
@@ -117,6 +117,11 @@ struct DasVis::Impl {
 
     QualityControl qc;
     FlashLimiter limiter;
+    // The song map's clock: an offset learnt from the live kicks, and a whole number of beats added so the beat count
+    // carries on from the live clock without jumping when the map arrives.
+    double map_offset = 0, kick_drift = 0, beats_shift = 0;
+    bool had_map = false;
+    float last_drop = 0;
     float gpu_ms = 0;
     double time = 0;
     std::string song, camelot;
@@ -406,12 +411,39 @@ struct DasVis::Impl {
         if (in.song != song || frame == 0) new_song(in), palette(in.camelot);
         else if (in.camelot.value_or("") != camelot) palette(in.camelot);  // the analysis finished while it played
 
-        // Auto-advance: when it's time, on the next bar's downbeat.
+        // Where the song is: from the map when there is one, else the live clock.
+        const bool has_map = in.map && in.map->beats.size() >= 16;
+        SongMap::State ms;
+        double beats = f.beats, beat_phase = f.beat_phase(), bar = f.bar_phase();
+        if (has_map) {
+            double t = in.song_time + map_offset;
+            // Keep the map in step with what's heard: each live kick is compared with the map's nearest kick, and a
+            // steady difference of more than 25 ms (the player's clock running early or late) is taken out slowly.
+            const auto& kh = in.map->hits[SongMap::kick];
+            if (f.kick_hit && !kh.empty()) {
+                const auto it = std::lower_bound(kh.begin(), kh.end(), t);
+                double d = 1;
+                if (it != kh.end()) d = *it - t;
+                if (it != kh.begin() && std::fabs(*(it - 1) - t) < std::fabs(d)) d = *(it - 1) - t;
+                if (std::fabs(d) < 0.1) kick_drift += (d - kick_drift) * 0.1;
+                if (std::fabs(kick_drift) > 0.025) map_offset = std::clamp(map_offset + (kick_drift - std::copysign(0.025, kick_drift)) * 0.2, -0.2, 0.2);
+                t = in.song_time + map_offset;
+            }
+            ms = in.map->at(t);
+            if (!had_map) beats_shift = std::round(f.beats - ms.beats);
+            beats = ms.beats + beats_shift, beat_phase = ms.beat_phase, bar = ms.bar_phase;
+        }
+        had_map = has_map;
+
+        // Auto-advance: when it's time, on the next bar's downbeat (with the map: the next 4-bar boundary). And with
+        // the map, a new scene on each drop (if the last change wasn't just now).
         since_switch += dt;
         if (!locked && cfg.auto_advance > 0 && since_switch > cfg.auto_advance) advance_due = true;
-        const double bar = f.bar_phase();
-        if (advance_due && bar < last_bar) switch_to((current + 1) % scenes.size());
+        const bool new_bar = bar < last_bar;
+        if (advance_due && new_bar && (!has_map || ms.bar % 4 == 0)) switch_to((current + 1) % scenes.size());
+        if (has_map && !locked && ms.drop > 0.9f && last_drop < 0.9f && since_switch > 8) switch_to((current + 1) % scenes.size());
         last_bar = bar;
+        last_drop = ms.drop;
         const float beat_s = float(60.0 / std::max(60.0, f.bpm));
         transition = std::min(1.f, transition + dt / std::max(0.4f, 2 * beat_s));  // two beats
 
@@ -428,13 +460,15 @@ struct DasVis::Impl {
         const auto set = [](float* v, float a, float b, float c, float d) { v[0] = a, v[1] = b, v[2] = c, v[3] = d; };
         set(u.time, float(time), dt, seed, ts.quality);
         set(u.out, float(w), float(h), float(w) / float(h), transition);
-        set(u.beat, float(f.beat_phase()), float(f.bar_phase()), float(f.beats), float(f.bpm));
+        set(u.beat, float(beat_phase), float(bar), float(beats), float(has_map ? in.map->bpm : f.bpm));
         set(u.drums, f.kick, f.snare, f.hats, f.kick_hit ? 1.f : 0.f);
-        set(u.tone, f.bass, f.lead, f.energy, 1);
+        set(u.tone, f.bass, f.lead, f.energy, has_map ? 0.f : 1.f);
+        set(u.song, float(ms.phrase_phase), float(int(ms.section)), ms.section_t, ms.build);
+        set(u.drop, ms.drop, std::min(ms.to_drop, 99.f), ms.gap ? 1.f : 0.f, ms.energy);
         set(u.look, intensity, flash, limiter.gain(), has_cover ? 1.f : 0.f);
         const float ring = scenes[previous].ring + (float(scenes[current].ring) - float(scenes[previous].ring)) * transition;
         set(u.post, 0.08f + 0.04f * f.energy, float(std::max<size_t>(1, bloom.size())), 0.018f, ring);
-        u.key[3] = ts.quality >= 0.5f ? 0.0015f + 0.005f * f.kick * intensity : 0.f;
+        u.key[3] = ts.quality >= 0.5f ? 0.0015f + 0.005f * f.kick * intensity + 0.008f * ms.drop * flash : 0.f;
 
         float sp[Features::kBins * 2];
         for (size_t i = 0; i < Features::kBins; ++i) sp[2 * i] = f.spectrum()[i], sp[2 * i + 1] = f.spectrum_peaks()[i];
@@ -512,6 +546,7 @@ float DasVis::scale() const { return p_->qc.scale(); }
 float DasVis::gpu_ms() const { return p_->gpu_ms; }
 bool DasVis::tier_settled() const { return p_->qc.settled(); }
 float DasVis::flash_budget() const { return p_->limiter.budget(); }
+double DasVis::map_offset() const { return p_->map_offset; }
 
 const char* library_source() { return k_library; }
 

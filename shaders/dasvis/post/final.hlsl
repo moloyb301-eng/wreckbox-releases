@@ -44,8 +44,9 @@ float4 main(VsOut v) : SV_Target {
     }
     float3 b = t_bloom.SampleLevel(s_clamp, v.uv, 0).rgb / u_post.y;
     c = lerp(c, b, u_post.x) + b * 0.12 * ENERGY;
-    c = aces(c * EXPOSURE);
-    c *= 1 - 0.8 * dot(d, d);  // vignette
+    c = aces(c * EXPOSURE * (1 + 0.6 * DROP * FLASH) * (1 - 0.55 * GAP));  // the drop punches; the breath before it dims
+    c = lerp(c, dot(c, float3(0.2126, 0.7152, 0.0722)), 0.45 * BUILD * BUILD);  // the colour drains as a build-up rises
+    c *= 1 - (0.8 + 1.4 * BUILD) * dot(d, d);  // vignette, closing in through a build-up
     if (u_post.w > 0) {
         float4 o = ring(d * float2(ASPECT, 1));
         c = c * (1 - o.a * u_post.w) + o.rgb * u_post.w;

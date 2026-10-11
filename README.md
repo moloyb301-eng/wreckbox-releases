@@ -195,7 +195,12 @@ the screen. The bar fades when the mouse is still. Its ⌄ button, or **H**, hid
   - *Neon Tunnel*: one ring per beat, with a spectrum ring round the cover
   - *Kaleido Cover*: a kaleidoscope of the album art
 - **N / P** or a click change the scene, and **L** locks it. It changes by itself on a bar's downbeat (the same
-  setting as MilkDrop's presets).
+  setting as MilkDrop's presets), and on every drop.
+- **It knows the song.** The first time a song plays in DasVis, it's analysed in the background: a few seconds, about
+  6 MB of memory. DasVis then knows the beats, the bars, the parts (intro, build-up, drop, breakdown …) and when each
+  drop lands. Build-ups drain the colour and close in, the bar before a drop goes quiet, and the drop hits. The player
+  bar counts down (*Build-up · drop in 4 bars*). **Ctrl+Shift+D** draws the map over the picture. Songs are analysed
+  once and remembered; radio stays live.
 - Right-click → **DasVis**:
   - **Intensity:** Chill, Normal or Insane
   - **Quality:** Auto measures this PC and remembers it; or pick Low, Medium or High

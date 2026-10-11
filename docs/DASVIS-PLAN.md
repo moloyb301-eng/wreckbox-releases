@@ -564,7 +564,66 @@ Every phase has to pass the **Low-tier check** (§12) before it ships, not just 
     scenes folder
 - DasVis is drawn straight from the shared texture: no read-back, and one frame less latency than MilkDrop.
 
-### Phase 2: the song map
+### Phase 2: the song map ✅ 2026-10-11
+**Built** (`src/dasvis/songmap.*`, `decode_mono_stream` in `src/engine/decode.*`):
+- **One streaming pass:** the decoder now hands samples over in 4,096-sample chunks (`decode_mono_stream`;
+  `decode_mono` is built on it and unchanged), so the song is never held whole.
+  - STFT 2,048 / 512 at 22.05 kHz
+  - HPSS from medians over 17 frames × 17 bins
+  - five pseudo-stem levels, plus per frame: whole-spectrum flux, RMS, 32 log bands and 12 chroma
+- **From those summaries:**
+  - stem onsets, envelopes (bytes) and hits
+  - the tempo: the library's BPM; otherwise the onsets' autocorrelation, scored on 4 multiples of each lag
+  - the beat grid: dynamic programming over an onset curve of kick + snare + bass (hats are often off the beat),
+    refined to a fraction of a frame; the final BPM is the slope of a line through the beats
+  - downbeats: bass onsets + chord change + kick, per beat offset
+  - sections: Foote novelty from a 32-beat kernel worked out band by band (no full self-similarity matrix), plus
+    energy change, snapped to 4-bar boundaries; same-kind neighbours merged
+  - labels from energy, kick density, rise and snare / hat density; drops and the quiet bars before them
+- **Cache:** `_cache\dasvis\maps\<hash of id + file size + date>.map`, version-checked, written atomically. A song is
+  analysed once.
+- **The app:**
+  - analysis on a worker thread at background priority, only while DasVis is open: the current song, then the next
+    one in the queue
+  - radio stays live
+  - the renderer takes the beat / bar / phrase / section / build / drop / gap from the map at the heard time; the
+    live kicks pull a steady error of more than 25 ms back into step (the dev view shows it: +0 to +3 ms on real
+    songs)
+  - a new scene on each drop; auto-advance waits for a 4-bar boundary
+- **Shaders:** `u_song` / `u_drop` (PHRASE, SECTION, SECTION_T, BUILD, DROP, TO_DROP, GAP, PART_ENERGY).
+  - Every scene through the final pass: colour drains and the vignette closes as a build-up rises, the breath before the
+    drop dims, the drop punches (within the flash budget) and splits the colours.
+  - Per scene: the tunnel narrows and lights every ring on the drop; Feedback Classic pulls harder and bursts; Kaleido
+    brings more mirrors into view.
+- **Panel:** *Build-up · drop in N bars* (peach), the section's name, *Analysing the song…*, *Live*. **Ctrl+Shift+D**
+  draws the map (or `WRECKBOX_DASVIS_DEV=1`). `dasvis_tests --map <file> [bpm]` prints any song's map.
+
+**Measured:**
+- **Synthetic 128 BPM song** (intro, build-up with a silent last bar, drop, breakdown, drop):
+  - beats: median error 2.5 ms, 99 % within 25 ms, with or without the BPM given
+  - downbeats right
+  - parts exactly *Intro 0 · Build-up 16 · Drop 24 · Breakdown 40 · Drop 48*
+  - both drops within a beat; the breath found at bar 23
+- **6-minute song:** **4.4 s and 6 MB** at most while analysing (budget: 30 MB; the whole song as floats would be
+  32 MB).
+- **Real songs from your library** (read-only):
+  - *Fake Acid*: 133.0 BPM, intro → drop → … → breakdown 2:03 → build-up 2:17 → drop 2:32 → … → outro, in 5.8 s
+  - *Let It Happen*: 125.0 BPM
+  - *Galactic Symphony*: 99.6 BPM, the same as the library's own analysis
+  - In the app, the map was ready 7 s into *Fake Acid*. Through the build-up the panel counted *drop in 4 bars* and the
+    picture drained and tightened; the drop's first beat changed the scene.
+- **Low-tier check:** 5.5–5.9 % of one core for the whole app (phase 1: 5.1 % in one run), +18.7 MB; the analysis
+  itself (1 s for the test file) runs before and outside that.
+- All 12 suites pass.
+
+**Changed from the plan:**
+- The kernel is 32 beats, not 16: 16 cut on 4-bar chord cycles in intros.
+- Boundaries snap to 4 bars, not 8–16: songs aren't always built in 16s.
+- The pseudo-stem envelopes are in the map but not yet used: that's phase 3.
+- **Still to do by you:** watch a few songs you know through their drops. If the panel names a part wrong, tell me the
+  song and the time.
+
+**As planned:**
 - §6 in full: streaming STFT and HPSS, pseudo-stems, beat grid, downbeats, phrases, sections, drops; the binary cache;
   analysis only while DasVis is open, at background priority.
 - The uniforms gain `bar`, `phrase`, `section`, `build`, `drop` and `to_drop`.

@@ -205,7 +205,10 @@ bool View::vis_key(WPARAM vk) {
             }
             return true;
         case 'M': vis_use(VisOptions::Mode::milkdrop); return true;
-        case 'D': vis_use(VisOptions::Mode::dasvis); return true;
+        case 'D':
+            if (GetKeyState(VK_CONTROL) < 0 && GetKeyState(VK_SHIFT) < 0) return das_dev_ = !das_dev_, true;  // the dev view
+            vis_use(VisOptions::Mode::dasvis);
+            return true;
         case VK_F5: das_reload(); return true;
         case 'H': set_vis_panel(!vis_.opt.panel); return true;
         case VK_OEM_4:  // [  pictures earlier
@@ -372,6 +375,61 @@ void View::das_free() {
     if (!das_) return;
     das_.reset();
     das_cover_for_.clear();
+    das_map_.reset();  // in memory only; it's in the cache for next time
+    das_map_for_.clear();
+}
+
+namespace {
+
+std::string song_key(const player::Item& it) { return it.track_id ? *it.track_id : it.location; }
+
+// Loads the map from the cache, or analyses the song and caches it. For a worker thread, at background priority, so
+// playback and the window never feel it.
+std::shared_ptr<const dasvis::SongMap> map_for(const std::string& key, const std::filesystem::path& file, double bpm) {
+    SetThreadPriority(GetCurrentThread(), THREAD_MODE_BACKGROUND_BEGIN);
+    const auto t0 = clock_t_::now();
+    const auto cache = dasvis::map_cache_file(paths::cache() / L"dasvis" / L"maps", key, file);
+    auto m = dasvis::SongMap::load(cache);
+    std::string why;
+    if (!m) {
+        m = dasvis::analyse_file(file, bpm, &why);
+        if (m) m->save(cache);
+        perf_log(m ? std::format("DasVis song map in {:.1f} s: {:.1f} BPM, {} parts, {} drops", std::chrono::duration<double>(clock_t_::now() - t0).count(),
+                                 m->bpm, m->parts.size(), m->drops.size())
+                   : "DasVis song map: " + why);
+    }
+    SetThreadPriority(GetCurrentThread(), THREAD_MODE_BACKGROUND_END);
+    return m ? std::make_shared<const dasvis::SongMap>(std::move(*m)) : nullptr;
+}
+
+}  // namespace
+
+void View::das_request_map(const player::Item& item, double bpm) {
+    das_map_for_ = song_key(item);
+    das_map_.reset();
+    das_map_busy_ = false;
+    if (player::is_url(item.location) || item.location.empty()) return;  // radio: live only
+    das_map_busy_ = true;
+    auto result = std::make_shared<std::shared_ptr<const dasvis::SongMap>>();
+    jobs_.run([key = das_map_for_, file = std::filesystem::path(widen(item.location)), bpm, result] { *result = map_for(key, file, bpm); },
+              [this, key = das_map_for_, result] {
+                  if (das_map_for_ != key) return;  // another song by now
+                  das_map_ = *result;
+                  das_map_busy_ = false;
+                  das_prepare_next();
+              });
+}
+
+void View::das_prepare_next() {
+    const auto& items = player_.queue().items();
+    const size_t next = size_t(player_.queue().index() + 1);
+    if (!das_ || das_next_busy_ || next >= items.size() || player::is_url(items[next].location)) return;
+    const player::Item it = items[next];
+    const auto row = it.track_id ? store_.row(*it.track_id) : std::nullopt;
+    const double bpm = row && row->bpm() ? *row->bpm() : 0;
+    das_next_busy_ = true;
+    jobs_.run([key = song_key(it), file = std::filesystem::path(widen(it.location)), bpm] { map_for(key, file, bpm); },
+              [this] { das_next_busy_ = false; });
 }
 
 void View::das_reload() {
@@ -405,6 +463,8 @@ bool View::das_screen() {
         das_feat_ = {};
         das_tier_saved_ = false;
         das_frames_ = 0;
+        wchar_t v[4]{};  // WRECKBOX_DASVIS_DEV=1 opens with the song map drawn over the picture (Ctrl+Shift+D)
+        das_dev_ = das_dev_ || (GetEnvironmentVariableW(L"WRECKBOX_DASVIS_DEV", v, 4) && v[0] == L'1');
         perf_log(das_->ok() ? std::format("DasVis started on {}: {} scenes, {} tier{}", gpu, das_->scene_count(), dasvis::tier_name(das_->tier()),
                                           das_->user_errors().empty() ? "" : "; your scenes have errors")
                             : "DasVis unavailable: " + das_->error());
@@ -422,7 +482,11 @@ bool View::das_screen() {
         else std::fill(tap_.begin(), tap_.end(), 0.f);
         const player::Item* cur = player_.current();
         const auto row = cur && cur->track_id ? store_.row(*cur->track_id) : std::nullopt;
-        das_feat_.update(tap_.data(), frame_dt_, row && row->bpm() ? *row->bpm() : 0);
+        const double bpm = row && row->bpm() ? *row->bpm() : 0;
+        das_feat_.update(tap_.data(), frame_dt_, bpm);
+        if (cur && song_key(*cur) != das_map_for_) das_request_map(*cur, bpm);
+        // Where the song is when this frame appears (a refresh from now), less the calibration (+ = pictures later).
+        das_song_t_ = double(player_.time_ms()) / 1000 + frame_dt_ - (vis_.opt.sync_ms + (bt_output_ ? 180 : 0)) / 1000.0;
         dasvis::Inputs in;
         in.f = &das_feat_;
         in.dt = frame_dt_;
@@ -430,6 +494,16 @@ bool View::das_screen() {
         if (row && !row->camelot().empty()) in.camelot = row->camelot();
         in.intensity = o.das_intensity;
         in.budget_ms = 0.75f * 1000.f * float(frame_interval()) / das_hz_;
+        in.map = das_map_.get();
+        in.song_time = das_song_t_;
+        // The panel's line (only worked out while the panel or the dev view shows it).
+        if (overlay_alpha() <= 0 && !das_dev_) {
+        } else if (das_map_) {
+            const auto st = das_map_->at(das_song_t_ + das_->map_offset());
+            if (st.to_drop < 16 && (st.section == dasvis::Section::build || st.gap))
+                das_status_ = st.to_drop < 1 ? L"Build-up · the drop is next" : std::format(L"Build-up · drop in {} bars", int(std::ceil(st.to_drop)));
+            else das_status_ = wide(dasvis::section_name(st.section));
+        } else das_status_ = das_map_busy_ ? L"Analysing the song…" : L"Live";
         // The cover: decoded off the UI thread at 512 px, handed over when it's ready (if the song is still on).
         if (in.song != das_cover_for_) {
             das_cover_for_ = in.song;
@@ -466,6 +540,59 @@ bool View::das_screen() {
     return true;
 }
 
+// Ctrl+Shift+D: the song map over the picture. The whole song (its parts, the drops, where it is now), then the 16 s
+// around now (beats, bars, kicks), and the numbers.
+void View::das_dev_view(float W) {
+    const float l = 48, r = W - 48, top = 64;
+    g_.fill_round(Rect{l - 12, top - 12, r + 12, top + 150}, 14, argb(0xC0101014));
+    const auto& m = das_map_;
+    if (!m) {
+        g_.text(das_map_busy_ ? L"Analysing the song…" : L"No song map (radio, or a file that couldn't be read)", Rect{l, top, r, top + 24},
+                {Font::ui, 14, 600, text2});
+        return;
+    }
+    const double t = das_song_t_ + das_->map_offset();
+    const auto colour = [](dasvis::Section s) {
+        switch (s) {
+            case dasvis::Section::build: return peach;
+            case dasvis::Section::drop: return argb(0xFFF07070);
+            case dasvis::Section::breakdown: return light_blue;
+            case dasvis::Section::chorus: return lilac;
+            default: return argb(0xFF505060);
+        }
+    };
+    // The whole song.
+    const float sy = top, sh = 26;
+    const auto x_of = [&](double s) { return l + float(s / std::max(1.0, m->duration)) * (r - l); };
+    for (const auto& p : m->parts) {
+        const Rect pr{x_of(p.start), sy, std::max(x_of(p.start) + 1, x_of(p.end) - 1), sy + sh};
+        g_.fill(pr, with_alpha(colour(p.kind), 0.35f + 0.5f * p.energy));
+        g_.text(wide(dasvis::section_name(p.kind)), pr.inset(4, 0), {Font::ui, 11, 600, text});
+    }
+    for (const double d : m->drops) g_.fill(Rect{x_of(d) - 1, sy - 4, x_of(d) + 1, sy + sh + 4}, white);
+    g_.fill(Rect{x_of(t) - 1.5f, sy - 6, x_of(t) + 1.5f, sy + sh + 6}, lilac);
+    // 16 s around now.
+    const float zy = sy + sh + 16, zh = 44, mid = (l + r) / 2;
+    const auto z_of = [&](double s) { return mid + float((s - t) / 8) * (r - l) / 2; };
+    for (size_t i = 0; i < m->beats.size(); ++i) {
+        const float x = z_of(m->beats[i]);
+        if (x < l || x > r) continue;
+        const long rel = long(i) - m->downbeat;
+        const bool down = rel % 4 == 0, phrase = rel % 64 == 0;
+        g_.fill(Rect{x - (phrase ? 1.5f : 0.75f), zy + (down ? 0 : 18), x + (phrase ? 1.5f : 0.75f), zy + zh}, phrase ? peach : down ? white : text3);
+    }
+    for (const double k : m->hits[dasvis::SongMap::kick]) {
+        const float x = z_of(k);
+        if (x >= l && x <= r) g_.fill_circle(x, zy + zh + 6, 2.5f, argb(0xFFF07070));
+    }
+    g_.fill(Rect{mid - 1, zy - 4, mid + 1, zy + zh + 12}, lilac);
+    const auto st = m->at(t);
+    g_.text(std::format(L"{:.1f} BPM · bar {} · {} ({:.0f} %) · build {:.2f} · drop {:.2f} · next drop in {} · offset {:+.0f} ms", m->bpm, st.bar + 1,
+                        wide(dasvis::section_name(st.section)), st.section_t * 100, st.build, st.drop,
+                        st.to_drop < 99 ? std::format(L"{:.1f} bars", st.to_drop) : std::wstring(L"—"), das_->map_offset() * 1000),
+            Rect{l, zy + zh + 16, r, zy + zh + 38}, {Font::ui, 12.5f, 500, text2});
+}
+
 void View::vis_click() {
     mode_before_click_ = vis_.opt.mode;
     if (das_ && das_->ok() && vis_.opt.mode == VisOptions::Mode::dasvis) {
@@ -492,6 +619,7 @@ void View::visualizer_screen() {
     const bool want_das = vis_.opt.mode == VisOptions::Mode::dasvis;
     if (!want_das) das_free();  // switched away: the GPU and memory go back
     if (want_das && das_screen()) {
+        if (das_dev_) das_dev_view(W);
         ui_.click(Rect{0, 0, W, H}, [this] { vis_click(); }, [this] { vis_menu(); });
         if (const float a = overlay_alpha(); a > 0) vis_overlay(Rect{0, 0, W, H}, a);
         return;
@@ -705,7 +833,13 @@ void View::vis_overlay(const Rect& r, float a) {
                             das_->locked() ? L"Unlock this scene (L)" : L"Lock this scene (L)");
             // What this PC runs it at, quietly: the tier and the render size.
             const std::wstring how = std::format(L"{} · {:.0f} %", wide(dasvis::tier_name(das_->tier())), das_->scale() * 100);
-            const float hx = l + 76;
+            float hx = l + 76;
+            if (!das_status_.empty() && hx + 200 < x) {  // the song map's word on where the song is
+                const TextStyle ss{Font::ui, 13, 600, das_status_.starts_with(L"Build") ? peach : lilac};
+                const float sw = g_.measure(das_status_, ss) + 2;
+                g_.text(das_status_, Rect{hx, cy3 - 12, hx + sw, cy3 + 12}, ss);
+                hx += sw + 14;
+            }
             if (hx + 90 < x) g_.text(how, Rect{hx, cy3 - 12, x - 8, cy3 + 12}, {Font::ui, 12, 500, text3});
         } else if (milk) {
             float l = in.l;
