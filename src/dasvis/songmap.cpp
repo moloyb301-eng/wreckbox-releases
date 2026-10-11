@@ -396,7 +396,16 @@ SongMap MapBuilder::Impl::finish() {
         for (long k = -L; k <= L && top; ++k) top = k == 0 || score[size_t(long(i) + k)] <= score[i];
         if (!top) continue;
         const long rel = long(i) - m.downbeat;  // snap to the nearest 4-bar boundary
-        const long snapped = m.downbeat + long(std::lround(double(rel) / 16)) * 16;
+        long snapped = m.downbeat + long(std::lround(double(rel) / 16)) * 16;
+        // …unless a clear step in loudness (×2 or more, bar against bar) lies within a bar of it: then the part starts
+        // there. A downbeat guessed a beat or two off would otherwise start a drop with a bar of the quiet before it.
+        double best = 2;
+        for (long k = snapped - 4; k <= snapped + 4; ++k) {
+            if (k < 4 || k + 4 > long(B)) continue;
+            double before = 0, after = 0;
+            for (long j = 0; j < 4; ++j) before += energy[size_t(k - 4 + j)], after += energy[size_t(k + j)];
+            if (after > best * (before + 1e-9)) best = after / (before + 1e-9), snapped = k;
+        }
         if (snapped > long(cuts.back()) + 8 && snapped + 8 < long(B)) cuts.push_back(size_t(snapped));
     }
     cuts.push_back(B);

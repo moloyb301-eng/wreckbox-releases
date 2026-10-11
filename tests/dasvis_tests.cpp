@@ -192,7 +192,7 @@ void quality() {
     const Sim weak = simulate(80, Tier::medium);
     CHECK(weak.tier == Tier::low && weak.ms <= 13 * 0.9f, "weak GPU: %s at %.2f, %.1f ms", tier_name(weak.tier), weak.scale, weak.ms);
     const Sim strong = simulate(4, Tier::medium);
-    CHECK(strong.tier == Tier::high && strong.scale == 1, "strong GPU: %s at %.2f", tier_name(strong.tier), strong.scale);
+    CHECK(strong.tier == Tier::high && strong.scale == tier_spec(Tier::high).scale_max, "strong GPU: %s at %.2f", tier_name(strong.tier), strong.scale);
     const Sim middling = simulate(25, Tier::medium);
     CHECK(middling.ms <= 13 * 0.9f, "middling GPU: %.1f ms", middling.ms);
     for (const Sim& s : {weak, strong, middling}) CHECK(s.tier_changes <= 2, "%d tier changes (see-sawing)", s.tier_changes);
@@ -267,6 +267,33 @@ SongMap map_of(const std::vector<float>& s, double bpm) {
     MapBuilder b(bpm);
     for (size_t i = 0; i < s.size(); i += 4096) b.push(&s[i], std::min<size_t>(4096, s.size() - i));  // as a decoder hands it over
     return b.finish();
+}
+
+// A drop that starts off the bar grid (two beats late, as when the downbeat is guessed wrong): it's still found, and
+// the part starts on the beat where the loudness steps up, not a bar early with the quiet before it in it.
+void songmap_off_grid() {
+    using S = Synth;
+    Synth x(0);
+    const double drop_t = S::kStart + 16 * S::kBar + 2 * S::kBeat;  // bar 16½
+    x.s.assign(size_t((drop_t + 24 * S::kBar + 1) * S::kRate), 0.f);
+    for (int beat = 0; S::kStart + beat * S::kBeat < drop_t + 24 * S::kBar; ++beat) {
+        const double t = S::kStart + beat * S::kBeat;
+        if (t < drop_t) {  // the intro: a chord and bass note that change on each bar's first beat (its downbeats)
+            static const double roots[4] = {220, 196, 174.6, 164.8};
+            x.hit(t + S::kBeat / 2, 0.05, 0.03, true);
+            if (beat % 4 == 0) x.tone(t, S::kBar, roots[beat / 4 % 4], 0.05), x.tone(t, S::kBar, roots[beat / 4 % 4] * 1.5, 0.03),
+                               x.tone(t, S::kBar * 0.9, roots[beat / 4 % 4] / 4, 0.15);
+        } else {  // the drop, two beats off that grid: a kick, clap and bass on every beat, nothing to mark a bar
+            x.kick(t, 0.8);
+            x.hit(t + S::kBeat / 2, 0.12, 0.03, true);
+            x.hit(t, 0.2, 0.08, false);
+            x.tone(t, S::kBeat * 0.9, 55, 0.3);
+        }
+    }
+    const SongMap m = map_of(x.s, 0);
+    CHECK(m.drops.size() == 1 && std::fabs(m.drops[0] - drop_t) < S::kBeat * 1.01, "an off-grid drop at %.2f s: found at %.2f s (%zu drops)",
+          drop_t, m.drops.empty() ? -1.0 : m.drops[0], m.drops.size());
+    std::printf("  off-grid drop: at %.2f s, found at %.2f s\n", drop_t, m.drops.empty() ? -1.0 : m.drops[0]);
 }
 
 // Memory and time on a 6-minute song: the samples stream through, so the analysis needs only a few MB. Runs first,
@@ -746,6 +773,7 @@ int main(int argc, char** argv) {
     if (argc >= 3 && std::string(argv[1]) == "--map") return print_map(fs::path(argv[2]), argc >= 4 ? std::atof(argv[3]) : 0);
     songmap_cost();  // first: it reads the process's peak memory
     songmap();
+    songmap_off_grid();
     colours();
     drives();
     features();

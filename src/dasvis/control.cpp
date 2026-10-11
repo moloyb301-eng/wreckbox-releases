@@ -33,7 +33,8 @@ void FlashLimiter::update(float lum, float dt) {
 }
 
 const TierSpec& tier_spec(Tier t) {
-    static const TierSpec specs[] = {{0.33f, 0.6f, 0.3f, 3}, {0.5f, 0.85f, 0.6f, 5}, {0.7f, 1.0f, 1.0f, 6}};
+    // High stops at 90 %: the final pass sharpens the upscale, and full size cost ~3 MB more than its +30 MB budget.
+    static const TierSpec specs[] = {{0.33f, 0.6f, 0.3f, 3}, {0.5f, 0.85f, 0.6f, 5}, {0.7f, 0.9f, 1.0f, 6}};
     return specs[int(t)];
 }
 

@@ -114,7 +114,7 @@ DasVis doesn't look up your GPU's name. It measures:
 |---|---|---|---|---|---|---|---|---|
 | **Low** | Intel HD 4000 / HD 520, GT 710; 2 cores, 4 GB | up to 1080p | 33–60 % of output | 30–60 | Light + Medium (Medium at low quality) | 16k–64k | 128² | 3 levels, quarter res |
 | **Medium** | Intel UHD 620, Vega 8, GTX 750–1050 | up to 1440p | 50–85 % | 60 | all; Heavy at low quality | 256k | 256² | 5 levels |
-| **High** | GTX 1650 Ti and up | up to 4K | 70–100 % | 60 (or display rate) | all | 1M | 512² | 6 levels |
+| **High** | GTX 1650 Ti and up | up to 4K | 70–90 % | 60 (or display rate) | all | 1M | 512² | 6 levels |
 
 **Below Low** (no feature level 10_0, or Low can't hold 25 fps at 33 % scale): the Winamp bars, with a one-line note.
 
@@ -849,6 +849,20 @@ drop (Intro → Verse → Chorus); without a known tempo it finds one. Worth a l
 - Events: **Cover Shatter, Shockwave, White-out**.
 - Overlays: **Title Card**, **Ribbon**, **Beat Sigils**.
 - **DasVis becomes the default visualizer** (decision 6 in §3). MilkDrop stays one key away.
+
+### Fixes after phase 6 (2026-10-12)
+- **The song map's parts start on the beat where the loudness steps up** (×2 or more, within a bar of the 4-bar
+  grid). A downbeat guessed two or three beats off had started *Afterhours*' drop a bar early with the quiet intro in
+  it, so it read as a verse: no drop at the library's tempo. *Fake Acid*'s second drop also moved to where its kicks
+  come back (149.8 s, was 151.6). A new test plays a drop two beats off an intro's clear bars: the old analysis put it
+  two beats early, the new one on the beat. Map cache version 2 (old maps are made again).
+- **Nothing is drawn while the window can't be seen** (the display asleep, a maximised window over it): a present then
+  doesn't wait for a refresh, so DasVis had run at ~150 fps for nobody (19 % CPU). It now waits, asking a few times a
+  second; CPU 1.6 %. `WRECKBOX_RENDER_HIDDEN=1` keeps drawing (paced) for measuring a test window behind others.
+- **Low tier compiles the heavy scenes only when they're first shown** (the director doesn't pick them there): about
+  1 MB. Settled memory at Low: +20.4 MB, sampled each second (the driver sometimes adds ~2 MB later).
+- **High tier stops at 90 % render scale** (the final pass sharpens the upscale): ~3 MB less than full size, which was
+  over its +30 MB budget.
 
 ### Phase 7: over the top
 - **Phone VJ deck:**

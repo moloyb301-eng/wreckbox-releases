@@ -42,6 +42,7 @@ inline constexpr int kBugTitle = 401, kBugBody = 402;  // Report a bug
 inline constexpr int kSlskQuery = 403;                  // Soulseek: custom search words
 inline constexpr UINT_PTR kRefreshTimer = 1, kPlayerTimer = 2, kTooltipTimer = 3;
 inline constexpr UINT_PTR kTrimTimer = 4;  // releases idle memory pages once full screen has been torn down
+inline constexpr UINT_PTR kOccludedTimer = 5;  // the visualizer's window isn't on screen: is it back yet?
 
 // Hands the pages this process isn't using back to Windows (they return by themselves if needed). For moments when a lot
 // was just let go: minimized, or after the full-screen visualizer (the OpenGL driver's pages).

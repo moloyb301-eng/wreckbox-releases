@@ -22,7 +22,8 @@ enum class Section : uint8_t { intro, verse, build, drop, breakdown, chorus, out
 const char* section_name(Section s);  // "Intro", "Build-up", …
 
 struct SongMap {
-    static constexpr uint32_t kVersion = 1;  // a better analysis bumps it, and old maps are made again
+    static constexpr uint32_t kVersion = 2;  // a better analysis bumps it, and old maps are made again (2: parts start on a
+                                             // clear step in loudness)
     static constexpr double kRate = 22050, kHop = 512;
     static constexpr double kFps = kRate / kHop;  // envelope frames a second (~43)
     enum Stem { kick, snare, hats, bass, lead };

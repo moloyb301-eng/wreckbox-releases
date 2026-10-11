@@ -276,9 +276,13 @@ struct DasVis::Impl {
             FAILED(hr = dev->CreatePixelShader(k_ps_ribbon, sizeof k_ps_ribbon, nullptr, &ps_ribbon)))
             return fail("vertex shader", hr);
         if (FAILED(dev->CheckFormatSupport(fine, &support)) || !(support & D3D11_FORMAT_SUPPORT_SHADER_SAMPLE)) fine = DXGI_FORMAT_R16G16_FLOAT;
+        // The heavy scenes are compiled by the driver only when they're first shown on Low tier, where the director
+        // doesn't pick them (they measure over the budget there): ~1 MB less on the PCs that need it most. Elsewhere,
+        // up front, so a pick never waits for the driver.
         for (const auto& s : kScenes) {
             Scene sc{s.tags.name, nullptr, s.sim};
-            if (FAILED(hr = dev->CreatePixelShader(s.code, s.size, nullptr, &sc.ps))) return fail("scene shader", hr);
+            if ((s.tags.cost != 'H' || cfg.start != Tier::low) && FAILED(hr = dev->CreatePixelShader(s.code, s.size, nullptr, &sc.ps)))
+                return fail("scene shader", hr);
             scenes.push_back(std::move(sc));
         }
         builtin = scenes.size();
@@ -378,6 +382,9 @@ struct DasVis::Impl {
         cue = c;
         cue.scene %= scenes.size();
         if (cue.scene == current) return;
+        if (!scenes[cue.scene].ps && cue.scene < builtin)  // a heavy scene not compiled yet (Low tier): now
+            dev->CreatePixelShader(kScenes[cue.scene].code, kScenes[cue.scene].size, nullptr, &scenes[cue.scene].ps);
+        if (!scenes[cue.scene].ps) return;
         previous = current, current = cue.scene;
         transition = 0, since_switch = 0, bars_on = 0, advance_due = false;
     }

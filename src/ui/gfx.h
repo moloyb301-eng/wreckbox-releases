@@ -63,6 +63,11 @@ public:
     void set_fast_gpu(bool on);
     bool begin();  // false if the render target couldn't be created
     void end();    // handles device loss by recreating the target next frame
+    // Nothing of the window is on screen (the display asleep, the screen locked, another window over all of it): the
+    // last present said so. A present then doesn't wait for a refresh, so the full-screen visualizer would draw as fast
+    // as it can for nobody; it waits instead, asking visible_again() a few times a second (a test present, no drawing).
+    bool occluded() const { return occluded_; }
+    bool visible_again();
 
     ID2D1RenderTarget* rt() const { return rt_.Get(); }
     ID3D11Device* d3d() const { return d3d_.Get(); }  // shared with DasVis
@@ -146,6 +151,7 @@ private:
     ComPtr<ID2D1Bitmap1> back_;         // the swap chain's buffer, as rt_'s target
     ComPtr<ID2D1RenderTarget> target_;  // what drawing goes to: the window, or a bitmap while cached() records
     ComPtr<ID2D1SolidColorBrush> brush_;
+    bool occluded_ = false;
     int generation_ = 0;
     bool vsync_ = false, fast_gpu_ = false;
     UINT interval_ = 1;

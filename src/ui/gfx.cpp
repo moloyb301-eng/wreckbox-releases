@@ -72,11 +72,14 @@ bool Gfx::create_target() {
 // A Direct3D 11 device, a swap chain on the window and a Direct2D device context drawing into it. The swap chain uses
 // the bit-block-transfer model, as Direct2D's own window target did: the screen, child windows (the search box),
 // PrintWindow and the visualizer's beat-sync timing behave exactly as before.
+namespace {
+bool env(const wchar_t* name) {  // a WRECKBOX_* switch set to 1
+    wchar_t v[4]{};
+    return GetEnvironmentVariableW(name, v, 4) && v[0] == L'1';
+}
+}  // namespace
+
 bool Gfx::create_device() {
-    const auto env = [](const wchar_t* name) {
-        wchar_t v[4]{};
-        return GetEnvironmentVariableW(name, v, 4) && v[0] == L'1';
-    };
     // WRECKBOX_SOFTWARE=1 draws on the CPU (WARP): an escape hatch for old PCs with broken or flaky graphics drivers.
     // WRECKBOX_FL10=1 limits the GPU to Direct3D feature level 10_0, the oldest one supported (for testing old PCs).
     const bool software = env(L"WRECKBOX_SOFTWARE"), fl10 = env(L"WRECKBOX_FL10");
@@ -206,11 +209,20 @@ bool Gfx::begin() {
 void Gfx::end() {
     HRESULT hr = rt_->EndDraw();
     if (SUCCEEDED(hr)) hr = swap_->Present(vsync_ ? interval_ : 0, 0);
+    occluded_ = hr == DXGI_STATUS_OCCLUDED;
+    // WRECKBOX_RENDER_HIDDEN=1 (for measuring a test window behind others): keep drawing, paced as the display would.
+    static const bool render_hidden = env(L"WRECKBOX_RENDER_HIDDEN");
+    if (occluded_ && render_hidden) Sleep(16 * (vsync_ ? interval_ : 1)), occluded_ = false;
     if (hr == D2DERR_RECREATE_TARGET || hr == DXGI_ERROR_DEVICE_REMOVED || hr == DXGI_ERROR_DEVICE_RESET) {
         // The GPU was reset or changed: drop everything tied to the old target; it's rebuilt on the next paint.
         drop_target();
         InvalidateRect(hwnd_, nullptr, FALSE);
     }
+}
+
+bool Gfx::visible_again() {
+    occluded_ = !swap_ || swap_->Present(0, DXGI_PRESENT_TEST) == DXGI_STATUS_OCCLUDED;
+    return !occluded_;
 }
 
 // MARK: Shapes

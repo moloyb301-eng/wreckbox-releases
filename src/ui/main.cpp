@@ -177,7 +177,10 @@ struct App {
             first_paint = false;
             app_log(std::format("startup: first paint {:.0f} ms after process start ({})", ms_since_process_start(), gfx.device_name()));
         }
-        if (view->vsync_loop()) InvalidateRect(hwnd, nullptr, FALSE);  // the moving visualizer: the next frame (Gfx::end paced it)
+        if (view->vsync_loop()) {  // the moving visualizer: the next frame (Gfx::end paced it)
+            if (gfx.occluded()) SetTimer(hwnd, kOccludedTimer, 250, nullptr);  // not on screen: no frames until it is
+            else InvalidateRect(hwnd, nullptr, FALSE);
+        }
     }
 
     // What Windows' media flyout shows. Cheap when nothing changed; the cover is picked up once its file exists.
@@ -300,6 +303,7 @@ struct App {
                 ++why_timer;
                 if (wp != kPlayerTimer) KillTimer(hwnd, wp);  // one-shots; the player's tick repeats
                 if (wp == kTrimTimer) return trim_memory(), 0;
+                if (wp == kOccludedTimer && !gfx.visible_again()) return SetTimer(hwnd, kOccludedTimer, 250, nullptr), 0;
                 repaint();
                 return 0;
             case WM_APP_CHANGED:
