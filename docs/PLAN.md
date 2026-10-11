@@ -676,7 +676,8 @@ It runs on old PCs too: Direct3D feature level 10_0 with pixel shaders only, tie
 CPU and memory than MilkDrop (≤ +20 MB and < 5 % of a core at Low tier).
 - [x] Phase 0: Gfx on a D3D11 device + swap chain + `ID2D1DeviceContext` (no visible change; memory, first paint and
       screenshots unchanged; runs at feature level 10_0 and on WARP). Details: `docs/DASVIS-PLAN.md`
-- [ ] Phase 1: engine, post chain, dynamic resolution, 3 scenes, DasVis chip
+- [x] Phase 1: engine, post chain, tiers and dynamic resolution, flash limiter, 3 scenes + your own, DasVis chip and
+      menu. Low tier on old-PC settings: 5.1 % CPU, +19 MB. Details: `docs/DASVIS-PLAN.md`
 - [ ] Phase 2: song map (beat grid, sections, drops) + HUD
 - [ ] Phase 3: pseudo-stems, cover palette, key colour
 - [ ] Phase 4: particles, fluid, reaction-diffusion scenes

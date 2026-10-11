@@ -1,4 +1,5 @@
-// The full-screen visualizer: MilkDrop presets (player::MilkDrop, drawn from its pixels) by default, or Winamp 2 style —
+// The full-screen visualizer: MilkDrop presets (player::MilkDrop, drawn from its pixels) by default, DasVis (WreckBox's
+// own, dasvis::DasVis, drawing straight into the window's buffer on the same GPU device), or Winamp 2 style —
 // spectrum bars (normal / fire / line) with falling peak caps, the oscilloscope (dots / lines / solid), both, or off, in
 // Classic Winamp colours or WreckBox pastel. Without OpenGL 3.3 it shows the Winamp bars. Both draw the audio being heard
 // as each frame appears (AudioOutput::heard_index), plus WreckBox's beat pulse over MilkDrop. Click: next preset
@@ -12,6 +13,7 @@
 
 #include "model/paths.h"
 #include "model/settings.h"
+#include "ui/artwork.h"
 #include "ui/view.h"
 
 #include <psapi.h>
@@ -107,10 +109,19 @@ void View::set_fullscreen(bool on) {
         frame_at_ = {};
         bt_output_ = player::default_output_is_bluetooth();  // looked at each visit: the default speaker may have changed
         if (bt_output_) perf_log("visualizer: Bluetooth speaker, pictures drawn 180 ms later");
+        MONITORINFOEXW mx{};
+        mx.cbSize = sizeof mx;
+        DEVMODEW dm{};
+        dm.dmSize = sizeof dm;
+        das_hz_ = GetMonitorInfoW(MonitorFromWindow(hwnd_, MONITOR_DEFAULTTONEAREST), &mx) && EnumDisplaySettingsW(mx.szDevice, ENUM_CURRENT_SETTINGS, &dm) &&
+                          dm.dmDisplayFrequency > 1
+                      ? float(dm.dmDisplayFrequency)
+                      : 60.f;
     } else {
         if (milk_pending_.valid()) milk_pending_.wait();  // left before it finished starting
         milk_pending_ = {};
         milk_.reset();  // free the GPU and its memory
+        das_free();
         g_.clear_stream();
         SetTimer(hwnd_, kTrimTimer, 8000, nullptr);  // once the OpenGL driver has let go too
         milk_heard_ = -1;
@@ -180,7 +191,12 @@ bool View::vis_key(WPARAM vk) {
         case 'R':
         case 'L':
             mouse_moved();
-            if (milk_ && milk_->ok()) {
+            if (das_ && das_->ok() && vis_.opt.mode == VisOptions::Mode::dasvis) {
+                if (vk == 'N' || vk == 'R') das_->next();
+                else if (vk == 'P') das_->previous();
+                else das_->lock(!das_->locked());
+                audio_at_ = clock_t_::now();
+            } else if (milk_ && milk_->ok()) {
                 if (vk == 'N') milk_->next();
                 else if (vk == 'P') milk_->previous();
                 else if (vk == 'R') milk_->random();
@@ -188,7 +204,9 @@ bool View::vis_key(WPARAM vk) {
                 audio_at_ = clock_t_::now();  // show the change even while paused
             }
             return true;
-        case 'M': vis_use_milk(vis_.opt.mode != VisOptions::Mode::milkdrop); return true;
+        case 'M': vis_use(VisOptions::Mode::milkdrop); return true;
+        case 'D': vis_use(VisOptions::Mode::dasvis); return true;
+        case VK_F5: das_reload(); return true;
         case 'H': set_vis_panel(!vis_.opt.panel); return true;
         case VK_OEM_4:  // [  pictures earlier
         case VK_OEM_6:  // ]  pictures later
@@ -333,8 +351,128 @@ void View::milk_restart() {
     milk_heard_ = -1;
 }
 
+// MARK: DasVis
+
+bool View::on_battery() const {
+    SYSTEM_POWER_STATUS s{};
+    return GetSystemPowerStatus(&s) && s.ACLineStatus == 0;
+}
+
+bool View::fast_gpu() const { return fullscreen_ && vis_.opt.mode == VisOptions::Mode::dasvis && vis_.opt.das_fast_gpu; }
+
+UINT View::frame_interval() const {
+    if (!fullscreen_ || vis_.opt.mode != VisOptions::Mode::dasvis) return 1;
+    const float fps = vis_.opt.das_battery && on_battery() ? 30.f : 60.f;  // a 120 Hz screen still gets 60
+    return UINT(std::max(1.f, std::round(das_hz_ / fps)));
+}
+
+std::filesystem::path View::das_scenes_dir() const { return paths::settings_dir() / L"dasvis" / L"scenes"; }
+
+void View::das_free() {
+    if (!das_) return;
+    das_.reset();
+    das_cover_for_.clear();
+}
+
+void View::das_reload() {
+    if (!das_ || !das_->ok()) return;
+    const std::string errors = das_->reload_user_scenes();
+    show_toast(errors.empty() ? std::format(L"{} scenes", das_->scene_count()) : L"Your scenes have errors (shown at the top)");
+}
+
+bool View::das_screen() {
+    using dasvis::Tier;
+    const auto now = clock_t_::now();
+    const bool playing = player_.playing();
+    if (playing) audio_at_ = now;
+    // Paused: the picture keeps moving for 4 s so it calms down, then holds (no frames, 0 % CPU), as MilkDrop does.
+    const bool live = playing || now - audio_at_ < std::chrono::seconds(4);
+    vis_settling_ = !playing && live;
+    if (das_ && das_gen_ != g_.generation()) das_free();  // the device was rebuilt: its textures went with it
+    auto& o = vis_.opt;
+    const std::string gpu = g_.device_name();
+    if (!das_) {
+        dasvis::Config cfg;
+        const std::string known = o.das_tiers.value(gpu, std::string());
+        cfg.start = o.das_quality ? Tier(o.das_quality - 1) : known == "low" ? Tier::low : known == "high" ? Tier::high : Tier::medium;
+        cfg.auto_tier = o.das_quality == 0;
+        cfg.max_tier = o.das_battery && on_battery() ? Tier::medium : Tier::high;
+        cfg.reduce_flash = o.das_reduce_flash;
+        cfg.auto_advance = o.auto_advance;
+        cfg.user_dir = das_scenes_dir();
+        das_ = std::make_unique<dasvis::DasVis>(g_.d3d(), cfg);
+        das_gen_ = g_.generation();
+        das_feat_ = {};
+        das_tier_saved_ = false;
+        das_frames_ = 0;
+        perf_log(das_->ok() ? std::format("DasVis started on {}: {} scenes, {} tier{}", gpu, das_->scene_count(), dasvis::tier_name(das_->tier()),
+                                          das_->user_errors().empty() ? "" : "; your scenes have errors")
+                            : "DasVis unavailable: " + das_->error());
+    }
+    if (!das_->ok()) return false;
+
+    const auto back = g_.back_buffer();
+    if (!back) return false;
+    g_.flush();  // anything Direct2D queued goes under the picture, not over it
+    if (!live) das_->redraw(back.Get());  // paused and settled: the same picture, nothing moves on
+    else {
+        player::AudioOutput* out = player_.output();
+        static_assert(player::Visualizer::kFft == dasvis::Features::kFft);
+        if (playing && out) out->tap_until(heard_end(*out, 1), tap_.data(), tap_.size());  // on screen at the next refresh
+        else std::fill(tap_.begin(), tap_.end(), 0.f);
+        const player::Item* cur = player_.current();
+        const auto row = cur && cur->track_id ? store_.row(*cur->track_id) : std::nullopt;
+        das_feat_.update(tap_.data(), frame_dt_, row && row->bpm() ? *row->bpm() : 0);
+        dasvis::Inputs in;
+        in.f = &das_feat_;
+        in.dt = frame_dt_;
+        in.song = cur ? (cur->track_id ? *cur->track_id : cur->location) : std::string();
+        if (row && !row->camelot().empty()) in.camelot = row->camelot();
+        in.intensity = o.das_intensity;
+        in.budget_ms = 0.75f * 1000.f * float(frame_interval()) / das_hz_;
+        // The cover: decoded off the UI thread at 512 px, handed over when it's ready (if the song is still on).
+        if (in.song != das_cover_for_) {
+            das_cover_for_ = in.song;
+            das_->set_cover(nullptr, 0, 0);
+            if (row) {
+                auto pixels = std::make_shared<std::vector<uint8_t>>();
+                auto size = std::make_shared<std::pair<UINT, UINT>>();
+                jobs_.run(
+                    [this, t = row->track, pixels, size] {
+                        const auto file = store_.ensure_artwork(t);
+                        const auto bmp = file ? decode_image(*file, 512) : nullptr;
+                        if (!bmp || FAILED(bmp->GetSize(&size->first, &size->second))) return;
+                        pixels->resize(size_t(size->first) * size->second * 4);
+                        bmp->CopyPixels(nullptr, size->first * 4, UINT(pixels->size()), pixels->data());
+                    },
+                    [this, song = in.song, pixels, size] {
+                        if (das_ && das_cover_for_ == song && !pixels->empty()) das_->set_cover(pixels->data(), int(size->first), int(size->second));
+                    });
+            }
+        }
+        das_->render(in, back.Get());
+        // Remember the measured tier for this graphics card, so the next visit starts there.
+        if (!das_tier_saved_ && o.das_quality == 0 && das_->tier_settled()) {
+            das_tier_saved_ = true;
+            std::string t = dasvis::tier_name(das_->tier());
+            std::transform(t.begin(), t.end(), t.begin(), [](char c) { return char(std::tolower(c)); });
+            if (o.das_tiers.value(gpu, std::string()) != t) o.das_tiers[gpu] = t, save_vis();
+        }
+        if (++das_frames_ % 300 == 0)
+            perf_log(std::format("DasVis: {}, {} tier at {:.0f} %, GPU {:.2f} ms a frame (budget {:.1f}), every {} refresh(es) of {:.0f} Hz, flash budget {:.2f}",
+                                 das_->scene_name(), dasvis::tier_name(das_->tier()), das_->scale() * 100, das_->gpu_ms(), in.budget_ms,
+                                 frame_interval(), das_hz_, das_->flash_budget()));
+    }
+    return true;
+}
+
 void View::vis_click() {
     mode_before_click_ = vis_.opt.mode;
+    if (das_ && das_->ok() && vis_.opt.mode == VisOptions::Mode::dasvis) {
+        das_->next();
+        audio_at_ = clock_t_::now();
+        return;
+    }
     if (milk_ && milk_->ok() && vis_.opt.mode == VisOptions::Mode::milkdrop) {
         milk_->next();
         audio_at_ = clock_t_::now();
@@ -351,6 +489,13 @@ void View::visualizer_screen() {
         frame_dt_ = frame_dt_ * 0.9f + 0.1f * std::clamp(std::chrono::duration<float>(t0 - frame_at_).count(), 0.004f, 0.1f);
     frame_at_ = t0;
     const float W = g_.width(), H = g_.height();
+    const bool want_das = vis_.opt.mode == VisOptions::Mode::dasvis;
+    if (!want_das) das_free();  // switched away: the GPU and memory go back
+    if (want_das && das_screen()) {
+        ui_.click(Rect{0, 0, W, H}, [this] { vis_click(); }, [this] { vis_menu(); });
+        if (const float a = overlay_alpha(); a > 0) vis_overlay(Rect{0, 0, W, H}, a);
+        return;
+    }
     const bool want_milk = vis_.opt.mode == VisOptions::Mode::milkdrop;
     if (want_milk && !milk_ && !milk_tried_) milk_start();
     milk_poll();
@@ -398,7 +543,7 @@ void View::visualizer_screen() {
     if (!classic) g_.fill_radial(Rect{0, 0, W, H}, {W * 0.5f, H * 1.1f}, std::max(W, H), argb(0x30BB96DA), argb(0x00BB96DA));
     const Rect area{48, 56, W - 48, H - 56};
     using Mode = VisOptions::Mode;
-    const Mode mode = want_milk ? Mode::spectrum : vis_.opt.mode;  // no MilkDrop here: the Winamp bars instead
+    const Mode mode = want_milk || want_das ? Mode::spectrum : vis_.opt.mode;  // no MilkDrop / DasVis here: the Winamp bars
     if (mode == Mode::spectrum || mode == Mode::both) draw_spectrum(area);
     if (mode == Mode::scope || mode == Mode::both) draw_scope(area, mode == Mode::both);
     if (mode == Mode::off)
@@ -468,11 +613,15 @@ void View::draw_scope(const Rect& r, bool over_bars) {
 // Its hide button (or H) leaves only a "Show player" button.
 void View::vis_overlay(const Rect& r, float a) {
     const bool milk = milk_ && milk_->ok() && vis_.opt.mode == VisOptions::Mode::milkdrop;
+    const bool das = das_ && das_->ok() && vis_.opt.mode == VisOptions::Mode::dasvis;
     if (a < 1) g_.push_opacity(a);
     g_.fill_span(Rect{r.l, r.t, r.r, r.t + 80}, {0, r.t}, {0, r.t + 80}, {argb(0xA0000000), argb(0x00000000)});  // keeps the hint legible
-    g_.text(milk ? L"Click / N: next preset     P: previous     R: random     L: lock     M: bars     H: hide player     Right-click: options     Space: pause     Esc: exit"
-                 : L"Click: spectrum · scope · both · off     M: MilkDrop     H: hide player     Right-click: options     V: look     Space: pause     Esc: exit",
+    g_.text(das    ? L"Click / N: next scene     P: previous     L: lock     D: bars     F5: reload my scenes     H: hide player     Right-click: options     Esc: exit"
+            : milk ? L"Click / N: next preset     P: previous     R: random     L: lock     M: bars     H: hide player     Right-click: options     Space: pause     Esc: exit"
+                   : L"Click: spectrum · scope · both · off     M: MilkDrop     D: DasVis     H: hide player     Right-click: options     V: look     Esc: exit",
             Rect{r.l + 48, r.t + 18, r.r - 100, r.t + 44}, {Font::ui, 12.5f, 500, text2});
+    if (das && !das_->user_errors().empty())  // your scenes: the first error of each that didn't compile
+        g_.paragraph(L"Your scenes: " + wide(das_->user_errors()), Rect{r.l + 48, r.t + 48, r.r - 100, r.t + 200}, {Font::ui, 12.5f, 500, peach});
     ui_.icon_button(Rect::xywh(r.r - 64, r.t + 14, 36, 36), icon::exit_full, 14, [this] { set_fullscreen(false); }, false, false,
                     L"Exit full screen (Esc)");
 
@@ -520,7 +669,7 @@ void View::vis_overlay(const Rect& r, float a) {
         volume(Rect{in.r - 120, cy2 - 16, in.r, cy2 + 16});
         seek_bar(Rect{in.l + 124 + 16, cy2 - 10, in.r - 120 - 16, cy2 + 10});
 
-        // Row 3: the preset (◀ name ▶, random, lock), the MilkDrop / Bars switch, the equalizer.
+        // Row 3: the preset or scene (◀ name ▶, random, lock), the DasVis / MilkDrop / Bars switch, the equalizer.
         const float cy3 = cy2 + 20 + 12 + 16;
         float x = in.r;
         eq_x_ = x - 16;
@@ -528,15 +677,37 @@ void View::vis_overlay(const Rect& r, float a) {
         ui_.icon_button(Rect::xywh(x - 32, cy3 - 16, 32, 32), icon::equalizer, 14, [this] { eq_open_ = !eq_open_; },
                         eq_open_ || player_.equalizer().enabled || player_.normalize(), false, L"Equalizer and volume normalizer");
         x -= 32 + 8;
-        const bool want_milk = vis_.opt.mode == VisOptions::Mode::milkdrop;
-        for (const bool is_milk : {false, true}) {  // right to left: Bars, then MilkDrop
-            const std::wstring label = is_milk ? L"MilkDrop" : L"Bars";
-            const bool on = is_milk == want_milk;
+        using Mode = VisOptions::Mode;
+        const Mode mode = vis_.opt.mode;
+        const bool want_milk = mode == Mode::milkdrop, bars = mode != Mode::milkdrop && mode != Mode::dasvis;
+        for (const Mode m : {winamp_mode_, Mode::milkdrop, Mode::dasvis}) {  // right to left: Bars, MilkDrop, DasVis
+            const bool is_bars = m != Mode::milkdrop && m != Mode::dasvis;
+            const std::wstring label = is_bars ? L"Bars" : m == Mode::milkdrop ? L"MilkDrop" : L"DasVis";
+            const bool on = is_bars ? bars : m == mode;
             x -= ui_.chip_width(label) + (on ? 12 : 0);
-            ui_.chip(x, cy3 - 15, label, std::nullopt, on, false, [this, is_milk] { vis_use_milk(is_milk); });
+            ui_.chip(x, cy3 - 15, label, std::nullopt, on, false, [this, m, on] {
+                if (!on) vis_use(m);
+            });
             x -= 6;
         }
-        if (milk) {
+        if (das) {
+            float l = in.l;
+            ui_.icon_button(Rect::xywh(l, cy3 - 16, 32, 32), icon::chevron_left, 13, [this] { das_->previous(); }, false, false, L"Previous scene (P)");
+            const float name_l = l + 36, buttons_w = 2 * 36;
+            const float name_r = std::max(name_l, x - 8 - buttons_w);
+            const std::wstring name = wide(das_->scene_name());
+            const TextStyle ns{Font::ui, 13.5f, 600, text};
+            const float name_w = std::min(g_.measure(name, ns) + 2, name_r - name_l);
+            g_.text(name, Rect{name_l, cy3 - 12, name_l + name_w, cy3 + 12}, ns);
+            l = name_l + name_w + 4;
+            ui_.icon_button(Rect::xywh(l, cy3 - 16, 32, 32), icon::chevron_right, 13, [this] { das_->next(); }, false, false, L"Next scene (N)");
+            ui_.icon_button(Rect::xywh(l + 36, cy3 - 16, 32, 32), icon::lock, 13, [this] { das_->lock(!das_->locked()); }, das_->locked(), false,
+                            das_->locked() ? L"Unlock this scene (L)" : L"Lock this scene (L)");
+            // What this PC runs it at, quietly: the tier and the render size.
+            const std::wstring how = std::format(L"{} · {:.0f} %", wide(dasvis::tier_name(das_->tier())), das_->scale() * 100);
+            const float hx = l + 76;
+            if (hx + 90 < x) g_.text(how, Rect{hx, cy3 - 12, x - 8, cy3 + 12}, {Font::ui, 12, 500, text3});
+        } else if (milk) {
             float l = in.l;
             ui_.icon_button(Rect::xywh(l, cy3 - 16, 32, 32), icon::chevron_left, 13, [this] { milk_->previous(); }, false, false, L"Previous preset (P)");
             const float name_l = l + 36, buttons_w = 3 * 36;
@@ -550,6 +721,9 @@ void View::vis_overlay(const Rect& r, float a) {
             ui_.icon_button(Rect::xywh(l + 36, cy3 - 16, 32, 32), icon::shuffle, 13, [this] { milk_->random(); }, false, false, L"Random preset (R)");
             ui_.icon_button(Rect::xywh(l + 72, cy3 - 16, 32, 32), icon::lock, 13, [this] { milk_->lock(!milk_->locked()); }, milk_->locked(), false,
                             milk_->locked() ? L"Unlock this preset (L)" : L"Lock this preset (L)");
+        } else if (mode == Mode::dasvis) {
+            g_.text(L"DasVis couldn't start on this graphics card — showing the Winamp bars", Rect{in.l, cy3 - 12, std::max(in.l, x - 8), cy3 + 12},
+                    {Font::ui, 13, 600, peach});
         } else if (want_milk) {
             g_.text(milk_pending_.valid() ? L"Loading MilkDrop…" : L"MilkDrop needs OpenGL 3.3 — showing the Winamp bars",
                     Rect{in.l, cy3 - 12, std::max(in.l, x - 8), cy3 + 12}, {Font::ui, 13, 600, milk_pending_.valid() ? text2 : peach});
@@ -574,11 +748,16 @@ void View::vis_overlay(const Rect& r, float a) {
     if (eq_open_) eq_panel();  // always at full strength: the overlay stays up while it's open
 }
 
-void View::vis_use_milk(bool milk) {
+void View::vis_use(VisOptions::Mode m) {
     using Mode = VisOptions::Mode;
-    if (milk == (vis_.opt.mode == Mode::milkdrop)) return;
-    if (milk) winamp_mode_ = vis_.opt.mode, vis_.opt.mode = Mode::milkdrop;
-    else vis_.opt.mode = winamp_mode_;
+    const bool engine = m == Mode::milkdrop || m == Mode::dasvis;
+    if (vis_.opt.mode == m && !engine) return;
+    if (vis_.opt.mode == m) {
+        vis_.opt.mode = winamp_mode_;  // M on MilkDrop, D on DasVis: back to the bars
+    } else {
+        if (vis_.opt.mode != Mode::milkdrop && vis_.opt.mode != Mode::dasvis) winamp_mode_ = vis_.opt.mode;
+        vis_.opt.mode = m;
+    }
     audio_at_ = clock_t_::now();
     save_vis();
 }
@@ -587,20 +766,41 @@ void View::vis_use_milk(bool milk) {
 
 void View::vis_menu() {
     auto& o = vis_.opt;
-    enum : UINT { kMode = 100, kBars = 200, kScope = 300, kBarFall = 400, kPeakFall = 500, kPeaks = 600, kLook = 700, kExit = 800, kQuality = 900, kAdvance = 1000, kLock = 1100, kFolder = 1200, kPulse = 1300, kCuts = 1400, kPresets = 1500, kSense = 1600, kSync = 1700 };
+    enum : UINT { kMode = 100, kBars = 200, kScope = 300, kBarFall = 400, kPeakFall = 500, kPeaks = 600, kLook = 700, kExit = 800, kQuality = 900, kAdvance = 1000, kLock = 1100, kFolder = 1200, kPulse = 1300, kCuts = 1400, kPresets = 1500, kSense = 1600, kSync = 1700, kDasIntensity = 1800, kDasQuality = 1900, kDas = 2000 };
     auto radio = [](HMENU m, UINT id, const wchar_t* label, bool on) { AppendMenuW(m, MF_STRING | (on ? MF_CHECKED : 0), id, label); };
     HMENU m = CreatePopupMenu();
     const wchar_t* modes[] = {L"Spectrum analyser", L"Oscilloscope", L"Both", L"Off"};
+    radio(m, kMode + 5, L"DasVis\tD", o.mode == VisOptions::Mode::dasvis);
     radio(m, kMode + 4, L"MilkDrop\tM", o.mode == VisOptions::Mode::milkdrop);
     for (int i = 0; i < 4; ++i) radio(m, kMode + i, modes[i], int(o.mode) == i);
     AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
+    HMENU das = CreatePopupMenu(), das_int = CreatePopupMenu(), das_q = CreatePopupMenu();
+    const wchar_t* intensities[] = {L"Chill", L"Normal", L"Insane"};
+    for (int i = 0; i < 3; ++i) radio(das_int, kDasIntensity + i, intensities[i], o.das_intensity == i);
+    const wchar_t* das_qualities[] = {L"Auto (measured on this PC)", L"Low (old PCs)", L"Medium", L"High"};
+    for (int i = 0; i < 4; ++i) radio(das_q, kDasQuality + i, das_qualities[i], o.das_quality == i);
+    if (das_ && das_->ok()) {
+        const std::wstring now = std::format(L"Now: {} at {:.0f} %, {:.1f} ms a frame", wide(dasvis::tier_name(das_->tier())), das_->scale() * 100, das_->gpu_ms());
+        AppendMenuW(das_q, MF_SEPARATOR, 0, nullptr);
+        AppendMenuW(das_q, MF_STRING | MF_GRAYED, 0, now.c_str());
+    }
+    AppendMenuW(das, MF_POPUP, UINT_PTR(das_int), L"Intensity");
+    AppendMenuW(das, MF_POPUP, UINT_PTR(das_q), L"Quality");
+    radio(das, kDas + 0, L"Save battery (30 fps on battery)", o.das_battery);
+    radio(das, kDas + 1, L"Reduce flashing", o.das_reduce_flash);
+    radio(das, kDas + 2, L"Use the fast graphics card", o.das_fast_gpu);
+    radio(das, kDas + 5, L"Lock this scene\tL", das_ && das_->locked());
+    AppendMenuW(das, MF_SEPARATOR, 0, nullptr);
+    AppendMenuW(das, MF_STRING, kDas + 3, L"Open my scenes folder…");
+    AppendMenuW(das, MF_STRING | (das_ && das_->ok() ? 0 : MF_GRAYED), kDas + 4, L"Reload my scenes\tF5");
+    AppendMenuW(m, MF_POPUP, UINT_PTR(das), L"DasVis");
     HMENU quality = CreatePopupMenu(), advance = CreatePopupMenu();
     const wchar_t* qualities[] = {L"540p (lightest)", L"720p", L"1080p (sharpest)"};
     const wchar_t* advances[] = {L"Off", L"Every 15 s", L"Every 30 s", L"Every 60 s"};
     for (int i = 0; i < 3; ++i) radio(quality, kQuality + i, qualities[i], o.quality == kQualities[i]);
     for (int i = 0; i < 4; ++i) radio(advance, kAdvance + i, advances[i], o.auto_advance == kAdvances[i]);
     AppendMenuW(m, MF_POPUP, UINT_PTR(quality), L"MilkDrop quality");
-    AppendMenuW(m, MF_POPUP, UINT_PTR(advance), L"Next preset automatically");
+    AppendMenuW(m, MF_POPUP, UINT_PTR(advance), L"Next preset / scene automatically");
     radio(m, kLock, L"Lock this preset\tL", milk_ && milk_->locked());
     HMENU pulse = CreatePopupMenu(), presets = CreatePopupMenu(), sense = CreatePopupMenu(), sync = CreatePopupMenu();
     const wchar_t* pulses[] = {L"Off", L"Subtle", L"Strong"};
@@ -659,6 +859,25 @@ void View::vis_menu() {
         case kAdvance:
             o.auto_advance = kAdvances[i];
             if (milk_) milk_->set_auto_advance(o.auto_advance);
+            if (das_) das_->set_auto_advance(o.auto_advance);
+            break;
+        case kDasIntensity: o.das_intensity = i; break;
+        case kDasQuality:
+            o.das_quality = i;
+            das_free();  // made again with the new tier on the next frame
+            break;
+        case kDas:
+            if (i == 0) o.das_battery = !o.das_battery, das_free();
+            else if (i == 1) {
+                o.das_reduce_flash = !o.das_reduce_flash;
+                if (das_) das_->set_reduce_flash(o.das_reduce_flash);
+            } else if (i == 2) o.das_fast_gpu = !o.das_fast_gpu;  // the next paint rebuilds the device on the other GPU
+            else if (i == 3) {
+                dasvis::prepare_user_dir(das_scenes_dir());
+                ShellExecuteW(hwnd_, L"open", das_scenes_dir().c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+                return;
+            } else if (i == 4) return das_reload();
+            else if (i == 5 && das_) return das_->lock(!das_->locked());
             break;
         case kLock:
             if (milk_) milk_->lock(!milk_->locked());

@@ -185,6 +185,22 @@ libVLC (decode, resample to 48 kHz, equalizer, normvol)
   that. It exists only while full screen is open and in MilkDrop mode. Failure at any step leaves `ok() == false`,
   and the screen shows the Winamp bars. Presets: `milkdrop\presets` next to the exe (projectM's "cream of the crop",
   pinned commit) plus the user's own folder under `%APPDATA%`.
+- **DasVis** (`dasvis/*`, plan: `docs/DASVIS-PLAN.md`) is WreckBox's own visualizer, on the app's Direct3D 11 device.
+  - **Audio:** `dasvis::Features` gets the same 2,048 heard samples the bars get, one refresh ahead: drum onsets
+    (spectral flux), smoothed levels, a beat clock (the library's BPM, else the kicks'), spectrum and waveform.
+  - **Each frame:** the scene shader → the bloom chain → the final pass, which draws straight into the swap chain's
+    back buffer before Direct2D draws the panel over it (`Gfx::back_buffer()`; `Gfx::flush()` first). Paused, only the
+    final pass is repeated (`redraw()`), because the blt-model back buffer isn't kept between presents.
+  - **Shader Model 4 only** (feature level 10_0). Shaders are compiled by `fxc` at build time into headers
+    (`cmake/dasvis.cmake`); the user's own scenes are compiled with `d3dcompiler_47.dll`, loaded only when there are any.
+  - **Light by design:**
+    - The tier (Low / Medium / High) and render scale come from GPU timestamps.
+    - HDR is R11G11B10, and there's no full-screen texture of DasVis's own.
+    - The flash limiter reads back 16 × 16 bytes two frames late.
+    - It exists only while full screen is open in DasVis mode.
+  - **Its own GPU:** "Use the fast graphics card" (off by default) makes `Gfx` rebuild its device on the high-performance
+    adapter while DasVis is on screen (`Gfx::set_fast_gpu`); NVIDIA's driver costs ~70 MB of RAM, which is why it's off.
+  - **Frame pacing:** `Gfx::set_frame_interval` presents every n-th refresh: 60 fps on any screen, 30 on battery.
 - **Threads:** libVLC's events and Windows' media-control button presses arrive on other threads and are posted to
   the window (`WM_APP_DONE`, `WM_APP_MEDIA`); everything in `Player` runs on the UI thread.
 

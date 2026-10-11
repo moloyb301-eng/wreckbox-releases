@@ -150,6 +150,8 @@ struct App {
         PAINTSTRUCT ps;
         BeginPaint(hwnd, &ps);
         gfx.set_vsync(view->fullscreen());  // the whole full-screen visit, so pausing doesn't rebuild the device
+        gfx.set_fast_gpu(view->fast_gpu());
+        gfx.set_frame_interval(view->frame_interval());
         if (gfx.begin()) {
             view->paint();
             t1 = clock::now();

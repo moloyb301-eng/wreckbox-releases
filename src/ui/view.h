@@ -15,6 +15,7 @@
 #include <future>
 #include <memory>
 
+#include "dasvis/dasvis.h"
 #include "library/store.h"
 #include "net/bug_report.h"
 #include "net/updates.h"
@@ -70,6 +71,8 @@ public:
     bool fullscreen() const { return fullscreen_; }
     // The full-screen visualizer is moving: the window repaints right after each frame, paced by the compositor.
     bool vsync_loop() const { return vsync_loop_; }
+    bool fast_gpu() const;        // DasVis is on screen: Gfx makes its device on the fast graphics card
+    UINT frame_interval() const;  // display refreshes per frame in full screen (DasVis: 60 fps, or 30 on battery)
     void set_update(std::optional<updates::Info> info);  // the startup check found a newer release (or nothing)
     void attach_soulseek(soulseek::Sync& sl);
     void attach_phone(sync::Server& server, sync::Tunnel& tunnel);  // the phone-sync services (owned by the app)
@@ -298,7 +301,7 @@ private:
     bool vis_key(WPARAM vk);
     float overlay_alpha() const;
     void vis_click();
-    void vis_use_milk(bool milk);  // M, and the MilkDrop / Bars chips
+    void vis_use(player::VisOptions::Mode m);  // M / D and the chips: MilkDrop or DasVis (again: back to the bars)
     void milk_poll();
     void milk_start();                        // creates the engine (once per visit to full screen)
     void milk_screen(float W, float H);       // renders one MilkDrop frame (or keeps the last one) and draws it
@@ -335,7 +338,21 @@ private:
     void draw_toast();
     void milk_restart();         // rebuild the engine (a different set of presets)
     std::chrono::steady_clock::time_point audio_at_{};  // last time sound was playing: pictures settle for 4 s after
-    player::VisOptions::Mode winamp_mode_ = player::VisOptions::Mode::spectrum;  // what M switches back to
+    player::VisOptions::Mode winamp_mode_ = player::VisOptions::Mode::spectrum;  // what M / D switch back to
+    // DasVis: made when full screen opens in that mode, freed when it closes or another mode is picked (GPU and RAM
+    // back). It lives on Gfx's device; a rebuilt device (another GPU, device loss) means a new one.
+    std::unique_ptr<dasvis::DasVis> das_;
+    dasvis::Features das_feat_;
+    int das_gen_ = -1;           // the Gfx generation it was made on
+    std::string das_cover_for_;  // the song whose cover it has, or is loading
+    float das_hz_ = 60;          // the display's refresh rate
+    bool das_tier_saved_ = false;
+    int das_frames_ = 0;         // WRECKBOX_PERF: logged every 300 frames
+    bool das_screen();  // false: DasVis can't run here (the bars are drawn instead)
+    void das_free();
+    void das_reload();                  // F5: the user's scenes again
+    std::filesystem::path das_scenes_dir() const;
+    bool on_battery() const;
     player::VisOptions::Mode mode_before_click_{};
     LONG saved_style_ = 0;
     WINDOWPLACEMENT saved_place_{sizeof(WINDOWPLACEMENT)};

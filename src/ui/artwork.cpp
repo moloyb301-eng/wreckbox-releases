@@ -5,10 +5,8 @@
 #include <vector>
 
 namespace wb::ui {
-namespace {
 
-// Decodes `file` to premultiplied BGRA at most `px` on its longer side. Runs on a worker thread.
-ComPtr<IWICBitmap> decode(const std::filesystem::path& file, UINT px) {
+ComPtr<IWICBitmap> decode_image(const std::filesystem::path& file, UINT px) {
     ComPtr<IWICImagingFactory> wic;
     if (FAILED(CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&wic)))) return nullptr;
     ComPtr<IWICBitmapDecoder> decoder;
@@ -31,8 +29,6 @@ ComPtr<IWICBitmap> decode(const std::filesystem::path& file, UINT px) {
         return nullptr;
     return out;
 }
-
-}  // namespace
 
 void ArtworkCache::begin_frame() {
     ++frame_;
@@ -59,7 +55,7 @@ ID2D1Bitmap* ArtworkCache::get(const LibraryTrack& t, float dips) {
     auto result = std::make_shared<ComPtr<IWICBitmap>>();
     jobs_.run_latest(
         [this, t, px, result] {
-            if (const auto file = store_.ensure_artwork(t)) *result = decode(*file, px);
+            if (const auto file = store_.ensure_artwork(t)) *result = decode_image(*file, px);
         },
         [this, key, result, gen = generation_] {
             const auto it = entries_.find(key);

@@ -75,6 +75,16 @@ add_library(wbplayer STATIC
 target_include_directories(wbplayer PUBLIC src PRIVATE ${MINIAUDIO_INCLUDE_DIR})
 target_link_libraries(wbplayer PUBLIC wblibrary libvlc PRIVATE libprojectM::projectM libprojectM::playlist GLEW::GLEW opengl32 gdi32)
 
+# DasVis, WreckBox's own visualizer (docs/DASVIS-PLAN.md): Direct3D 11, shaders compiled at build time.
+include(cmake/dasvis.cmake)
+add_library(wbdasvis STATIC
+  src/dasvis/features.cpp
+  src/dasvis/control.cpp
+  src/dasvis/dasvis.cpp
+  ${DASVIS_GENERATED})
+target_include_directories(wbdasvis PUBLIC src PRIVATE ${CMAKE_BINARY_DIR})
+target_link_libraries(wbdasvis PUBLIC d3d11 dxgi)
+
 # The app: Win32 window + Direct2D UI. Fonts and icon are embedded via res/app.rc.
 add_executable(wreckbox WIN32
   src/ui/main.cpp
@@ -95,7 +105,7 @@ add_executable(wreckbox WIN32
   res/app.rc
   res/app.manifest)
 target_compile_definitions(wreckbox PRIVATE "WB_VER_COMMA=${PROJECT_VERSION_MAJOR},${PROJECT_VERSION_MINOR},${PROJECT_VERSION_PATCH},0")
-target_link_libraries(wreckbox PRIVATE wbplayer unofficial::nayuki-qr-code-generator::nayuki-qr-code-generator d2d1 d3d11 dxgi dwrite windowscodecs dwmapi shell32 ole32 comctl32 runtimeobject shlwapi shcore)
+target_link_libraries(wreckbox PRIVATE wbplayer wbdasvis unofficial::nayuki-qr-code-generator::nayuki-qr-code-generator d2d1 d3d11 dxgi dwrite windowscodecs dwmapi shell32 ole32 comctl32 runtimeobject shlwapi shcore)
 # libVLC loads on first use (the first play), not at startup: ~3 MB of DLLs off the cold-start path.
 target_link_options(wreckbox PRIVATE /DELAYLOAD:libvlc.dll)
 target_link_libraries(wreckbox PRIVATE delayimp)
@@ -151,3 +161,6 @@ target_compile_definitions(player_tests PRIVATE WB_FIXTURES="${CMAKE_CURRENT_SOU
 vlc_deploy(player_tests)
 milkdrop_deploy(player_tests)
 add_test(NAME player_tests COMMAND player_tests)
+add_executable(dasvis_tests tests/dasvis_tests.cpp)
+target_link_libraries(dasvis_tests PRIVATE wbdasvis)
+add_test(NAME dasvis_tests COMMAND dasvis_tests)

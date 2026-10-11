@@ -1,5 +1,7 @@
 #include "ui/gfx.h"
 
+#include <dxgi1_6.h>
+
 #include <algorithm>
 #include <format>
 #include <iterator>
@@ -84,10 +86,17 @@ bool Gfx::create_device() {
     const UINT count = fl10 ? 1 : UINT(std::size(levels));
     D3D_FEATURE_LEVEL level{};
     HRESULT hr = E_FAIL;
-    for (const auto type : {D3D_DRIVER_TYPE_HARDWARE, D3D_DRIVER_TYPE_WARP}) {  // WARP: no usable GPU (Remote Desktop, a broken driver)
-        if (type == D3D_DRIVER_TYPE_HARDWARE && software) continue;
-        hr = D3D11CreateDevice(nullptr, type, nullptr, D3D11_CREATE_DEVICE_BGRA_SUPPORT, first, count, D3D11_SDK_VERSION, &d3d_,
-                               &level, &d3d_ctx_);
+    ComPtr<IDXGIAdapter1> fast;  // the high-performance GPU, when asked for (Windows 10 1803 and later can tell)
+    ComPtr<IDXGIFactory6> f6;
+    if (fast_gpu_ && !software && SUCCEEDED(CreateDXGIFactory1(IID_PPV_ARGS(&f6))))
+        f6->EnumAdapterByGpuPreference(0, DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE, IID_PPV_ARGS(&fast));
+    // In order: the fast GPU, the default one, WARP (no usable GPU: Remote Desktop, a broken driver).
+    const std::pair<IDXGIAdapter*, D3D_DRIVER_TYPE> tries[] = {
+        {fast.Get(), D3D_DRIVER_TYPE_UNKNOWN}, {nullptr, D3D_DRIVER_TYPE_HARDWARE}, {nullptr, D3D_DRIVER_TYPE_WARP}};
+    for (const auto& [adapter, type] : tries) {
+        if ((type == D3D_DRIVER_TYPE_UNKNOWN && !adapter) || (type == D3D_DRIVER_TYPE_HARDWARE && software)) continue;
+        hr = D3D11CreateDevice(adapter, type, nullptr, D3D11_CREATE_DEVICE_BGRA_SUPPORT, first, count, D3D11_SDK_VERSION, &d3d_, &level,
+                               &d3d_ctx_);
         if (SUCCEEDED(hr)) break;
     }
     if (FAILED(hr)) return false;
@@ -179,6 +188,12 @@ void Gfx::set_vsync(bool on) {
     drop_target();  // made again on the next begin()
 }
 
+void Gfx::set_fast_gpu(bool on) {
+    if (on == fast_gpu_) return;
+    fast_gpu_ = on;
+    drop_target();
+}
+
 bool Gfx::begin() {
     if (!create_target()) return false;
     rt_->BeginDraw();
@@ -190,7 +205,7 @@ bool Gfx::begin() {
 
 void Gfx::end() {
     HRESULT hr = rt_->EndDraw();
-    if (SUCCEEDED(hr)) hr = swap_->Present(vsync_ ? 1 : 0, 0);
+    if (SUCCEEDED(hr)) hr = swap_->Present(vsync_ ? interval_ : 0, 0);
     if (hr == D2DERR_RECREATE_TARGET || hr == DXGI_ERROR_DEVICE_REMOVED || hr == DXGI_ERROR_DEVICE_RESET) {
         // The GPU was reset or changed: drop everything tied to the old target; it's rebuilt on the next paint.
         drop_target();
@@ -312,6 +327,12 @@ bool Gfx::draw_stream(const Rect& r, bool flip, float zoom) {
     target_->DrawBitmap(stream_.Get(), r.d2d(), 1, D2D1_BITMAP_INTERPOLATION_MODE_LINEAR);
     target_->SetTransform(D2D1::Matrix3x2F::Identity());
     return true;
+}
+
+ComPtr<ID3D11Texture2D> Gfx::back_buffer() const {
+    ComPtr<ID3D11Texture2D> tex;
+    if (swap_) swap_->GetBuffer(0, IID_PPV_ARGS(&tex));
+    return tex;
 }
 
 void Gfx::image(ID2D1Bitmap* bmp, const Rect& r, float radius, float opacity) {

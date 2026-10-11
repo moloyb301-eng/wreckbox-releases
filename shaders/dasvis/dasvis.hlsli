@@ -1,0 +1,131 @@
+// DasVis shader library: what every DasVis shader can read, and shared helpers. Shader Model 4 (Direct3D feature level
+// 10_0), so it runs on graphics cards from about 2008 on.
+//
+// Writing your own scene: a .hlsl file in the scenes folder (right-click → DasVis → Open my scenes folder) like this:
+//
+//     #define DASVIS_SCENE
+//     #include "dasvis.hlsli"
+//     float3 scene(float2 uv, float2 p) {         // uv: 0–1 across the screen; p: centred, x scaled by the aspect
+//         return PAL(length(p) - BEATS * 0.25) * (0.3 + KICK);
+//     }
+//
+// It's compiled when DasVis opens and on F5; errors show on screen. The values are linear HDR (1 = white before the
+// tone mapping); PREV() is the last frame, for feedback effects. Everything here is our own code (MIT, like the app).
+
+cbuffer DasVis : register(b0) {
+    float4 u_time;   // time (s, since DasVis opened), dt (s), seed (0–1, from the song), quality (0–1)
+    float4 u_res;    // this pass's target size in pixels, and 1 / size
+    float4 u_out;    // output size in pixels, aspect (w / h), transition (0→1 into a new scene; 1 = none)
+    float4 u_beat;   // beat phase (0→1, 0 on the beat), bar phase (0→1 across 4 beats), beats (count), bpm
+    float4 u_drums;  // kick, snare, hats (envelopes 0–1), kick_hit (1 on the frame of a kick)
+    float4 u_tone;   // bass, lead, energy (0–1), live (1: no song map yet)
+    float4 u_look;   // intensity (0.5 chill, 1, 1.6 insane), flash budget (0–1), exposure, has cover (0 / 1)
+    float4 u_post;   // bloom mix, bloom levels, grain, ring (spectrum ring overlay, 0–1)
+    float4 u_key;    // key tint (rgb, linear), chromatic aberration
+    float4 u_pal[5]; // the song's palette, dark → light (linear rgb)
+    float4 u_pass;   // per pass: the source's texel size (xy)
+};
+
+#define TIME u_time.x
+#define DT u_time.y
+#define SEED u_time.z
+#define QUALITY u_time.w
+#define RES u_res.xy
+#define ASPECT u_out.z
+#define TRANSITION u_out.w
+#define BEAT u_beat.x
+#define BAR u_beat.y
+#define BEATS u_beat.z
+#define BPM u_beat.w
+#define KICK u_drums.x
+#define SNARE u_drums.y
+#define HATS u_drums.z
+#define KICK_HIT u_drums.w
+#define BASS u_tone.x
+#define LEAD u_tone.y
+#define ENERGY u_tone.z
+#define LIVE u_tone.w
+#define INTENSITY u_look.x
+#define FLASH u_look.y        // multiply bright flashes by this: it's 0 once 3 have happened this second
+#define EXPOSURE u_look.z
+#define HAS_COVER u_look.w
+#define KEY_TINT u_key.rgb
+
+Texture2D t_src : register(t0);    // scenes: the last frame; post passes: their input
+Texture2D t_cover : register(t1);  // the album cover (when HAS_COVER)
+Texture2D t_spec : register(t2);   // 256 × 1: spectrum now (r), slowly falling peaks (g)
+Texture2D t_wave : register(t3);   // 512 × 1: the waveform, −1…1
+Texture2D t_bloom : register(t4);  // the final pass: the bloom
+SamplerState s_clamp : register(s0);
+SamplerState s_wrap : register(s1);
+
+static const float PI = 3.14159265;
+static const float TAU = 6.2831853;
+
+float3 PREV(float2 uv) { return t_src.SampleLevel(s_clamp, uv, 0).rgb; }
+float3 COVER(float2 uv) { float3 c = t_cover.SampleLevel(s_wrap, uv, 0.5).rgb; return c * c; }  // to linear (≈ gamma 2)
+float SPEC(float x) { return t_spec.SampleLevel(s_clamp, float2(x, 0.5), 0).r; }       // x: 0 lows → 1 highs
+float SPEC_PEAK(float x) { return t_spec.SampleLevel(s_clamp, float2(x, 0.5), 0).g; }
+float WAVE(float x) { return t_wave.SampleLevel(s_clamp, float2(x, 0.5), 0).r; }
+
+// The palette, wrapping smoothly through its five colours as t goes 0 → 1.
+float3 PAL(float t) {
+    t = frac(t) * 5;
+    int i = int(t);
+    return lerp(u_pal[i].rgb, u_pal[i == 4 ? 0 : i + 1].rgb, smoothstep(0, 1, frac(t)));
+}
+
+// Loop counts that follow the quality knob: lo on old PCs, hi on fast ones.
+int STEPS(int lo, int hi) { return int(lerp(float(lo), float(hi), QUALITY) + 0.5); }
+
+float hash12(float2 p) {
+    p = frac(p * float2(123.34, 456.21));
+    p += dot(p, p + 45.32);
+    return frac(p.x * p.y);
+}
+
+float noise(float2 p) {  // value noise, 0–1
+    float2 i = floor(p), f = frac(p), u = f * f * (3 - 2 * f);
+    return lerp(lerp(hash12(i), hash12(i + float2(1, 0)), u.x), lerp(hash12(i + float2(0, 1)), hash12(i + 1), u.x), u.y);
+}
+
+float fbm(float2 p, int octaves) {  // fractal noise, about 0–1
+    float s = 0, a = 0.5;
+    [loop] for (int i = 0; i < octaves; ++i) {
+        s += a * noise(p);
+        p = mul(p, float2x2(1.6, 1.2, -1.2, 1.6));
+        a *= 0.5;
+    }
+    return s;
+}
+
+float2x2 rot(float a) {
+    float c = cos(a), s = sin(a);
+    return float2x2(c, -s, s, c);
+}
+
+float3 aces(float3 x) {  // filmic tone mapping (Narkowicz's fit of ACES)
+    return saturate(x * (2.51 * x + 0.03) / (x * (2.43 * x + 0.59) + 0.14));
+}
+
+struct VsOut {
+    float4 pos : SV_Position;
+    float2 uv : TEXCOORD0;
+};
+
+#ifdef DASVIS_SCENE
+float3 scene(float2 uv, float2 p);
+
+float4 main(VsOut v) : SV_Target {
+    float2 p = (v.uv - 0.5) * float2(ASPECT, 1);
+    float3 c = scene(v.uv, p);
+    if (TRANSITION < 1) {  // into a new scene: the last picture zooms past and fades under it
+        float t = smoothstep(0, 1, TRANSITION);
+        c = lerp(PREV(0.5 + (v.uv - 0.5) * (1 - 0.1 * t)), c, t);
+    }
+    // One bad pixel (NaN or infinity: all exponent bits set) must not spread through the feedback. A bit test, as the
+    // compiler assumes floats are never NaN and would drop isnan().
+    if (any((asuint(c) & 0x7F800000) == 0x7F800000)) c = 0;
+    return float4(clamp(c, 0, 64), 1);
+}
+#endif

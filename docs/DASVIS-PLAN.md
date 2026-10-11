@@ -476,7 +476,68 @@ Every phase has to pass the **Low-tier check** (§12) before it ships, not just 
   - All test suites pass.
   - Still to do by you: listen to MilkDrop with real music; beat sync should feel the same as before.
 
-### Phase 1: the engine and the first three scenes
+### Phase 1: the engine and the first three scenes ✅ 2026-10-11
+**Built** (`src/dasvis/`, `shaders/dasvis/`, `cmake/dasvis.cmake`, `tests/dasvis_tests.cpp`):
+- **Features** (`features.*`):
+  - kick / snare / hats onsets from spectral flux, each with an envelope
+  - bass / lead / energy levels with automatic gain, and a −60 dB floor so near-silence can't fire onsets
+  - a beat clock: the library's BPM when known, otherwise from the kicks; its phase is pulled onto the kicks, never
+    runs backwards, and re-locks if it's half a beat off
+  - the spectrum and waveform textures
+- **Controllers** (`control.*`): the flash limiter (WCAG counting with an 80 ms reference, so slow fades aren't
+  flashes) and the tier and scale controller.
+- **Renderer** (`dasvis.*`):
+  - scene → bloom (dual-filter, no threshold, mixed in) → final pass at the screen's size: sharpen, chromatic
+    aberration, ACES, vignette, the spectrum ring, grain, gamma
+  - the final pass draws **straight into the window's back buffer**, so DasVis keeps no full-screen texture
+  - a 16 × 16 brightness read-back, two frames late, for the limiter
+  - timestamp queries for the tier controller
+  - the render size re-made only in 5 % steps, with the picture carried over (no black frame)
+- **Scenes:** Feedback Classic, Neon Tunnel (with the spectrum ring), Kaleido Cover; your own scenes from
+  `%APPDATA%\local.wreckbox\wreckbox\dasvis\scenes` (an example and `dasvis.hlsli` are written there), F5 reloads.
+- **UI:**
+  - the DasVis / MilkDrop / Bars chips, and **D**
+  - N / P / L / click for scenes
+  - the scene's name with "High · 85 %" on the panel
+  - the menu's DasVis submenu: Intensity, Quality (Auto / Low / Medium / High, with what it's running at), Save
+    battery, Reduce flashing, Use the fast graphics card, Open my scenes folder, Reload my scenes
+- **Settings** under `visualizer.dasvis`; the measured tier is remembered per graphics card.
+
+**Changed from the plan while building it:**
+- **Shaders are built into the exe** (`fxc` → headers), not `.cso` files: nothing to ship or load, and the tests get them
+  too. Only your own scenes are compiled at run time.
+- **No scene.json yet:** a scene is one `.hlsl` file. The tags the director needs come in phase 5.
+- **The final pass draws into the window's buffer** instead of a texture Direct2D draws: 8 MB less at 1080p (33 MB at
+  4K) and one full-screen copy less a frame. Paused, `redraw()` repeats only the final pass.
+- **"Use the fast graphics card" is off by default.** Measured: on the GeForce, DasVis is 2–3 ms a frame but the app
+  uses **144 MB**, because NVIDIA's driver alone is ~70 MB. On the Intel UHD it runs the High tier at 7–8 ms and the
+  app uses **64–69 MB**. GeForce Experience also shows its "Alt+Z" notice when an app starts on the GeForce.
+- **Frame pacing:** 60 fps even on a 120 / 144 Hz screen (every n-th refresh), 30 fps on battery.
+
+**Measured** (dev PC, 1920 × 1080, muted test music):
+
+| | Result | Budget (§4) |
+|---|---|---|
+| **Low-tier check:** Intel UHD, feature level 10_0, 2 cores, Low | **5.1 %** of one core for the whole app (audio, UI and DasVis); **+19.1 MB** while open; 3.3 ms GPU at 60 % scale | < 5 %, ≤ +20 MB |
+| Auto on the same | picked **High at 85 %**: 7.2–7.4 ms GPU, 8 % CPU, +25.9 MB | ≤ +30 MB |
+| Back after closing | 38.4 MB (from 38.8 before opening) | back to where it was |
+| MilkDrop, for comparison | 26–30 % CPU, ~+65 MB | |
+| Memory walk (MilkDrop path) | unchanged: 108–115 MB in full screen over 3 runs; 134 once (a heavy random preset) | ±3 MB |
+
+- **Tests:**
+  - features: 22–24 of 24 kicks found, no kicks in hats or silence, tempo within 2 BPM, the clock on every kick
+    after 6 s
+  - limiter: ≤ 3 flashes in any second against a 7.5 Hz strobe, ≤ 1 with Reduce flashing; steady light and slow fades
+    untouched
+  - tier controller: weak, middling and strong fake GPUs settle under budget without see-sawing
+  - every scene rendered on WARP at Direct3D 11 and at feature level 10_0 (not black or white, moving, the feedback
+    bounded, `redraw()` identical)
+  - your scenes: one that compiles and one whose error is reported
+  - All 12 suites pass.
+- **Still to do by you:** watch it with real music. The look and timing were checked on test music and screenshots,
+  not by eye with songs you know.
+
+**As planned:**
 - **GPU choice** (moved from phase 0): `IDXGIFactory6::EnumAdapterByGpuPreference`.
   - The window runs on the power-saving GPU.
   - Opening DasVis builds the full-screen device on the fast one (full screen already rebuilds the device), and closing

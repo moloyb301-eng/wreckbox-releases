@@ -55,10 +55,20 @@ public:
     // then land exactly on each refresh. Changing it rebuilds the device: going into or out of full screen starts the
     // GPU caches (covers, gradients, text) over, which keeps the full-screen visit from adding to memory (~40 MB).
     void set_vsync(bool on);
+    // While vsync'd, present every n-th refresh (2: 30 fps at 60 Hz, to save battery; 60 fps on a 120 Hz screen).
+    void set_frame_interval(UINT n) { interval_ = n ? n : 1; }
+    // Make the device on the fastest graphics card (a laptop's GeForce / Radeon rather than its Intel chip). Changing it
+    // rebuilds the device. Only for DasVis's full screen: the rest of the time the battery-saving one is fine.
+    void set_fast_gpu(bool on);
     bool begin();  // false if the render target couldn't be created
     void end();    // handles device loss by recreating the target next frame
 
     ID2D1RenderTarget* rt() const { return rt_.Get(); }
+    ID3D11Device* d3d() const { return d3d_.Get(); }  // shared with DasVis
+    // The window's back buffer, for DasVis to draw into before Direct2D draws the panel over it. Don't keep it: the
+    // buffer can only be resized once nothing holds it.
+    ComPtr<ID3D11Texture2D> back_buffer() const;
+    void flush() { rt_->Flush(); }  // Direct2D's queued drawing goes first
     IWICImagingFactory* wic() const { return wic_.Get(); }
     // Bumped whenever the render target is (re)created: bitmaps made on an older target must be dropped.
     int generation() const { return generation_; }
@@ -129,7 +139,8 @@ private:
     ComPtr<ID2D1RenderTarget> target_;  // what drawing goes to: the window, or a bitmap while cached() records
     ComPtr<ID2D1SolidColorBrush> brush_;
     int generation_ = 0;
-    bool vsync_ = false;
+    bool vsync_ = false, fast_gpu_ = false;
+    UINT interval_ = 1;
     std::string device_name_;
     std::unordered_map<std::wstring, ComPtr<IDWriteTextFormat>> formats_;
     std::unordered_map<std::wstring, float> widths_;  // measure() cache

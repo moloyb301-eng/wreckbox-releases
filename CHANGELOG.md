@@ -15,6 +15,13 @@ Day-to-day work goes on `main`; bigger features on a branch (`feature/<name>`), 
 
 ## Unreleased
 
+- **DasVis preview**: WreckBox's own visualizer. **D** or the *DasVis* chip in full screen.
+  - Three scenes (Feedback Classic, Neon Tunnel, Kaleido Cover) that move with the kick, snare, hats, bass and the
+    beat, in HDR with bloom and a filmic finish. Your own scenes from a folder, with F5 to reload.
+  - Measures each PC and picks Low, Medium or High quality, remembered per graphics card. On old-PC settings (feature
+    level 10_0, 2 cores) it uses about 5 % of one core and 19 MB, against MilkDrop's 26–30 % and ~65 MB.
+  - Full-screen flashes held to 3 a second (1 with *Reduce flashing*); 30 fps on battery; 60 fps on high-refresh
+    screens.
 - **Groundwork for DasVis**, WreckBox's own visualizer (`docs/DASVIS-PLAN.md`). The window now draws through a
   Direct3D 11 device the app owns, so the visualizer will be able to share the GPU with the interface without copying
   pictures back. Nothing looks different, and memory and start-up time are unchanged. Old graphics cards (Direct3D

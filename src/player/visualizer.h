@@ -9,8 +9,8 @@
 namespace wb::player {
 
 struct VisOptions {
-    // milkdrop last so the Winamp modes keep their numbers (click cycles the first four).
-    enum class Mode { spectrum, scope, both, off, milkdrop };
+    // milkdrop and dasvis last so the Winamp modes keep their numbers (click cycles the first four).
+    enum class Mode { spectrum, scope, both, off, milkdrop, dasvis };
     enum class Bars { normal, fire, line };
     enum class Scope { dots, lines, solid };
     Mode mode = Mode::milkdrop;
@@ -28,6 +28,15 @@ struct VisOptions {
     int beat_sensitivity = 2;   // 1 low, 2 normal, 3 high
     int sync_ms = 0;            // your calibration: + draws the pictures later, − earlier (−300…300)
     bool panel = true;          // the full-screen player bar is shown (false: hidden, a "Show player" button instead)
+    // DasVis (docs/DASVIS-PLAN.md)
+    int das_intensity = 1;      // 0 chill, 1 normal, 2 insane
+    int das_quality = 0;        // 0 auto, 1 low, 2 medium, 3 high
+    bool das_battery = true;    // on battery: 30 fps and at most Medium
+    bool das_reduce_flash = false;  // at most 1 big flash a second, and gentler ones (always at most 3)
+    // Use the fast graphics card while DasVis is on screen (laptops with two). Off by default: its driver costs ~70 MB
+    // of RAM, and the battery-saving one runs DasVis well (measured: Intel UHD, High tier, 7–8 ms a frame).
+    bool das_fast_gpu = false;
+    json das_tiers = json::object();  // the measured tier per graphics card: {"<name>": "low" | "medium" | "high"}
 
     json to_json() const;
     static VisOptions from_json(const json& j);

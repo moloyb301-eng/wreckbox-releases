@@ -322,6 +322,15 @@ static void visualizer() {
     CHECK(m.mode == VisOptions::Mode::milkdrop && m.quality == 1080 && m.auto_advance == 0, "milkdrop options");
     CHECK(VisOptions::from_json(wb::json{{"quality", 600}, {"autoAdvance", -5}}).quality == 720 && VisOptions::from_json(wb::json{{"autoAdvance", -5}}).auto_advance == 0);
     CHECK(VisOptions::from_json(wb::json::object()).mode == VisOptions::Mode::milkdrop && VisOptions::from_json(wb::json{{"mode", "both"}}).mode == VisOptions::Mode::both);
+    // DasVis: its mode and options round-trip; out-of-range values are clamped.
+    o.mode = VisOptions::Mode::dasvis, o.das_intensity = 2, o.das_quality = 1, o.das_battery = false, o.das_reduce_flash = true, o.das_fast_gpu = true;
+    o.das_tiers = wb::json{{"Intel(R) UHD Graphics", "low"}};
+    const VisOptions dv = VisOptions::from_json(o.to_json());
+    CHECK(dv.mode == VisOptions::Mode::dasvis && dv.das_intensity == 2 && dv.das_quality == 1 && !dv.das_battery && dv.das_reduce_flash &&
+              dv.das_fast_gpu && dv.das_tiers.value("Intel(R) UHD Graphics", "") == "low",
+          "dasvis options");
+    const VisOptions dd = VisOptions::from_json(wb::json{{"dasvis", {{"intensity", 7}, {"quality", -1}}}});
+    CHECK(dd.das_intensity == 2 && dd.das_quality == 0 && dd.das_battery && !dd.das_reduce_flash && !dd.das_fast_gpu, "dasvis defaults and clamps");
 }
 
 // Real time, and the clock the seek bar shows: through the real sound device (muted — nothing audible), 2 s of wall

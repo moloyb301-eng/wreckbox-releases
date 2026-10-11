@@ -72,6 +72,7 @@ Close WreckBox before updating. The command uses `curl` and `tar`, which come wi
 | ▶️ | **Player** | 18+ formats, internet radio and `.m3u` / `.pls` links, files from outside the library, media keys |
 | 🎛️ | **Equalizer & normalizer** | 10-band EQ with presets and preamp, plus a volume normalizer |
 | 🌈 | **MilkDrop visualizer** | Full-screen MilkDrop presets (9,795 of them) with a player bar: song, transport, seek, volume, EQ and "Up next" |
+| ✨ | **DasVis visualizer** (preview) | WreckBox's own: HDR scenes that move with the kick, snare, hats and the beat. Light enough for old PCs (about 5 % of one core), and you can write your own scenes |
 | 🥁 | **Beat sync** | Kicks pulse the picture, presets change on drops, and you can nudge the timing by 25 ms |
 | 📊 | **Winamp bars** | Classic spectrum and oscilloscope modes. Used automatically on a PC without OpenGL 3.3 |
 | 📱 | **Phone sync** | Pair the WreckBox Android app with a QR code, then sync over your Wi-Fi |
@@ -137,7 +138,7 @@ Measured on the developer's PC:
 | **Language** | C++20, built with MSVC, CMake and vcpkg |
 | **Interface** | Win32 with Direct2D. Urbanist for text, Doto for labels and readouts |
 | **Audio** | libVLC engine, with miniaudio for output |
-| **Visualizer** | projectM (MilkDrop presets) |
+| **Visualizer** | projectM (MilkDrop presets); DasVis on Direct3D 11 (Shader Model 4) |
 | **Tags & decoding** | TagLib, dr_libs |
 | **Network** | WinHTTP, nlohmann-json, cpp-httplib, nayuki QR code generator |
 
@@ -187,6 +188,22 @@ the screen. The bar fades when the mouse is still. Its ⌄ button, or **H**, hid
 - In the bars mode, a click steps through spectrum → oscilloscope → both → off. Right-click has every Winamp option.
   **V** switches between the Classic Winamp and WreckBox colours.
 - A PC without OpenGL 3.3 gets the bars automatically. `WRECKBOX_NO_MILKDROP=1` forces them.
+
+**DasVis** (preview) is WreckBox's own visualizer: **D**, or the *DasVis* chip on the player bar.
+- Three scenes so far:
+  - *Feedback Classic*: MilkDrop-style trails and a waveform ring
+  - *Neon Tunnel*: one ring per beat, with a spectrum ring round the cover
+  - *Kaleido Cover*: a kaleidoscope of the album art
+- **N / P** or a click change the scene, and **L** locks it. It changes by itself on a bar's downbeat (the same
+  setting as MilkDrop's presets).
+- Right-click → **DasVis**:
+  - **Intensity:** Chill, Normal or Insane
+  - **Quality:** Auto measures this PC and remembers it; or pick Low, Medium or High
+  - **Save battery:** 30 fps on battery
+  - **Reduce flashing:** big flashes are always held to 3 a second; this makes it 1
+  - **Use the fast graphics card:** off by default, because it costs about 70 MB of memory on NVIDIA laptops
+- **Your own scenes:** *Open my scenes folder* has an example and `dasvis.hlsli`, which lists what a scene can use.
+  Save a `.hlsl` file there and press **F5**; any errors show at the top of the screen.
 
 </details>
 

@@ -34,7 +34,7 @@ E parse(const json& j, const char* key, E fallback, std::initializer_list<const 
 }  // namespace
 
 json VisOptions::to_json() const {
-    return {{"mode", name(mode, {"spectrum", "scope", "both", "off", "milkdrop"})},
+    return {{"mode", name(mode, {"spectrum", "scope", "both", "off", "milkdrop", "dasvis"})},
             {"bars", name(bars, {"normal", "fire", "line"})},
             {"scope", name(scope, {"dots", "lines", "solid"})},
             {"barFalloff", bar_falloff},
@@ -48,13 +48,19 @@ json VisOptions::to_json() const {
             {"presets", all_presets ? "all" : "beat"},
             {"beatSensitivity", beat_sensitivity},
             {"syncMs", sync_ms},
-            {"panel", panel}};
+            {"panel", panel},
+            {"dasvis", {{"intensity", das_intensity},
+                        {"quality", das_quality},
+                        {"saveBattery", das_battery},
+                        {"reduceFlashing", das_reduce_flash},
+                        {"fastGpu", das_fast_gpu},
+                        {"tiers", das_tiers}}}};
 }
 
 VisOptions VisOptions::from_json(const json& j) {
     VisOptions o;
     if (!j.is_object()) return o;
-    o.mode = parse(j, "mode", o.mode, {"spectrum", "scope", "both", "off", "milkdrop"});
+    o.mode = parse(j, "mode", o.mode, {"spectrum", "scope", "both", "off", "milkdrop", "dasvis"});
     o.bars = parse(j, "bars", o.bars, {"normal", "fire", "line"});
     o.scope = parse(j, "scope", o.scope, {"dots", "lines", "solid"});
     o.bar_falloff = std::clamp(j.value("barFalloff", o.bar_falloff), 0, 4);
@@ -70,6 +76,14 @@ VisOptions VisOptions::from_json(const json& j) {
     o.beat_sensitivity = std::clamp(j.value("beatSensitivity", o.beat_sensitivity), 1, 3);
     o.sync_ms = std::clamp(j.value("syncMs", o.sync_ms), -300, 300);
     o.panel = j.value("panel", o.panel);
+    if (const auto d = j.find("dasvis"); d != j.end() && d->is_object()) {
+        o.das_intensity = std::clamp(d->value("intensity", o.das_intensity), 0, 2);
+        o.das_quality = std::clamp(d->value("quality", o.das_quality), 0, 3);
+        o.das_battery = d->value("saveBattery", o.das_battery);
+        o.das_reduce_flash = d->value("reduceFlashing", o.das_reduce_flash);
+        o.das_fast_gpu = d->value("fastGpu", o.das_fast_gpu);
+        if (const auto t = d->find("tiers"); t != d->end() && t->is_object()) o.das_tiers = *t;
+    }
     return o;
 }
 
