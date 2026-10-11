@@ -566,6 +566,7 @@ bool View::das_screen() {
         }
         vj_apply();
         das_->render(in, back.Get());
+        das_lights();
         // Remember the measured tier for this graphics card, so the next visit starts there.
         if (!das_tier_saved_ && o.das_quality == 0 && das_->tier_settled()) {
             das_tier_saved_ = true;
@@ -579,6 +580,29 @@ bool View::das_screen() {
                                  frame_interval(), das_hz_, das_->flash_budget()));
     }
     return true;
+}
+
+void View::das_lights() {
+    const auto& o = vis_.opt;
+    if (!o.das_lights || o.das_wled.empty()) return;
+    if (das_wled_for_ != o.das_wled && !wled_busy_) {  // a new address: look it up (a name can take seconds)
+        das_wled_for_ = o.das_wled;
+        wled_to_.reset();
+        wled_busy_ = true;
+        auto found = std::make_shared<std::optional<sockaddr_in>>();
+        jobs_.run([host = o.das_wled, found] { *found = lights::resolve(host); },
+                  [this, host = o.das_wled, found] {
+                      wled_busy_ = false;
+                      if (das_wled_for_ == host) wled_to_ = *found;
+                      if (!*found) show_toast(L"Room lights: couldn't find " + widen(host));
+                  });
+    }
+    // At most 40 frames a second: plenty for lights, and easy on a small WLED controller's Wi-Fi.
+    const auto now = clock_t_::now();
+    if (!wled_to_ || now - wled_at_ < std::chrono::milliseconds(25)) return;
+    wled_at_ = now;
+    if (!wled_) wled_ = std::make_unique<lights::Wled>();
+    wled_->send(*wled_to_, dasvis::led_frame(das_->lights(), o.das_wled_leds));
 }
 
 void View::vj_apply() {

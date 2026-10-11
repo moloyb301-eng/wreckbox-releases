@@ -39,6 +39,10 @@ struct VisOptions {
     json das_tiers = json::object();  // the measured tier per graphics card: {"<name>": "low" | "medium" | "high"}
     json das_costs = json::object();  // what each scene measured, per graphics card: {"<name>": {"<scene>|<tier>": ms}}
     json das_taste = json::object();  // likes and skips, per genre: {"<genre>" (or "any"): {"<scene>": weight}}
+    // Room lights: a WLED strip that follows DasVis (net/wled.h). Off until turned on in Settings.
+    bool das_lights = false;
+    std::string das_wled;        // its address: "192.168.1.50" or "wled.local"
+    int das_wled_leds = 60;      // LEDs on the strip (1–490)
 
     json to_json() const;
     static VisOptions from_json(const json& j);

@@ -18,6 +18,7 @@
 #include "dasvis/dasvis.h"
 #include "library/store.h"
 #include "net/bug_report.h"
+#include "net/wled.h"
 #include "net/updates.h"
 #include "player/milkdrop.h"
 #include "player/player.h"
@@ -372,6 +373,13 @@ private:
     bool vj_card_ = false;        // the deck's QR code over the picture
     void vj_apply();              // runs the waiting commands and writes the state (UI thread, DasVis open)
     void vj_card(float W, float H);
+    // Room lights: the WLED strip's address, looked up off the UI thread when it changes; a frame sent after each picture.
+    std::unique_ptr<lights::Wled> wled_;
+    std::optional<sockaddr_in> wled_to_;
+    std::string das_wled_for_;     // the address wled_to_ was looked up for
+    bool wled_busy_ = false;
+    std::chrono::steady_clock::time_point wled_at_;  // the last frame sent
+    void das_lights();
     void das_request_map(const player::Item& item, double bpm);
     void das_prepare_next();     // the next song in the queue, so its map is ready when it starts
     void das_dev_view(float W);

@@ -64,6 +64,18 @@ struct Drive {
 // `t0` / `t1`: the song time of the last frame and of this one; the map's hits in (t0, t1] fire now (none on a seek).
 Drive drive(const Features& live, const SongMap* map, double t0, double t1, const Drive& last, float dt);
 
+// Room lights: what DasVis is showing, in a few numbers; led_frame() makes a strip's colours from them.
+struct LightState {
+    Palette pal{};          // the palette on screen (linear)
+    float kick = 0, snare = 0, bass = 0, drop = 0;
+    double beats = 0;       // the beat count (the colours travel along the strip, a step a beat)
+    float flash = 1;        // the flash limiter's budget (0–1): bright changes are held back when it's spent
+    bool reduce_flash = false;
+};
+// `leds` LEDs, 3 bytes each (sRGB): the palette spread along the strip and moving with the beat, brighter on the kick and
+// the bass, a white glint on the snare and the whole strip lit on a drop, all within the flash budget.
+std::vector<uint8_t> led_frame(const LightState& s, int leds);
+
 class DasVis {
 public:
     DasVis(ID3D11Device* device, const Config& cfg);
@@ -119,6 +131,7 @@ public:
     // What each scene measured on this graphics card ("<scene>|<tier>" → GPU ms at the tier's smallest size): saved,
     // and given back in Config::costs next time, so the director knows what fits from the start.
     std::map<std::string, float> costs() const;
+    LightState lights() const;  // for the room lights, after render()
 
 private:
     struct Impl;

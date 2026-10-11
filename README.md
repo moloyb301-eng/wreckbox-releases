@@ -216,6 +216,8 @@ the screen. The bar fades when the mouse is still. Its ⌄ button, or **H**, hid
   dubstep and drum & bass) a glitch.
 - **N / P** or a click change the scene, **L** locks it, **F** likes it and **X** skips it: likes and skips are kept per
   genre, so the director learns what you want to see.
+- **Room lights:** a WLED LED strip on your Wi-Fi can follow DasVis (Settings → *Room lights*): the song's colours,
+  pulsing with the kick and the bass, lit up on drops.
 - **Phone VJ deck:** right-click → DasVis → *Phone VJ deck…* shows a QR code; scan it with a phone on the same Wi-Fi to
   steer the camera, call a drop, fire a shockwave, pick scenes and set the intensity from the phone.
 - **It knows the song.** The first time a song plays in DasVis, it's analysed in the background: a few seconds, about

@@ -52,6 +52,7 @@ add_library(wblibrary STATIC
   src/net/slsk/sync.cpp
   src/net/soulseek.cpp
   src/net/sync_server.cpp
+  src/net/wled.cpp
   src/net/tunnel.cpp
   src/net/updates.cpp
   src/sources/sources.cpp

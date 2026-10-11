@@ -615,6 +615,32 @@ void gpu(bool fl10) {
     fs::remove_all(dir);
 }
 
+// Room lights: the strip's colours from the palette, brighter on the kick, held back when the flash budget is spent.
+void lights() {
+    LightState s;
+    for (size_t i = 0; i < 5; ++i) s.pal[i] = {0.1f * float(i + 1), 0.05f * float(i + 1), 0.2f};
+    const auto mean = [](const std::vector<uint8_t>& v) {
+        double sum = 0;
+        for (const uint8_t b : v) sum += b;
+        return sum / double(std::max<size_t>(1, v.size()));
+    };
+    const auto quiet = led_frame(s, 60);
+    CHECK(quiet.size() == 180 && mean(quiet) > 10, "60 LEDs, lit at rest (%.1f)", mean(quiet));
+    s.kick = 1;
+    const double kicked = mean(led_frame(s, 60));
+    CHECK(kicked > mean(quiet) * 1.3, "the kick brightens them (sRGB bytes): %.1f → %.1f", mean(quiet), kicked);
+    s.flash = 0;
+    CHECK(std::fabs(mean(led_frame(s, 60)) - mean(quiet)) < 0.5, "no flash budget left: no swing (%.1f)", mean(led_frame(s, 60)));
+    s.flash = 1, s.reduce_flash = true;
+    const double reduced = mean(led_frame(s, 60));
+    CHECK(reduced < kicked && reduced > mean(quiet), "reduce flashing: a smaller swing (%.1f)", reduced);
+    s.reduce_flash = false, s.kick = 0;
+    const auto now = led_frame(s, 60);
+    s.beats += 1;
+    CHECK(led_frame(s, 60) != now, "the colours move on with the beat");
+    CHECK(led_frame(s, 0).empty(), "no LEDs: nothing");
+}
+
 // The director on its own: a song's sections in, scenes out.
 void director() {
     std::vector<SceneTags> tags = builtin_scenes();
@@ -800,6 +826,7 @@ int main(int argc, char** argv) {
     limiter();
     quality();
     director();
+    lights();
     director_timing();
     cover_shatter();
     gpu(false);

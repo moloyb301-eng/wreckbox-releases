@@ -882,6 +882,21 @@ drop (Intro → Verse → Chorus); without a known tempo it finds one. Worth a l
     (`sync_tests`); in the GPU test the deck picks a scene, *Drop now* brings a hero, the camera moves the picture. In
     the app (loopback, muted): 13 scenes listed, scene 6 → Galaxy, *Drop now* → Hyperspace at light speed, intensity
     set, the camera turned and zoomed.
+- **Room lights (WLED)** ✅ 2026-10-12:
+  - `net/wled.*`: WLED's realtime UDP (DRGB, port 21324, up to 490 LEDs a packet; each packet tells WLED to go back to
+    its own effect 2 s after the last one, so closing DasVis hands the lights back). At most 40 frames a second, easy on
+    a small controller's Wi-Fi. The address is looked up off the UI thread (a name like `wled.local` can take seconds).
+  - `dasvis::led_frame()`: the palette's lighter colours along the strip, a step further each beat; brighter on the kick
+    and the bass, lit on drops, a few LEDs glinting on the snare. The swings above a resting level are scaled by the
+    flash limiter's budget (and halved with *Reduce flashing*), so the room never strobes faster than the screen may.
+  - Settings → *Room lights (WLED)*: the address, the LED count, on / off (off by default). The Settings page now works
+    on the saved visualizer options (they're only loaded while full screen is open; writing the in-memory ones there
+    would have put defaults over the rest).
+  - **Tested:** the kick brightens the strip, no swing without flash budget, a smaller one with *Reduce flashing*, the
+    colours move with the beat (`dasvis_tests`); a frame reaches a UDP socket standing in for the strip as DRGB, cut to
+    490 LEDs (`sync_tests`); the options round-trip (`player_tests`). In the app: 92-byte packets (30 LEDs) at 44 a
+    second while DasVis played, brightness moving 99–147; toggling the lights changed only that setting.
+  - Not done: Philips Hue (needs a Hue bridge: say if you have one).
 
 - **Phone VJ deck:**
   - a page served by the existing `sync_server`, on the local network, protected by the pairing that already exists

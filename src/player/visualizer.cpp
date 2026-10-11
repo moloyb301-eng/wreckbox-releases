@@ -56,7 +56,10 @@ json VisOptions::to_json() const {
                         {"fastGpu", das_fast_gpu},
                         {"tiers", das_tiers},
                         {"costs", das_costs},
-                        {"taste", das_taste}}}};
+                        {"taste", das_taste},
+                        {"lights", das_lights},
+                        {"wled", das_wled},
+                        {"wledLeds", das_wled_leds}}}};
 }
 
 VisOptions VisOptions::from_json(const json& j) {
@@ -90,6 +93,9 @@ VisOptions VisOptions::from_json(const json& j) {
         if (const auto t = d->find("tiers"); t != d->end() && t->is_object()) o.das_tiers = *t;
         if (const auto t = d->find("costs"); t != d->end() && t->is_object()) o.das_costs = *t;
         if (const auto t = d->find("taste"); t != d->end() && t->is_object()) o.das_taste = *t;
+        o.das_lights = d->value("lights", o.das_lights);
+        o.das_wled = d->value("wled", o.das_wled);
+        o.das_wled_leds = std::clamp(d->value("wledLeds", o.das_wled_leds), 1, 490);
     }
     return o;
 }

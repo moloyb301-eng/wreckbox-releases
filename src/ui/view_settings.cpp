@@ -19,10 +19,11 @@
 namespace wb::ui {
 
 using namespace theme;
+using player::VisOptions;
 
 namespace {
 
-enum Field : int { kSpotifyId = 101, kGoogleId, kGoogleSecret, kReporterName, kReporterContact, kSlskUser, kSlskPass };
+enum Field : int { kSpotifyId = 101, kGoogleId, kGoogleSecret, kReporterName, kReporterContact, kSlskUser, kSlskPass, kWledHost, kWledLeds };
 
 std::string trim(std::string s) {
     s.erase(0, s.find_first_not_of(" \t\r\n"));
@@ -56,6 +57,10 @@ std::vector<std::string> pick_csv_files(HWND owner) {
     return out;
 }
 
+// The visualizer's options as saved: vis_.opt is only loaded while full screen is open, so the Settings page works on
+// the saved copy (writing vis_.opt here would put its defaults over everything else saved).
+VisOptions saved_vis() { return VisOptions::from_json(Settings::current().extra.value("visualizer", json::object())); }
+
 void copy_to_clipboard(HWND owner, const std::string& value) {
     const std::wstring w = widen(value);
     if (!OpenClipboard(owner)) return;
@@ -80,6 +85,14 @@ bool View::save_settings() {
     take(kGoogleSecret, s.google_client_secret);
     take(kReporterName, s.reporter_name);
     take(kReporterContact, s.reporter_contact);
+    if (edits_.contains(kWledHost)) {  // the room lights live with the visualizer's options
+        VisOptions o = saved_vis();
+        o.das_wled = trim(edit_text(kWledHost));
+        if (edits_.contains(kWledLeds)) o.das_wled_leds = std::clamp(std::atoi(trim(edit_text(kWledLeds)).c_str()), 1, 490);
+        s.extra["visualizer"] = o.to_json();
+        vis_.opt.das_wled = o.das_wled, vis_.opt.das_wled_leds = o.das_wled_leds;
+        das_wled_for_.clear();  // looked up again
+    }
     try {
         s.save();
         return true;
@@ -329,6 +342,23 @@ void View::settings_page(const Rect& r) {
         } else {
             buttons({{L"Sign in on Sync to phone", icon::phone, Ui::Pill::glass, [this] { go(Page::phone); }}});
         }
+    });
+
+    section(L"Room lights (WLED)", false, [&] {
+        para(L"A WLED LED strip on your network can follow DasVis: the song's colours, brighter on the kick and the bass, lit up "
+             L"on drops, and never strobing faster than the screen may. WreckBox sends to it directly over Wi-Fi; nothing "
+             L"to install, no account. It goes back to its own effect a couple of seconds after DasVis closes.");
+        const VisOptions vo = saved_vis();
+        field(kWledHost, L"WLED address (as in the WLED app: an IP like 192.168.1.50, or wled.local)", vo.das_wled, false, L"192.168.1.50");
+        field(kWledLeds, L"LEDs on the strip", std::to_string(vo.das_wled_leds));
+        buttons({{vo.das_lights ? L"Lights follow DasVis: on" : L"Lights follow DasVis: off", icon::sparkle,
+                  vo.das_lights ? Ui::Pill::primary : Ui::Pill::glass, [this] {
+                      if (!save_settings()) return;  // the address and count first
+                      VisOptions o = saved_vis();
+                      vis_.opt.das_lights = o.das_lights = !o.das_lights;
+                      Settings::current().extra["visualizer"] = o.to_json();
+                      save_settings();
+                  }}});
     });
 
     section(L"Bug reports", false, [&] {

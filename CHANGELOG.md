@@ -15,6 +15,8 @@ Day-to-day work goes on `main`; bigger features on a branch (`feature/<name>`), 
 
 ## Unreleased
 
+- **Room lights**: a WLED LED strip on your network can follow DasVis: the song's colours, brighter on the kick and the
+  bass, lit up on drops, never strobing faster than the screen may. Settings → *Room lights (WLED)*; off by default.
 - **Phone VJ deck for DasVis**: scan a QR code with a phone on the same Wi-Fi and run the show from it: an XY pad for
   the camera, *Drop now*, *Shockwave* (or shake the phone, where the browser allows it), scene buttons, intensity, like
   and skip. Protected by the same pairing code as phone sync.

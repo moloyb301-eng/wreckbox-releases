@@ -936,6 +936,12 @@ void DasVis::drop_now() {
     p_->manual_events = Director::events(p_->song_seed, 1000 + p_->picks, m.intensity);
 }
 void DasVis::shockwave() { p_->shock = 1; }
+LightState DasVis::lights() const {
+    LightState s;
+    s.pal = p_->pal, s.kick = p_->drv.kick, s.snare = p_->drv.snare, s.bass = p_->drv.bass, s.drop = p_->u.drop[0];
+    s.beats = p_->u.beat[2], s.flash = p_->limiter.budget(), s.reduce_flash = p_->cfg.reduce_flash;
+    return s;
+}
 void DasVis::set_camera(float turn, float zoom) {
     p_->cam_tx = std::clamp(turn, -1.f, 1.f), p_->cam_ty = std::clamp(zoom, -1.f, 1.f);
 }
@@ -963,6 +969,28 @@ float DasVis::flash_budget() const { return p_->limiter.budget(); }
 double DasVis::map_offset() const { return p_->map_offset; }
 
 const char* library_source() { return k_library; }
+
+std::vector<uint8_t> led_frame(const LightState& s, int leds) {
+    std::vector<uint8_t> out(size_t(std::max(0, leds)) * 3);
+    const float flash = s.flash * (s.reduce_flash ? 0.5f : 1.f);
+    const float base = 0.35f;  // the level the music moves the lights from; the swings above it are what's limited
+    const float level = std::min(1.f, base + (0.45f * std::max(s.kick, 0.8f * s.bass) + 0.4f * s.drop) * flash);
+    const auto srgb = [](float v) { return uint8_t(std::lround(255 * std::pow(std::clamp(v, 0.f, 1.f), 1 / 2.2f))); };
+    for (int i = 0; i < leds; ++i) {
+        // Along the strip, the palette's lighter colours (the dark one would just be off), a step further each beat.
+        const double t = double(i) / std::max(1, leds) * 2 + s.beats * 0.125;
+        const double f = (t - std::floor(t)) * 4;
+        const size_t a = 1 + size_t(f), b = a == 4 ? 1 : a + 1;
+        const float k = float(f - std::floor(f)), w = k * k * (3 - 2 * k);
+        const uint32_t h = uint32_t(i) * 2654435761u ^ uint32_t(std::floor(s.beats * 4)) * 40503u;
+        const float glint = (h % 7 == 0) ? s.snare * flash : 0.f;  // a few LEDs at a time catch the snare
+        for (size_t c = 0; c < 3; ++c) {
+            const float v = s.pal[a][c] + (s.pal[b][c] - s.pal[a][c]) * w;
+            out[size_t(i) * 3 + c] = srgb(v * level + glint);
+        }
+    }
+    return out;
+}
 
 std::vector<SceneTags> builtin_scenes() {
     std::vector<SceneTags> t;

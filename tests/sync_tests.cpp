@@ -24,6 +24,9 @@
 #include "net/http_client.h"
 #include "net/sync_server.h"
 #include "net/tunnel.h"
+#include "net/wled.h"
+
+#include <ws2tcpip.h>
 
 namespace fs = std::filesystem;
 using namespace std::chrono_literals;
@@ -477,6 +480,30 @@ static void tunnel_tests(wb::LibraryStore& store) {
     fs::remove_all(dir);
 }
 
+// Room lights: a WLED frame reaches a UDP socket on this PC standing in for the strip, as DRGB.
+static void wled_tests() {
+    const auto to = wb::lights::resolve("127.0.0.1:0");
+    CHECK(to.has_value(), "an address with a port");
+    CHECK(!wb::lights::resolve("").has_value(), "no address");
+    SOCKET strip = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+    sockaddr_in at{};
+    at.sin_family = AF_INET, at.sin_port = 0;
+    inet_pton(AF_INET, "127.0.0.1", &at.sin_addr);
+    bind(strip, reinterpret_cast<sockaddr*>(&at), sizeof at);
+    int len = sizeof at;
+    getsockname(strip, reinterpret_cast<sockaddr*>(&at), &len);
+    DWORD wait = 2000;
+    setsockopt(strip, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char*>(&wait), sizeof wait);
+    const auto dest = wb::lights::resolve("127.0.0.1:" + std::to_string(ntohs(at.sin_port)));
+    wb::lights::Wled wled;
+    std::vector<uint8_t> rgb(600 * 3, 7);  // more than one packet carries
+    CHECK(dest && wled.send(*dest, rgb), "sent");
+    char buf[2048];
+    const int got = recv(strip, buf, sizeof buf, 0);
+    CHECK(got == 2 + int(wb::lights::kMaxLeds) * 3 && buf[0] == 2 && buf[1] == 2 && buf[2] == 7, "a DRGB packet of %d bytes", got);
+    closesocket(strip);
+}
+
 int main() {
     const fs::path root = fs::temp_directory_path() / L"wreckbox-sync-tests";
     wb::LibraryStore store;
@@ -484,6 +511,7 @@ int main() {
     server_tests(store);
     account_tests(store);
     tunnel_tests(store);
+    wled_tests();
     fs::remove_all(root);
     if (failures) {
         std::fprintf(stderr, "%d check(s) failed\n", failures);
