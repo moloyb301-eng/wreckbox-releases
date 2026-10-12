@@ -1214,13 +1214,39 @@ void View::vis_overlay(const Rect& r, float a) {
     const bool milk = milk_ && milk_->ok() && vis_.opt.mode == VisOptions::Mode::milkdrop;
     const bool das = das_ && das_->ok() && vis_.opt.mode == VisOptions::Mode::dasvis;
     if (a < 1) g_.push_opacity(a);
-    g_.fill_span(Rect{r.l, r.t, r.r, r.t + 80}, {0, r.t}, {0, r.t + 80}, {argb(0xA0000000), argb(0x00000000)});  // keeps the hint legible
-    g_.text(das    ? L"Click / N: next scene     P: previous     L: lock     F: like     X: skip     D: bars     F5: reload my scenes     H: hide player     Right-click: options     Esc: exit"
-            : milk ? L"Click / N: next preset     P: previous     R: random     L: lock     M: bars     H: hide player     Right-click: options     Space: pause     Esc: exit"
-                   : L"Click: spectrum · scope · both · off     M: MilkDrop     D: DasVis     H: hide player     Right-click: options     V: look     Esc: exit",
-            Rect{r.l + 48, r.t + 18, r.r - 100, r.t + 44}, {Font::ui, 12.5f, 500, text2});
+    // The keys: a glass bar centred at the top, each key in a keycap and then what it does. Most useful first; when the
+    // screen is too narrow, the ones before the last two (options, exit) drop out rather than the line being cut.
+    using Hint = std::pair<const wchar_t*, const wchar_t*>;
+    std::vector<Hint> hints = das    ? std::vector<Hint>{{L"N", L"Next scene"}, {L"P", L"Previous"}, {L"L", L"Lock"}, {L"F", L"Like"}, {L"X", L"Skip"},
+                                                         {L"M", L"MilkDrop"}, {L"Space", L"Pause"}, {L"H", L"Hide player"}, {L"Right-click", L"Options"}, {L"Esc", L"Exit"}}
+                              : milk ? std::vector<Hint>{{L"N", L"Next preset"}, {L"P", L"Previous"}, {L"R", L"Random"}, {L"L", L"Lock"}, {L"D", L"DasVis"},
+                                                         {L"Space", L"Pause"}, {L"H", L"Hide player"}, {L"Right-click", L"Options"}, {L"Esc", L"Exit"}}
+                                     : std::vector<Hint>{{L"Click", L"Next style"}, {L"V", L"Look"}, {L"D", L"DasVis"}, {L"M", L"MilkDrop"}, {L"Space", L"Pause"},
+                                                         {L"H", L"Hide player"}, {L"Right-click", L"Options"}, {L"Esc", L"Exit"}};
+    const TextStyle key_st{Font::ui, 11.5f, 700, text}, label_st{Font::ui, 12.5f, 500, text2};
+    const float pad = 16, gap = 18, cap_pad = 7, max_w = r.w() - 2 * 96;  // clear of the exit button
+    const auto item_w = [&](const Hint& h) { return g_.measure(h.first, key_st) + 2 * cap_pad + 7 + g_.measure(h.second, label_st); };
+    const auto bar_w = [&] {
+        float w = 2 * pad - gap;
+        for (const Hint& h : hints) w += item_w(h) + gap;
+        return w;
+    };
+    while (hints.size() > 2 && bar_w() > max_w) hints.erase(hints.end() - 3);
+    const Rect bar = Rect::xywh(r.l + (r.w() - bar_w()) / 2, r.t + 15, bar_w(), 34);
+    g_.fill_round(bar, 17, argb(0xC0141418));
+    g_.stroke_round(bar, 17, glass_border);
+    float hx = bar.l + pad;
+    for (const Hint& h : hints) {
+        const float kw = g_.measure(h.first, key_st) + 2 * cap_pad;
+        const Rect cap = Rect::xywh(hx, bar.t + 7, kw, 20);
+        g_.fill_round(cap, 5, argb(0x24FFFFFF));
+        g_.stroke_round(cap, 5, argb(0x1AFFFFFF));
+        g_.text(h.first, Rect{cap.l + cap_pad, cap.t, cap.r, cap.b}, key_st);
+        g_.text(h.second, Rect{cap.r + 7, bar.t, cap.r + 7 + g_.measure(h.second, label_st) + 2, bar.b}, label_st);
+        hx += item_w(h) + gap;
+    }
     if (das && !das_->user_errors().empty())  // your scenes: the first error of each that didn't compile
-        g_.paragraph(L"Your scenes: " + wide(das_->user_errors()), Rect{r.l + 48, r.t + 48, r.r - 100, r.t + 200}, {Font::ui, 12.5f, 500, peach});
+        g_.paragraph(L"Your scenes: " + wide(das_->user_errors()), Rect{r.l + 48, r.t + 60, r.r - 100, r.t + 210}, {Font::ui, 12.5f, 500, peach});
     ui_.icon_button(Rect::xywh(r.r - 64, r.t + 14, 36, 36), icon::exit_full, 14, [this] { set_fullscreen(false); }, false, false,
                     L"Exit full screen (Esc)");
 

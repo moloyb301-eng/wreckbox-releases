@@ -13,6 +13,12 @@ After 0.7.0, each release goes up by one patch number: 0.7.1, 0.7.2, and so on u
 
 Day-to-day work goes on `main`; bigger features on a branch (`feature/<name>`), merged when the tests pass.
 
+## Unreleased
+
+- **Full screen's key hints** are a glass bar of keycaps at the top instead of a long line of text, the same in every
+  mode (and they say how to switch between DasVis and MilkDrop). On a narrow screen the less used ones drop out
+  instead of the line being cut off.
+
 ## 0.7.4 — 2026-10-12
 
 **DasVis**, WreckBox's own visualizer, is now the default (MilkDrop is still one click or the **M** key away).
