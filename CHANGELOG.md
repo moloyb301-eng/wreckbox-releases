@@ -13,7 +13,9 @@ After 0.7.0, each release goes up by one patch number: 0.7.1, 0.7.2, and so on u
 
 Day-to-day work goes on `main`; bigger features on a branch (`feature/<name>`), merged when the tests pass.
 
-## Unreleased
+## 0.7.4 — 2026-10-12
+
+**DasVis**, WreckBox's own visualizer, is now the default (MilkDrop is still one click or the **M** key away).
 
 - **Choose your visualizer in Settings**: Settings → *Visualizer*: DasVis, MilkDrop or the Winamp bars for full screen,
   and *MilkDrop inside DasVis*. (Full screen's chips and the D / M keys still switch too.)

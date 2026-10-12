@@ -27,11 +27,11 @@
 
 <div align="center">
 
-[![Download zip](https://img.shields.io/badge/WreckBox%200.7.3-win--native--x64.zip%20%C2%B7%2071%20MB-EFAF86?style=for-the-badge&logo=windows&logoColor=08080A&labelColor=08080A)](https://raw.githubusercontent.com/moloyb301-eng/wreckbox-releases/windows-native/downloads/WreckBox-0.7.3-win-native-x64.zip)
+[![Download zip](https://img.shields.io/badge/WreckBox%200.7.4-win--native--x64.zip%20%C2%B7%2072%20MB-EFAF86?style=for-the-badge&logo=windows&logoColor=08080A&labelColor=08080A)](https://raw.githubusercontent.com/moloyb301-eng/wreckbox-releases/windows-native/downloads/WreckBox-0.7.4-win-native-x64.zip)
 
 </div>
 
-The latest build (0.7.3). You choose exactly what Soulseek downloads (single songs or whole playlists) and watch it come in on the Download queue page, with progress bars. You can cancel the song that's downloading right now, and delete songs to free up space.
+The latest build (0.7.4). **DasVis**, WreckBox's own visualizer, is here: 13 scenes that follow each song's build-ups and drops, take their colours from the album cover, and run on old PCs too. Choose DasVis, MilkDrop or the Winamp bars in Settings → *Visualizer* (or MilkDrop inside DasVis), and try the live wallpaper, synced lyrics, the phone VJ deck and video export.
 
 ### ⚡ One command
 
@@ -39,7 +39,7 @@ Press **Win + R**, type `cmd`, press Enter, then paste this (the copy button is 
 Enter. It downloads WreckBox, unzips it into `%LOCALAPPDATA%\Programs\WreckBox` and starts it. Run it again to update.
 
 ```cmd
-curl -fL -o "%TEMP%\WreckBox.zip" https://raw.githubusercontent.com/moloyb301-eng/wreckbox-releases/windows-native/downloads/WreckBox-0.7.3-win-native-x64.zip && (if not exist "%LOCALAPPDATA%\Programs\WreckBox" mkdir "%LOCALAPPDATA%\Programs\WreckBox") && tar -xf "%TEMP%\WreckBox.zip" -C "%LOCALAPPDATA%\Programs\WreckBox" && del "%TEMP%\WreckBox.zip" && start "" "%LOCALAPPDATA%\Programs\WreckBox\wreckbox.exe"
+curl -fL -o "%TEMP%\WreckBox.zip" https://raw.githubusercontent.com/moloyb301-eng/wreckbox-releases/windows-native/downloads/WreckBox-0.7.4-win-native-x64.zip && (if not exist "%LOCALAPPDATA%\Programs\WreckBox" mkdir "%LOCALAPPDATA%\Programs\WreckBox") && tar -xf "%TEMP%\WreckBox.zip" -C "%LOCALAPPDATA%\Programs\WreckBox" && del "%TEMP%\WreckBox.zip" && start "" "%LOCALAPPDATA%\Programs\WreckBox\wreckbox.exe"
 ```
 
 Close WreckBox before updating. The command uses `curl` and `tar`, which come with Windows 10 and 11.
