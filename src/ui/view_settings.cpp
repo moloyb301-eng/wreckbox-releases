@@ -344,6 +344,46 @@ void View::settings_page(const Rect& r) {
         }
     });
 
+    section(L"DasVis wallpaper and lyrics", false, [&] {
+        const VisOptions vo = saved_vis();
+        // One option changed in the saved visualizer settings (the rest as they are), and in the running ones.
+        const auto toggle = [this](auto member) {
+            VisOptions o = saved_vis();
+            o.*member = !(o.*member);
+            vis_.opt.*member = o.*member;
+            Settings::current().extra["visualizer"] = o.to_json();
+            save_settings();
+        };
+        para(L"Live wallpaper: DasVis behind your desktop icons while music plays, at Low quality and 30 frames a second at "
+             L"most. It pauses on battery and while a game, a full-screen app or a maximised window covers the desktop.");
+        buttons({{vo.das_wallpaper ? L"Live wallpaper: on" : L"Live wallpaper: off", icon::sparkle, vo.das_wallpaper ? Ui::Pill::primary : Ui::Pill::glass,
+                  [this, toggle] {
+                      toggle(&VisOptions::das_wallpaper);
+                      wall_restart();
+                  }}});
+        para(L"Lyrics: the words being sung, in time, over DasVis. From a .lrc file next to the song if there is one, else "
+             L"looked up on LRCLIB.net, a free lyrics database: that sends the song's title, artist, album and length, nothing "
+             L"else. Off until you turn it on.");
+        buttons({{vo.das_lyrics ? L"Lyrics: on" : L"Lyrics: off", icon::sparkle, vo.das_lyrics ? Ui::Pill::primary : Ui::Pill::glass,
+                  [this, toggle] {
+                      toggle(&VisOptions::das_lyrics);
+                      das_lyrics_for_.clear(), das_lyrics_.reset();
+                  }}});
+        if (GetSystemMetrics(SM_CMONITORS) > 1) {
+            para(L"Full screen with more than one screen:");
+            const wchar_t* ways[] = {L"This screen", L"All, as one picture", L"Each its own scene"};
+            std::vector<Button> chips;
+            for (int i = 0; i < 3; ++i)
+                chips.push_back({ways[i], icon::visualizer, vo.das_screens == i ? Ui::Pill::primary : Ui::Pill::glass, [this, i] {
+                                     VisOptions o = saved_vis();
+                                     vis_.opt.das_screens = o.das_screens = i;
+                                     Settings::current().extra["visualizer"] = o.to_json();
+                                     save_settings();
+                                 }});
+            buttons(chips);
+        }
+    });
+
     section(L"Room lights (WLED)", false, [&] {
         para(L"A WLED LED strip on your network can follow DasVis: the song's colours, brighter on the kick and the bass, lit up "
              L"on drops, and never strobing faster than the screen may. WreckBox sends to it directly over Wi-Fi; nothing "

@@ -19,6 +19,7 @@
 #include <qrcodegen.hpp>
 
 #include "dasvis/video.h"
+#include "net/http_client.h"
 #include "net/sync_server.h"
 
 #include <shlobj.h>
@@ -99,11 +100,16 @@ void View::set_fullscreen(bool on) {
     // Borderless over the whole monitor, then back exactly where it was (Raymond Chen's recipe).
     if (on) {
         vis_.opt = VisOptions::from_json(Settings::current().extra.value("visualizer", json::object()));
+        wall_.reset();  // the device is made again for full screen: the wallpaper starts again after
         saved_style_ = GetWindowLongW(hwnd_, GWL_STYLE);
         GetWindowPlacement(hwnd_, &saved_place_);
         MONITORINFO mi{sizeof mi};
         GetMonitorInfoW(MonitorFromWindow(hwnd_, MONITOR_DEFAULTTONEAREST), &mi);
         SetWindowLongW(hwnd_, GWL_STYLE, saved_style_ & ~WS_OVERLAPPEDWINDOW);
+        if (vis_.opt.das_screens == 1 && GetSystemMetrics(SM_CMONITORS) > 1)  // all the screens, as one picture
+            mi.rcMonitor = {GetSystemMetrics(SM_XVIRTUALSCREEN), GetSystemMetrics(SM_YVIRTUALSCREEN),
+                            GetSystemMetrics(SM_XVIRTUALSCREEN) + GetSystemMetrics(SM_CXVIRTUALSCREEN),
+                            GetSystemMetrics(SM_YVIRTUALSCREEN) + GetSystemMetrics(SM_CYVIRTUALSCREEN)};
         const RECT& m = mi.rcMonitor;
         // No z-order change: it's the active window when asked (and automated checks stay behind other windows).
         SetWindowPos(hwnd_, nullptr, m.left, m.top, m.right - m.left, m.bottom - m.top, SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
@@ -136,6 +142,7 @@ void View::set_fullscreen(bool on) {
         SetWindowLongW(hwnd_, GWL_STYLE, saved_style_);
         SetWindowPlacement(hwnd_, &saved_place_);
         SetWindowPos(hwnd_, nullptr, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
+        wall_restart();
     }
     InvalidateRect(hwnd_, nullptr, FALSE);
 }
@@ -398,7 +405,10 @@ void View::das_free() {
     }
     vj_card_ = false;
     spout_.reset();
+    screens_.clear();
+    das_shown_ = {};
     das_cover_for_.clear();
+    das_cover_.reset();
     das_map_.reset();  // in memory only; it's in the cache for next time
     das_map_for_.clear();
 }
@@ -447,7 +457,7 @@ void View::das_request_map(const player::Item& item, double bpm) {
 void View::das_prepare_next() {
     const auto& items = player_.queue().items();
     const size_t next = size_t(player_.queue().index() + 1);
-    if (!das_ || das_next_busy_ || next >= items.size() || player::is_url(items[next].location)) return;
+    if ((!das_ && !wall_) || das_next_busy_ || next >= items.size() || player::is_url(items[next].location)) return;
     const player::Item it = items[next];
     const auto row = it.track_id ? store_.row(*it.track_id) : std::nullopt;
     const double bpm = row && row->bpm() ? *row->bpm() : 0;
@@ -462,8 +472,138 @@ void View::das_reload() {
     show_toast(errors.empty() ? std::format(L"{} scenes", das_->scene_count()) : L"Your scenes have errors (shown at the top)");
 }
 
+// The frame's inputs, the same for every DasVis drawing it (full screen, the other screens, the wallpaper): the audio
+// heard as it appears, the song, its map, its look. Also asks for what the song needs: its map, cover and lyrics.
+dasvis::Inputs View::das_inputs(float budget_ms) {
+    auto& o = vis_.opt;
+    player::AudioOutput* out = player_.output();
+    static_assert(player::Visualizer::kFft == dasvis::Features::kFft);
+    if (player_.playing() && out) out->tap_until(heard_end(*out, 1), tap_.data(), tap_.size());  // on screen at the next refresh
+    else std::fill(tap_.begin(), tap_.end(), 0.f);
+    const player::Item* cur = player_.current();
+    const auto row = cur && cur->track_id ? store_.row(*cur->track_id) : std::nullopt;
+    const double bpm = row && row->bpm() ? *row->bpm() : 0;
+    das_feat_.update(tap_.data(), frame_dt_, bpm);
+    if (cur && song_key(*cur) != das_map_for_) das_request_map(*cur, bpm);
+    // Where the song is when this frame appears (a refresh from now), less the calibration (+ = pictures later).
+    das_song_t_ = double(player_.time_ms()) / 1000 + frame_dt_ - (o.sync_ms + (bt_output_ ? 180 : 0)) / 1000.0;
+    dasvis::Inputs in;
+    in.f = &das_feat_;
+    in.dt = frame_dt_;
+    in.song = cur ? song_key(*cur) : std::string();
+    if (row && !row->camelot().empty()) in.camelot = row->camelot();
+    in.intensity = o.das_intensity;
+    in.budget_ms = budget_ms;
+    in.map = das_map_.get();
+    in.song_time = das_song_t_;
+    // Your likes and skips for this genre; glitch transitions for the genres that suit them.
+    std::string genre = row ? row->genre : std::string();
+    std::transform(genre.begin(), genre.end(), genre.begin(), [](char c) { return char(std::tolower(static_cast<unsigned char>(c))); });
+    if (genre != das_genre_) {
+        das_genre_ = genre;
+        das_taste_.clear();
+        if (const auto g = o.das_taste.find(genre.empty() ? "any" : genre); g != o.das_taste.end() && g->is_object())
+            for (const auto& [scene, w] : g->items())
+                if (w.is_number()) das_taste_[scene] = w.get<float>();
+    }
+    in.taste = &das_taste_;
+    in.glitchy = genre.find("dubstep") != std::string::npos || genre.find("drum") != std::string::npos || genre.find("dnb") != std::string::npos;
+    // The cover: decoded off the UI thread at 512 px, once for every DasVis, kept while the song plays.
+    if (in.song != das_cover_for_) {
+        das_cover_for_ = in.song;
+        das_cover_.reset();
+        if (row) {
+            auto cover = std::make_shared<DasCover>();
+            jobs_.run(
+                [this, t = row->track, cover] {
+                    const auto file = store_.ensure_artwork(t);
+                    const auto bmp = file ? decode_image(*file, 512) : nullptr;
+                    UINT w = 0, h = 0;
+                    if (!bmp || FAILED(bmp->GetSize(&w, &h))) return;
+                    cover->px.resize(size_t(w) * h * 4);
+                    bmp->CopyPixels(nullptr, w * 4, UINT(cover->px.size()), cover->px.data());
+                    cover->w = int(w), cover->h = int(h);
+                },
+                [this, song = in.song, cover] {
+                    if (das_cover_for_ == song && !cover->px.empty()) das_cover_ = cover;
+                });
+        }
+    }
+    if (o.das_lyrics && cur && in.song != das_lyrics_for_) das_request_lyrics(*cur, row);
+    return in;
+}
+
+// What one DasVis is given as the song goes: its cover once decoded, and (words) the title card as the song starts and
+// the lyric line being sung. `shown` remembers what it has.
+void View::das_dress(dasvis::DasVis& d, DasShown& shown, const dasvis::Inputs& in, bool words) {
+    const player::Item* cur = player_.current();
+    if (in.song != shown.song) {
+        shown = {in.song};
+        d.set_cover(nullptr, 0, 0);
+        int letters = 0;  // the title card: drawn once by Direct2D into DasVis's texture, on the GPU
+        const bool card = words && cur && !cur->title.empty() && g_.draw_title_card(d.title_target(768, 192), wide(cur->title), wide(cur->artist), &letters);
+        d.show_title(card ? letters : 0, Gfx::kTitleShare);
+    }
+    if (!shown.cover && das_cover_ && !das_cover_for_.empty() && in.song.starts_with(das_cover_for_))  // the other screens' songs end "#2"…
+        d.set_cover(das_cover_->px.data(), das_cover_->w, das_cover_->h), shown.cover = true;
+    if (!words || !vis_.opt.das_lyrics || !das_lyrics_ || das_lyrics_for_ != in.song) return;
+    // A new line: drawn the same way, in place of the card. Between lines the last one dissolves by itself.
+    const int line = das_lyrics_->at(in.song_time);
+    if (line < 0 || line == shown.lyric) return;
+    shown.lyric = line;
+    const auto& l = das_lyrics_->lines[size_t(line)];
+    int letters = 0;
+    if (g_.draw_title_card(d.title_target(1536, 192), wide(l.text), L"", &letters)) d.show_lyric(letters, l.start, l.end);
+}
+
+namespace {
+
+std::string file_text(const std::filesystem::path& p) {
+    std::ifstream f(p, std::ios::binary);
+    return f ? std::string(std::istreambuf_iterator<char>(f), {}) : std::string();
+}
+
+}  // namespace
+
+// The song's lyrics, off the UI thread: a .lrc next to it, else the cache, else LRCLIB (only with lyrics turned on:
+// the title, artist, album and length are sent, nothing else). "None" is cached too, so a song is asked about once.
+void View::das_request_lyrics(const player::Item& item, const std::optional<TrackRow>& row) {
+    das_lyrics_for_ = song_key(item);
+    das_lyrics_.reset();
+    if (player::is_url(item.location) || item.location.empty()) return;  // radio: none
+    std::string album;
+    double secs = 0;
+    if (row) {
+        album = row->track.album.value_or("");
+        secs = double(row->track.duration_ms.value_or(0)) / 1000;
+    }
+    const auto cache = paths::cache() / L"dasvis" / L"lyrics" / widen(std::format("{:016x}.lrc", std::hash<std::string>{}(das_lyrics_for_)));
+    auto result = std::make_shared<dasvis::Lyrics>();
+    jobs_.run(
+        [file = std::filesystem::path(widen(item.location)), title = item.title, artist = item.artist, album, secs, cache, result] {
+            std::error_code ec;
+            std::string lrc = file_text(std::filesystem::path(file).replace_extension(L".lrc"));
+            if (lrc.empty() && std::filesystem::exists(cache, ec)) lrc = file_text(cache);
+            else if (lrc.empty() && !title.empty() && !artist.empty()) {
+                std::string q = "track_name=" + http::url_encode(title) + "&artist_name=" + http::url_encode(artist);
+                const bool exact = !album.empty() && secs > 0;  // /api/get matches the length too; /api/search otherwise
+                if (exact) q += "&album_name=" + http::url_encode(album) + std::format("&duration={:.0f}", secs);
+                const auto r = http::get(std::string("https://lrclib.net/api/") + (exact ? "get?" : "search?") + q,
+                                         {{"User-Agent", "WreckBox " WB_VERSION " (DasVis lyrics)"}}, std::chrono::seconds(10));
+                if (r.status == 200 || r.status == 404) {  // an answer (not a network failure): kept, even if it's "none"
+                    lrc = r.status == 200 ? dasvis::lrclib_synced(r.body) : std::string();
+                    std::filesystem::create_directories(cache.parent_path(), ec);
+                    std::ofstream(cache, std::ios::binary) << lrc;
+                }
+            }
+            *result = dasvis::parse_lrc(lrc);
+        },
+        [this, key = das_lyrics_for_, result] {
+            if (das_lyrics_for_ == key && !result->lines.empty()) das_lyrics_ = result;
+        });
+}
+
 bool View::das_screen() {
-    using dasvis::Tier;
     const auto now = clock_t_::now();
     const bool playing = player_.playing();
     if (playing) audio_at_ = now;
@@ -474,19 +614,8 @@ bool View::das_screen() {
     auto& o = vis_.opt;
     const std::string gpu = g_.device_name();
     if (!das_) {
-        dasvis::Config cfg;
-        const std::string known = o.das_tiers.value(gpu, std::string());
-        cfg.start = o.das_quality ? Tier(o.das_quality - 1) : known == "low" ? Tier::low : known == "high" ? Tier::high : Tier::medium;
-        cfg.auto_tier = o.das_quality == 0;
-        cfg.max_tier = o.das_battery && on_battery() ? Tier::medium : Tier::high;
-        cfg.reduce_flash = o.das_reduce_flash;
-        cfg.auto_advance = o.auto_advance;
-        cfg.user_dir = das_scenes_dir();
-        if (const auto c = o.das_costs.find(gpu); c != o.das_costs.end() && c->is_object())
-            for (const auto& [k, ms] : c->items())
-                if (ms.is_number()) cfg.costs[k] = ms.get<float>();
         das_gpu_ = gpu;
-        das_ = std::make_unique<dasvis::DasVis>(g_.d3d(), cfg);
+        das_ = std::make_unique<dasvis::DasVis>(g_.d3d(), das_config(false));
         das_gen_ = g_.generation();
         das_feat_ = {};
         das_tier_saved_ = false;
@@ -496,96 +625,146 @@ bool View::das_screen() {
         perf_log(das_->ok() ? std::format("DasVis started on {}: {} scenes, {} tier{}", gpu, das_->scene_count(), dasvis::tier_name(das_->tier()),
                                           das_->user_errors().empty() ? "" : "; your scenes have errors")
                             : "DasVis unavailable: " + das_->error());
+        if (das_->ok()) das_open_screens();
     }
     if (!das_->ok()) return false;
 
     const auto back = g_.back_buffer();
     if (!back) return false;
     g_.flush();  // anything Direct2D queued goes under the picture, not over it
-    if (!live) das_->redraw(back.Get());  // paused and settled: the same picture, nothing moves on
-    else {
-        player::AudioOutput* out = player_.output();
-        static_assert(player::Visualizer::kFft == dasvis::Features::kFft);
-        if (playing && out) out->tap_until(heard_end(*out, 1), tap_.data(), tap_.size());  // on screen at the next refresh
-        else std::fill(tap_.begin(), tap_.end(), 0.f);
-        const player::Item* cur = player_.current();
-        const auto row = cur && cur->track_id ? store_.row(*cur->track_id) : std::nullopt;
-        const double bpm = row && row->bpm() ? *row->bpm() : 0;
-        das_feat_.update(tap_.data(), frame_dt_, bpm);
-        if (cur && song_key(*cur) != das_map_for_) das_request_map(*cur, bpm);
-        // Where the song is when this frame appears (a refresh from now), less the calibration (+ = pictures later).
-        das_song_t_ = double(player_.time_ms()) / 1000 + frame_dt_ - (vis_.opt.sync_ms + (bt_output_ ? 180 : 0)) / 1000.0;
-        dasvis::Inputs in;
-        in.f = &das_feat_;
-        in.dt = frame_dt_;
-        in.song = cur ? (cur->track_id ? *cur->track_id : cur->location) : std::string();
-        if (row && !row->camelot().empty()) in.camelot = row->camelot();
-        in.intensity = o.das_intensity;
-        in.budget_ms = 0.75f * 1000.f * float(frame_interval()) / das_hz_;
-        in.map = das_map_.get();
-        in.song_time = das_song_t_;
-        // Your likes and skips for this genre; glitch transitions for the genres that suit them.
-        std::string genre = row ? row->genre : std::string();
-        std::transform(genre.begin(), genre.end(), genre.begin(), [](char c) { return char(std::tolower(static_cast<unsigned char>(c))); });
-        if (genre != das_genre_) {
-            das_genre_ = genre;
-            das_taste_.clear();
-            if (const auto g = o.das_taste.find(genre.empty() ? "any" : genre); g != o.das_taste.end() && g->is_object())
-                for (const auto& [scene, w] : g->items())
-                    if (w.is_number()) das_taste_[scene] = w.get<float>();
-        }
-        in.taste = &das_taste_;
-        in.glitchy = genre.find("dubstep") != std::string::npos || genre.find("drum") != std::string::npos || genre.find("dnb") != std::string::npos;
-        // The panel's line (only worked out while the panel or the dev view shows it).
-        if (overlay_alpha() <= 0 && !das_dev_) {
-        } else if (das_map_) {
-            const auto st = das_map_->at(das_song_t_ + das_->map_offset());
-            if (st.to_drop < 16 && (st.section == dasvis::Section::build || st.gap))
-                das_status_ = st.to_drop < 1 ? L"Build-up · the drop is next" : std::format(L"Build-up · drop in {} bars", int(std::ceil(st.to_drop)));
-            else das_status_ = wide(dasvis::section_name(st.section));
-        } else das_status_ = das_map_busy_ ? L"Analysing the song…" : L"Live";
-        // The cover: decoded off the UI thread at 512 px, handed over when it's ready (if the song is still on).
-        if (in.song != das_cover_for_) {
-            das_cover_for_ = in.song;
-            das_->set_cover(nullptr, 0, 0);
-            // The title card: drawn once by Direct2D into DasVis's texture, on the GPU.
-            int letters = 0;
-            const bool card = cur && !cur->title.empty() &&
-                              g_.draw_title_card(das_->title_target(768, 192), wide(cur->title), wide(cur->artist), &letters);
-            das_->show_title(card ? letters : 0, Gfx::kTitleShare);
-            if (row) {
-                auto pixels = std::make_shared<std::vector<uint8_t>>();
-                auto size = std::make_shared<std::pair<UINT, UINT>>();
-                jobs_.run(
-                    [this, t = row->track, pixels, size] {
-                        const auto file = store_.ensure_artwork(t);
-                        const auto bmp = file ? decode_image(*file, 512) : nullptr;
-                        if (!bmp || FAILED(bmp->GetSize(&size->first, &size->second))) return;
-                        pixels->resize(size_t(size->first) * size->second * 4);
-                        bmp->CopyPixels(nullptr, size->first * 4, UINT(pixels->size()), pixels->data());
-                    },
-                    [this, song = in.song, pixels, size] {
-                        if (das_ && das_cover_for_ == song && !pixels->empty()) das_->set_cover(pixels->data(), int(size->first), int(size->second));
-                    });
-            }
-        }
-        vj_apply();
-        das_->render(in, back.Get());
-        if (spout_) spout_->send(g_.d3d(), back.Get());  // before the player panel is drawn over it
-        das_lights();
-        // Remember the measured tier for this graphics card, so the next visit starts there.
-        if (!das_tier_saved_ && o.das_quality == 0 && das_->tier_settled()) {
-            das_tier_saved_ = true;
-            std::string t = dasvis::tier_name(das_->tier());
-            std::transform(t.begin(), t.end(), t.begin(), [](char c) { return char(std::tolower(c)); });
-            if (o.das_tiers.value(gpu, std::string()) != t) o.das_tiers[gpu] = t, save_vis();
-        }
-        if (++das_frames_ % 300 == 0)
-            perf_log(std::format("DasVis: {}, {} tier at {:.0f} %, GPU {:.2f} ms a frame (budget {:.1f}), every {} refresh(es) of {:.0f} Hz, flash budget {:.2f}",
-                                 das_->scene_name(), dasvis::tier_name(das_->tier()), das_->scale() * 100, das_->gpu_ms(), in.budget_ms,
-                                 frame_interval(), das_hz_, das_->flash_budget()));
+    if (!live) {  // paused and settled: the same pictures, nothing moves on
+        das_->redraw(back.Get());
+        for (auto& s : screens_)
+            if (s->ok()) s->vis().redraw(s->back().Get()), s->present();
+        return true;
     }
+    // The other screens share the frame's time (each its own scene).
+    const dasvis::Inputs in = das_inputs(0.75f * 1000.f * float(frame_interval()) / das_hz_ / float(1 + screens_.size()));
+    // The panel's line (only worked out while the panel or the dev view shows it).
+    if (overlay_alpha() <= 0 && !das_dev_) {
+    } else if (das_map_) {
+        const auto st = das_map_->at(das_song_t_ + das_->map_offset());
+        if (st.to_drop < 16 && (st.section == dasvis::Section::build || st.gap))
+            das_status_ = st.to_drop < 1 ? L"Build-up · the drop is next" : std::format(L"Build-up · drop in {} bars", int(std::ceil(st.to_drop)));
+        else das_status_ = wide(dasvis::section_name(st.section));
+    } else das_status_ = das_map_busy_ ? L"Analysing the song…" : L"Live";
+    das_dress(*das_, das_shown_, in, true);
+    vj_apply();
+    das_->render(in, back.Get());
+    if (spout_) spout_->send(g_.d3d(), back.Get());  // before the player panel is drawn over it
+    das_lights();
+    for (size_t i = 0; i < screens_.size(); ++i) {
+        DasWindow& s = *screens_[i];
+        if (!s.ok()) continue;
+        dasvis::Inputs other = in;
+        other.song += std::format("#{}", i + 2);  // its own look and scenes for the same song (the same cover, the same drops)
+        das_dress(s.vis(), s.shown, other, false);
+        s.vis().render(other, s.back().Get());
+        s.present();
+    }
+    // Remember the measured tier for this graphics card, so the next visit starts there.
+    if (!das_tier_saved_ && o.das_quality == 0 && das_->tier_settled()) {
+        das_tier_saved_ = true;
+        std::string t = dasvis::tier_name(das_->tier());
+        std::transform(t.begin(), t.end(), t.begin(), [](char c) { return char(std::tolower(c)); });
+        if (o.das_tiers.value(gpu, std::string()) != t) o.das_tiers[gpu] = t, save_vis();
+    }
+    if (++das_frames_ % 300 == 0)
+        perf_log(std::format("DasVis: {}, {} tier at {:.0f} %, GPU {:.2f} ms a frame (budget {:.1f}), every {} refresh(es) of {:.0f} Hz, flash budget {:.2f}{}",
+                             das_->scene_name(), dasvis::tier_name(das_->tier()), das_->scale() * 100, das_->gpu_ms(), in.budget_ms,
+                             frame_interval(), das_hz_, das_->flash_budget(), screens_.empty() ? "" : std::format(", {} other screen(s)", screens_.size())));
     return true;
+}
+
+// The DasVis settings for this graphics card: the measured (or chosen) tier, what each scene cost here before. The
+// wallpaper's: Low, always (it runs while you work).
+dasvis::Config View::das_config(bool wallpaper) const {
+    const auto& o = vis_.opt;
+    const std::string gpu = g_.device_name();
+    dasvis::Config cfg;
+    const std::string known = o.das_tiers.value(gpu, std::string());
+    cfg.start = o.das_quality ? dasvis::Tier(o.das_quality - 1) : known == "low" ? dasvis::Tier::low : known == "high" ? dasvis::Tier::high : dasvis::Tier::medium;
+    cfg.auto_tier = o.das_quality == 0;
+    cfg.max_tier = o.das_battery && on_battery() ? dasvis::Tier::medium : dasvis::Tier::high;
+    if (wallpaper) cfg.start = cfg.max_tier = dasvis::Tier::low, cfg.auto_tier = false;
+    cfg.reduce_flash = o.das_reduce_flash;
+    cfg.auto_advance = o.auto_advance;
+    cfg.user_dir = das_scenes_dir();
+    if (const auto c = o.das_costs.find(gpu); c != o.das_costs.end() && c->is_object())
+        for (const auto& [k, ms] : c->items())
+            if (ms.is_number()) cfg.costs[k] = ms.get<float>();
+    return cfg;
+}
+
+// MARK: Other screens and the wallpaper
+
+void View::das_open_screens() {
+    screens_.clear();
+    if (vis_.opt.das_screens != 2 || GetSystemMetrics(SM_CMONITORS) < 2) return;
+    struct Find {
+        HMONITOR mine;
+        std::vector<RECT> others;
+    } find{MonitorFromWindow(hwnd_, MONITOR_DEFAULTTONEAREST), {}};
+    EnumDisplayMonitors(
+        nullptr, nullptr,
+        [](HMONITOR m, HDC, LPRECT r, LPARAM lp) -> BOOL {
+            auto* f = reinterpret_cast<Find*>(lp);
+            if (m != f->mine) f->others.push_back(*r);
+            return TRUE;
+        },
+        LPARAM(&find));
+    for (const RECT& r : find.others) {
+        auto s = std::make_unique<DasWindow>(g_.d3d(), nullptr, r, das_config(false));
+        if (s->ok()) screens_.push_back(std::move(s));
+    }
+    perf_log(std::format("DasVis: {} other screen(s) of {}", screens_.size(), find.others.size()));
+}
+
+void View::wall_restart() {
+    wall_.reset();
+    if (vis_.opt.das_wallpaper && !fullscreen_) SetTimer(hwnd_, kWallTimer, 100, nullptr);
+}
+
+void View::wall_tick() {
+    if (!vis_.opt.das_wallpaper || fullscreen_) return wall_.reset();  // off, or full screen has the visualizer (it starts again after)
+    const auto now = clock_t_::now();
+    const bool playing = player_.playing();
+    if (playing) audio_at_ = now;
+    // Paused: on battery, or with a full-screen app or game (or a maximised window) in front. The picture stays, no frames.
+    const bool paused = on_battery() || desktop_hidden();
+    if (paused != wall_paused_) wall_paused_ = paused, perf_log(paused ? "wallpaper: paused (on battery, or the desktop is covered)" : "wallpaper: running");
+    const bool live = playing || now - audio_at_ < std::chrono::seconds(4);
+    if (wall_ && (wall_->generation != g_.generation() || !wall_->ok())) wall_.reset();  // the device was rebuilt, or the desktop restarted
+    if (wall_) {  // the desktop changed size (a screen added, the resolution)
+        RECT r{};
+        if (GetClientRect(GetParent(wall_->hwnd()), &r) && (r.right != wall_->size().cx || r.bottom != wall_->size().cy)) wall_.reset();
+    }
+    if (!wall_ && g_.d3d() && !paused) {
+        const HWND worker = desktop_worker();
+        if (!worker) return perf_log("wallpaper: no desktop window to draw into"), void(SetTimer(hwnd_, kWallTimer, 5000, nullptr));
+        wall_ = std::make_unique<DasWindow>(g_.d3d(), worker, RECT{}, das_config(true));
+        wall_->generation = g_.generation();
+        wall_frames_ = 0, wall_at_ = {};
+        bt_output_ = player::default_output_is_bluetooth();
+        perf_log(wall_->ok() ? std::format("wallpaper: {} x {}, {} tier", wall_->size().cx, wall_->size().cy, dasvis::tier_name(wall_->vis().tier()))
+                             : "wallpaper: couldn't start");
+        if (!wall_->ok()) return wall_.reset(), void(SetTimer(hwnd_, kWallTimer, 5000, nullptr));
+    }
+    if (!wall_ || paused || !live) return void(SetTimer(hwnd_, kWallTimer, paused ? 1000 : 250, nullptr));
+    // 30 frames a second at most: the timer comes back in ~31 ms (the clock's 15.6 ms steps), or 33 with a finer clock.
+    SetTimer(hwnd_, kWallTimer, 30, nullptr);
+    const float dt = wall_at_ == clock_t_::time_point{} ? 1 / 30.f : std::chrono::duration<float>(now - wall_at_).count();
+    wall_at_ = now;
+    frame_dt_ = std::clamp(dt, 1 / 60.f, 0.25f);
+    const auto back = wall_->back();
+    if (!back) return;
+    const dasvis::Inputs in = das_inputs(4);  // a few ms of the GPU a frame: it runs while you work
+    das_dress(wall_->vis(), wall_->shown, in, true);
+    wall_->vis().render(in, back.Get());
+    wall_->present();
+    if (++wall_frames_ % 300 == 0)
+        perf_log(std::format("wallpaper: {}, {:.0f} %, GPU {:.2f} ms a frame, {:.1f} fps", wall_->vis().scene_name(), wall_->vis().scale() * 100,
+                             wall_->vis().gpu_ms(), 1 / frame_dt_));
 }
 
 // MARK: Video export
@@ -1167,7 +1346,7 @@ void View::vis_use(VisOptions::Mode m) {
 
 void View::vis_menu() {
     auto& o = vis_.opt;
-    enum : UINT { kMode = 100, kBars = 200, kScope = 300, kBarFall = 400, kPeakFall = 500, kPeaks = 600, kLook = 700, kExit = 800, kQuality = 900, kAdvance = 1000, kLock = 1100, kFolder = 1200, kPulse = 1300, kCuts = 1400, kPresets = 1500, kSense = 1600, kSync = 1700, kDasIntensity = 1800, kDasQuality = 1900, kDas = 2000 };
+    enum : UINT { kMode = 100, kBars = 200, kScope = 300, kBarFall = 400, kPeakFall = 500, kPeaks = 600, kLook = 700, kExit = 800, kQuality = 900, kAdvance = 1000, kLock = 1100, kFolder = 1200, kPulse = 1300, kCuts = 1400, kPresets = 1500, kSense = 1600, kSync = 1700, kDasIntensity = 1800, kDasQuality = 1900, kDas = 2000, kDasScreens = 2100 };
     auto radio = [](HMENU m, UINT id, const wchar_t* label, bool on) { AppendMenuW(m, MF_STRING | (on ? MF_CHECKED : 0), id, label); };
     HMENU m = CreatePopupMenu();
     const wchar_t* modes[] = {L"Spectrum analyser", L"Oscilloscope", L"Both", L"Off"};
@@ -1195,6 +1374,14 @@ void View::vis_menu() {
     AppendMenuW(das, MF_STRING | (das_ && das_->ok() ? 0 : MF_GRAYED), kDas + 7, L"Skip this scene\tX");
     radio(das, kDas + 8, L"Phone VJ deck…", vj_card_);
     radio(das, kDas + 9, L"Spout output (OBS, Resolume…)", spout_ != nullptr);
+    radio(das, kDas + 10, L"Live wallpaper (behind the desktop icons)", o.das_wallpaper);
+    radio(das, kDas + 11, L"Lyrics (looked up on LRCLIB.net)", o.das_lyrics);
+    if (GetSystemMetrics(SM_CMONITORS) > 1) {
+        HMENU screens = CreatePopupMenu();
+        const wchar_t* ways[] = {L"This screen", L"All screens, as one picture", L"Each screen its own scene"};
+        for (int i = 0; i < 3; ++i) radio(screens, kDasScreens + i, ways[i], o.das_screens == i);
+        AppendMenuW(das, MF_POPUP, UINT_PTR(screens), L"Screens");
+    }
     AppendMenuW(das, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(das, MF_STRING, kDas + 3, L"Open my scenes folder…");
     AppendMenuW(das, MF_STRING | (das_ && das_->ok() ? 0 : MF_GRAYED), kDas + 4, L"Reload my scenes\tF5");
@@ -1288,6 +1475,13 @@ void View::vis_menu() {
                 if (spout_) spout_.reset();
                 else spout_ = std::make_unique<dasvis::SpoutSender>(), show_toast(L"Sharing as Spout sender \"WreckBox DasVis\"");
                 return;
+            } else if (i == 10) {
+                o.das_wallpaper = !o.das_wallpaper;  // starts when full screen closes
+                show_toast(o.das_wallpaper ? L"Live wallpaper: on when you leave full screen" : L"Live wallpaper: off");
+            } else if (i == 11) {
+                o.das_lyrics = !o.das_lyrics;
+                das_lyrics_for_.clear(), das_lyrics_.reset();  // looked up now, or let go
+                show_toast(o.das_lyrics ? L"Lyrics: on (a .lrc next to the song, else LRCLIB.net)" : L"Lyrics: off");
             } else if (i == 8) {  // the deck's page is on the phone-sync server: start it if it isn't running
                 if (!vj_card_ && sync_ && !sync_->running() && !sync_->start()) return show_toast(L"Couldn't start the phone server (port in use?)");
                 vj_card_ = !vj_card_;
@@ -1312,6 +1506,11 @@ void View::vis_menu() {
                 milk_restart();  // a different set of folders: build the playlist again (about a second)
             }
             break;
+        case kDasScreens:
+            o.das_screens = i;
+            save_vis();
+            set_fullscreen(false), set_fullscreen(true);  // the window spans the screens, or the others get theirs
+            return;
         case kSync:
             o.sync_ms = i == 2 ? 0 : std::clamp(o.sync_ms + (i ? 25 : -25), -300, 300);
             milk_heard_ = -1;

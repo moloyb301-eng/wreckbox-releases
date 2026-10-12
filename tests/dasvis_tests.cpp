@@ -27,6 +27,7 @@
 #include "dasvis/control.h"
 #include "dasvis/dasvis.h"
 #include "dasvis/director.h"
+#include "dasvis/lyrics.h"
 #include "dasvis/features.h"
 #include "dasvis/palette.h"
 #include "dasvis/songmap.h"
@@ -757,6 +758,30 @@ void director_timing() {
     std::printf("  director in the renderer: %s\n", got.c_str());
 }
 
+// Lyrics: LRC lines in order, repeated stamps, the offset tag, word stamps and tags dropped, a gap ending a line, and
+// LRCLIB's answer read (all offline: the tests never ask LRCLIB).
+void lyrics() {
+    const Lyrics l = parse_lrc("[ar:Someone]\r\n[ti:A Song]\n[offset:+500]\n[00:10.50]First <00:11.00>line\n"
+                               "[00:14.00][01:00.25]Chorus\n[00:20.00]\n[00:30.00]  After the gap  \nnot a lyric\n[1:5:00]Odd\n");
+    CHECK(l.lines.size() == 5, "lines: %zu", l.lines.size());
+    if (l.lines.size() == 5) {
+        CHECK(std::fabs(l.lines[0].start - 10.0) < 1e-6 && l.lines[0].text == "First line", "%.2f %s", l.lines[0].start, l.lines[0].text.c_str());
+        CHECK(std::fabs(l.lines[0].end - 13.5) < 1e-6, "ends at the next line: %.2f", l.lines[0].end);
+        CHECK(l.lines[1].text == "Chorus" && std::fabs(l.lines[1].end - 19.5) < 1e-6, "the gap ends it: %.2f", l.lines[1].end);
+        CHECK(l.lines[2].text == "After the gap" && std::fabs(l.lines[2].end - 37.5) < 1e-6, "8 s at most: %.2f", l.lines[2].end);
+        CHECK(std::fabs(l.lines[3].start - 59.75) < 1e-6 && l.lines[3].text == "Chorus", "repeated: %.2f", l.lines[3].start);
+        CHECK(std::fabs(l.lines[4].start - 64.5) < 1e-6 && l.lines[4].text == "Odd", "mm:ss:xx: %.2f", l.lines[4].start);
+    }
+    CHECK(l.at(5) == -1 && l.at(10) == 0 && l.at(13.49) == 0 && l.at(14) == 1 && l.at(19.6) == -1 && l.at(40) == -1 && l.at(60) == 3,
+          "at: %d %d %d %d %d %d %d", l.at(5), l.at(10), l.at(13.49), l.at(14), l.at(19.6), l.at(40), l.at(60));
+    CHECK(parse_lrc("").lines.empty() && parse_lrc("just words\nno stamps").lines.empty(), "no lyrics");
+    CHECK(lrclib_synced(R"({"id":1,"plainLyrics":"a","syncedLyrics":"[00:01.00]a"})") == "[00:01.00]a", "LRCLIB synced");
+    CHECK(lrclib_synced(R"([{"id":1,"syncedLyrics":null},{"id":2,"syncedLyrics":"[00:02.00]b"}])") == "[00:02.00]b", "LRCLIB search");
+    CHECK(lrclib_synced(R"({"id":1,"plainLyrics":"a","syncedLyrics":null})").empty() && lrclib_synced("not json").empty() &&
+              lrclib_synced(R"({"code":404,"name":"TrackNotFound"})").empty() && lrclib_synced("[]").empty(),
+          "LRCLIB without synced lyrics");
+}
+
 // The cover shatter on a drop (insane: every event): the cover's shards are on screen after the drop. Two runs with grey
 // covers (no palette from them, so everything else is the same), dark and light: only the shards can differ.
 void cover_shatter() {
@@ -1016,6 +1041,7 @@ int main(int argc, char** argv) {
     director();
     lights();
     director_timing();
+    lyrics();
     cover_shatter();
     video();
     spout();

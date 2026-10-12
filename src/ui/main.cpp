@@ -301,6 +301,7 @@ struct App {
             case WM_CTLCOLOREDIT: return reinterpret_cast<LRESULT>(view->edit_colors(reinterpret_cast<HDC>(wp), reinterpret_cast<HWND>(lp)));
             case WM_TIMER:
                 ++why_timer;
+                if (wp == kWallTimer) return view->wall_tick(), 0;  // the wallpaper: the app's window doesn't repaint
                 if (wp != kPlayerTimer) KillTimer(hwnd, wp);  // one-shots; the player's tick repeats
                 if (wp == kTrimTimer) return trim_memory(), 0;
                 if (wp == kOccludedTimer && !gfx.visible_again()) return SetTimer(hwnd, kOccludedTimer, 250, nullptr), 0;
@@ -338,6 +339,7 @@ struct App {
                 DestroyWindow(hwnd);
                 return 0;
             case WM_DESTROY:
+                view->wall_stop();
                 player->stop();
                 media.shutdown();
                 tunnel.stop();

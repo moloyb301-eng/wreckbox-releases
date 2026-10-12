@@ -222,6 +222,12 @@ the screen. The bar fades when the mouse is still. Its ⌄ button, or **H**, hid
   pulsing with the kick and the bass, lit up on drops.
 - **Phone VJ deck:** right-click → DasVis → *Phone VJ deck…* shows a QR code; scan it with a phone on the same Wi-Fi to
   steer the camera, call a drop, fire a shockwave, pick scenes and set the intensity from the phone.
+- **Live wallpaper:** DasVis behind your desktop icons while music plays (Settings → *DasVis wallpaper and lyrics*). Low
+  quality and 30 fps at most; it pauses on battery and while something covers the desktop.
+- **Lyrics:** the words being sung, in time, over DasVis: from a `.lrc` file next to the song, else LRCLIB.net (it's
+  sent the song's title, artist, album and length). Off until you turn it on.
+- **More than one screen:** right-click → DasVis → *Screens*: one picture across all of them, or each its own scene.
+- **Spout:** right-click → DasVis → *Spout output* shares the picture with OBS, Resolume and other Spout programs.
 - **It knows the song.** The first time a song plays in DasVis, it's analysed in the background: a few seconds, about
   6 MB of memory. DasVis then knows the beats, the bars, the parts (intro, build-up, drop, breakdown …) and when each
   drop lands. Build-ups drain the colour and close in, the bar before a drop goes quiet, and the drop hits. The player

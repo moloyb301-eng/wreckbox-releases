@@ -864,8 +864,8 @@ drop (Intro → Verse → Chorus); without a known tempo it finds one. Worth a l
 - **High tier stops at 90 % render scale** (the final pass sharpens the upscale): ~3 MB less than full size, which was
   over its +30 MB budget.
 
-### Phase 7: over the top (in progress)
-**Built so far:**
+### Phase 7: over the top ✅ 2026-10-12
+**Built:**
 - **Phone VJ deck** ✅ 2026-10-12:
   - A page on the phone-sync server (`src/net/vj_page.h`, plain HTML): `GET /vj?t=<token>`, commands by
     `POST /vj/cmd`, both behind the pairing token like every other route. *Phone VJ deck…* in DasVis's right-click
@@ -919,6 +919,39 @@ drop (Intro → Verse → Chorus); without a known tempo it finds one. Worth a l
   DasVis → *Spout output*, for the full-screen visit; the picture is shared before the player panel is drawn.
   **Tested** with a stand-in receiver (finds the sender, opens the texture on another device, sees the frame; the name
   leaves the list after). Not yet tried with OBS or Resolume.
+- **Live wallpaper** ✅ 2026-10-12 (`ui/das_window.*`, `View::wall_tick`):
+  - A child window of the desktop's WorkerW (Progman is asked for it with message 0x052C, as live-wallpaper programs
+    do), with its own swap chain and its own DasVis on the app's device, at Low (fixed), drawn on a timer: 30 frames a
+    second at most, a 4 ms GPU budget. The buffer is 3/4 of the desktop's size, stretched by the compositor: half the
+    GPU time, no softer to look at.
+  - It holds its picture (no frames) on battery, while a game, a full-screen app, a presentation (Windows' own
+    notification state) or, on one screen, a maximised window covers the desktop, and 4 s after the music stops. Full
+    screen takes over (the wallpaper goes, the device is rebuilt) and it starts again after.
+  - The desktop doesn't repaint over the last frame by itself: when the wallpaper stops, the desktop's wallpaper is set
+    again, the same file, for the session only (nothing saved, nothing announced). After a crash the last frame stays
+    until the wallpaper next changes.
+  - Settings → *DasVis wallpaper and lyrics*, or right-click → DasVis → *Live wallpaper*. Off by default.
+  - **Measured** (Intel UHD, 1920 × 1080): 3.4 ms of GPU a frame at ~31 fps, 0.4 % of the CPU (8 threads), +15 MB.
+  - **Checked** in the app (muted): it draws behind the icons; F11 hands over to full screen and Esc brings it back;
+    closing the app gives the desktop its own wallpaper back. `WRECKBOX_RENDER_HIDDEN=1` lets it draw behind a
+    maximised window (for testing).
+  - Not checked: Windows 11 24H2 (the WorkerW moved inside Progman; the code looks there too).
+- **Multi-monitor** ✅ 2026-10-12: right-click → DasVis → *Screens* (shown with more than one screen):
+  - *All screens, as one picture*: full screen covers the whole virtual screen, one DasVis.
+  - *Each screen its own scene*: a borderless window on each other monitor (never takes the focus) with its own DasVis
+    and swap chain, drawn right after the main one in the same frame: the same song, cover and drops, its own seed (so
+    its own look and scenes); the frame's GPU budget is split between them.
+  - Not checked: this PC has one screen.
+- **Synced lyrics** ✅ 2026-10-12 (`dasvis/lyrics.*`): off by default (Settings, or right-click → DasVis → *Lyrics*).
+  - Found in order: a `.lrc` file next to the song, the cache (`_cache\dasvis\lyrics`), LRCLIB (`/api/get` with
+    the title, artist, album and length; `/api/search` without an album or length). A "none" answer is cached too, so a
+    song is asked about once; a network failure isn't.
+  - Kinetic type: each line is drawn like the title card (into the same texture, centred) and the final pass brings
+    its letters in one after another, lights them in the palette as they're sung, punches the line on the kick and
+    dissolves it into sparks as it ends.
+  - **Tested** offline (`dasvis_tests`): LRC lines, repeated stamps, the offset tag, word stamps, a gap ending a line,
+    LRCLIB's answers. The tests never ask LRCLIB. In the app: a `.lrc` next to a test song, on the wallpaper and in
+    full screen.
 
 - **Phone VJ deck:**
   - a page served by the existing `sync_server`, on the local network, protected by the pairing that already exists

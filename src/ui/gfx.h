@@ -123,7 +123,7 @@ public:
     // DasVis's title card: `title` over `artist` in the app's font, drawn once a song straight into `target` (a BGRA
     // render-target texture on this device) on the GPU, with no pixels on the CPU. Premultiplied: the text's coverage
     // in red, and in green its letter's number (counted across both lines) times the coverage, so the shader can bring
-    // the letters in one by one. The title takes kTitleShare of the height.
+    // the letters in one by one. The title takes kTitleShare of the height. Without an artist (a lyric line) it's centred.
     static constexpr float kTitleShare = 0.6f;
     bool draw_title_card(ID3D11Texture2D* target, const std::wstring& title, const std::wstring& artist, int* letters);
 

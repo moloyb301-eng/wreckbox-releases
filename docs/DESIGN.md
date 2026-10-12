@@ -209,7 +209,15 @@ libVLC (decode, resample to 48 kHz, equalizer, normvol)
     - The tier (Low / Medium / High) and render scale come from GPU timestamps.
     - HDR is R11G11B10, and there's no full-screen texture of DasVis's own.
     - The flash limiter reads back 16 × 16 bytes two frames late.
-    - It exists only while full screen is open in DasVis mode.
+    - It exists only while full screen is open in DasVis mode (and, at Low, while the live wallpaper runs).
+  - **Other windows** (`ui/das_window.*`): the live wallpaper (a child of the desktop's WorkerW) and, in full screen,
+    the other screens each have a swap chain of their own on the app's device and their own DasVis. The frame's inputs
+    (`View::das_inputs`: audio, song, map, taste) are worked out once and given to each; `View::das_dress` gives each
+    the cover (decoded once), the title card and the lyric line. The wallpaper runs on a timer (`kWallTimer`), only
+    while full screen is closed, and is made again when the device is.
+  - **Lyrics** (`dasvis/lyrics.*`): LRC parsed into lines; a line is drawn like the title card (`show_lyric`, the
+    same texture, `u_lyric` in the constant buffer) and animated in the final pass. Looked up off the UI thread
+    (`.lrc` next to the song, cache, LRCLIB), only when turned on.
   - **Its own GPU:** "Use the fast graphics card" (off by default) makes `Gfx` rebuild its device on the high-performance
     adapter while DasVis is on screen (`Gfx::set_fast_gpu`); NVIDIA's driver costs ~70 MB of RAM, which is why it's off.
   - **Frame pacing:** `Gfx::set_frame_interval` presents every n-th refresh: 60 fps on any screen, 30 on battery.

@@ -15,6 +15,13 @@ Day-to-day work goes on `main`; bigger features on a branch (`feature/<name>`), 
 
 ## Unreleased
 
+- **DasVis live wallpaper**: DasVis behind your desktop icons while music plays (Low quality, 30 fps at most, about
+  3 ms of GPU a frame on an Intel laptop). It pauses on battery and while a game, a full-screen app or a maximised
+  window covers the desktop. Settings → *DasVis wallpaper and lyrics*; off by default.
+- **Synced lyrics in DasVis**: the words being sung, in time, letter by letter over the picture. From a `.lrc` file
+  next to the song, else looked up on LRCLIB.net (it sends the title, artist, album and length). Off until you turn it on.
+- **DasVis on more than one screen**: right-click → DasVis → *Screens*: one picture across all of them, or a different
+  scene on each.
 - **Spout output** (right-click → DasVis): share the picture with OBS, Resolume and other Spout programs on this PC.
 - **Export DasVis videos**: right-click a song → *Export DasVis video* → 720p, 1080p, 1440p or 4K. An MP4 (H.264, AAC)
   of the song with DasVis, full quality and frame-exact on any PC; it works in the background, about as long as the

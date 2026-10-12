@@ -1,5 +1,6 @@
 // Shell, sidebar, headers, Home and the placeholder pages. Track lists and the inspector are in view_tracks.cpp.
 #include "ui/view.h"
+#include "model/settings.h"
 
 #include <commctrl.h>
 
@@ -53,6 +54,8 @@ View::View(HWND hwnd, LibraryStore& store, Jobs& jobs, Ui& ui, player::Player& p
     }
     dpi_changed();
     search_ = edit(kSearchBox, Rect{}, false, L"Search artist, title, album");
+    vis_.opt = player::VisOptions::from_json(Settings::current().extra.value("visualizer", json::object()));
+    wall_restart();  // the live wallpaper, if it's on
 }
 
 View::~View() {

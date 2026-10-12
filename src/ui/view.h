@@ -18,6 +18,7 @@
 #include <memory>
 
 #include "dasvis/dasvis.h"
+#include "dasvis/lyrics.h"
 #include "library/store.h"
 #include "net/bug_report.h"
 #include "net/wled.h"
@@ -26,6 +27,7 @@
 #include "player/milkdrop.h"
 #include "player/player.h"
 #include "player/visualizer.h"
+#include "ui/das_window.h"
 #include "ui/jobs.h"
 #include "ui/ui.h"
 
@@ -47,6 +49,7 @@ inline constexpr int kSlskQuery = 403;                  // Soulseek: custom sear
 inline constexpr UINT_PTR kRefreshTimer = 1, kPlayerTimer = 2, kTooltipTimer = 3;
 inline constexpr UINT_PTR kTrimTimer = 4;  // releases idle memory pages once full screen has been torn down
 inline constexpr UINT_PTR kOccludedTimer = 5;  // the visualizer's window isn't on screen: is it back yet?
+inline constexpr UINT_PTR kWallTimer = 6;      // the live wallpaper's next frame (or a look at whether it may run)
 
 // Hands the pages this process isn't using back to Windows (they return by themselves if needed). For moments when a lot
 // was just let go: minimized, or after the full-screen visualizer (the OpenGL driver's pages).
@@ -82,6 +85,11 @@ public:
     void attach_soulseek(soulseek::Sync& sl);
     void attach_phone(sync::Server& server, sync::Tunnel& tunnel);  // the phone-sync services (owned by the app)
     void play_paths(std::vector<std::string> paths);  // files, folders, playlists or URLs (Open, drop, command line)
+    // The live wallpaper (DasVis behind the desktop icons, Low tier, 30 fps at most): a frame, or a look at whether it may
+    // run (kWallTimer). wall_restart(): turned on or off, or full screen closed.
+    void wall_tick();
+    void wall_restart();
+    void wall_stop() { wall_.reset(); }  // the app is closing: the desktop gets its own wallpaper back
 
     void paint();
     void store_changed() { dirty_ = true; }  // data changed: recompute lists on the next paint
@@ -349,7 +357,28 @@ private:
     std::unique_ptr<dasvis::DasVis> das_;
     dasvis::Features das_feat_;
     int das_gen_ = -1;           // the Gfx generation it was made on
-    std::string das_cover_for_;  // the song whose cover it has, or is loading
+    DasShown das_shown_;         // what it has been given for the song (cover, title, lyric line)
+    // The song's cover, decoded once for every DasVis showing it (full screen, the other screens, the wallpaper).
+    struct DasCover {
+        std::vector<uint8_t> px;  // BGRA, 512 px at most
+        int w = 0, h = 0;
+    };
+    std::string das_cover_for_;  // the song it is (or is being decoded) for
+    std::shared_ptr<const DasCover> das_cover_;
+    // Lyrics (turned on in Settings or the menu): the song's, once found.
+    std::shared_ptr<const dasvis::Lyrics> das_lyrics_;
+    std::string das_lyrics_for_;  // the song they are (or are being looked up) for
+    void das_request_lyrics(const player::Item& item, const std::optional<TrackRow>& row);
+    // Full screen "each screen its own": a DasVis on each other monitor (das_window.h). The live wallpaper.
+    std::vector<std::unique_ptr<DasWindow>> screens_;
+    void das_open_screens();
+    std::unique_ptr<DasWindow> wall_;
+    std::chrono::steady_clock::time_point wall_at_{};  // its last frame
+    int wall_frames_ = 0;
+    bool wall_paused_ = false;
+    dasvis::Config das_config(bool wallpaper) const;
+    dasvis::Inputs das_inputs(float budget_ms);  // this frame's, for every DasVis
+    void das_dress(dasvis::DasVis& d, DasShown& shown, const dasvis::Inputs& in, bool words);
     float das_hz_ = 60;          // the display's refresh rate
     bool das_tier_saved_ = false;
     int das_frames_ = 0;         // WRECKBOX_PERF: logged every 300 frames

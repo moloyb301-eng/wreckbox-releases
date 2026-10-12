@@ -56,7 +56,7 @@ namespace {
 
 // Mirrors the cbuffer in dasvis.hlsli: float4s only, so the C++ and HLSL layouts can't drift apart.
 struct Uniforms {
-    float time[4], res[4], out[4], beat[4], drums[4], tone[4], look[4], post[4], key[4], pal[5][4], pass[4], song[4], drop[4], hits[4], sim[4], dir[4], drift[4], ext[4], title[4], deck[4];
+    float time[4], res[4], out[4], beat[4], drums[4], tone[4], look[4], post[4], key[4], pal[5][4], pass[4], song[4], drop[4], hits[4], sim[4], dir[4], drift[4], ext[4], title[4], deck[4], lyric[4];
 };
 static_assert(sizeof(Uniforms) % 16 == 0);
 
@@ -773,7 +773,7 @@ struct DasVis::Impl {
             if (k) since_drop = float((now_t - dr[k - 1]) / in.map->bar_seconds());
             events = Director::events(song_seed, k && (ms.drop > 0 || since_drop < 9) ? k - 1 : k, std::clamp(in.intensity, 0, 2));
         }
-        if (title.tex && in.song_time > 10.5) title = {}, u.title[3] = 0;  // the card has played: its texture goes
+        if (title.tex && u.lyric[2] == 0 && in.song_time > 10.5) title = {}, u.title[3] = 0;  // the card has played: its texture goes
         // A drop called from the phone: it lands now, for a bar (and the cover shatter plays out over 8).
         if (manual_drop >= 0) {
             manual_drop += dt;
@@ -860,7 +860,7 @@ struct DasVis::Impl {
     }
 
     ID3D11Texture2D* title_target(int w, int h) {
-        u.title[3] = 0;
+        u.title[3] = u.lyric[2] = 0;
         if (title.w != w || title.h != h) title = make(w, h, DXGI_FORMAT_B8G8R8A8_UNORM);
         return title.tex.Get();
     }
@@ -869,6 +869,12 @@ struct DasVis::Impl {
         if (!letters || !title.tex) title = {};  // nothing to show: the texture goes
         u.title[0] = title.h ? float(title.w) / float(title.h) : 1, u.title[1] = float(letters), u.title[2] = share;
         u.title[3] = title.tex ? 1.f : 0.f;
+    }
+
+    void show_lyric(int letters, double start, double end) {
+        if (!letters || !title.tex) return void(title = {});
+        u.title[0] = float(title.w) / float(title.h), u.title[1] = float(letters), u.title[2] = 1;
+        u.lyric[0] = float(start), u.lyric[1] = float(end), u.lyric[2] = 1;
     }
 
     void set_cover(const uint8_t* bgra, int w, int h) {
@@ -949,6 +955,9 @@ void DasVis::set_camera(float turn, float zoom) {
 }
 bool DasVis::particles() const { return p_->cue.mid == Mid::particles; }
 ID3D11Texture2D* DasVis::title_target(int w, int h) { return ok() ? p_->title_target(w, h) : nullptr; }
+void DasVis::show_lyric(int letters, double start, double end) {
+    if (ok()) p_->show_lyric(letters, start, end);
+}
 void DasVis::show_title(int letters, float title_share) {
     if (ok()) p_->show_title(letters, title_share);
 }

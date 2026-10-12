@@ -101,6 +101,9 @@ public:
     // how many letters and the title line's share of the height. show_title(0, …): none (radio, or no title).
     ID3D11Texture2D* title_target(int w, int h);
     void show_title(int letters, float title_share);
+    // A lyric line in kinetic type, in place of the title card: drawn into title_target() the same way (the line alone),
+    // sung from `start` to `end` (song seconds). show_lyric(0, …): none.
+    void show_lyric(int letters, double start, double end);
 
     // N / P: the next or previous scene (any: your choice). skip(): the director picks another that fits, now (X).
     void next();

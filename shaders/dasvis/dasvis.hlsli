@@ -37,6 +37,7 @@ cbuffer DasVis : register(b0) {
                      // song, bars since the last drop (99: none yet)
     float4 u_title;  // the title card: its texture's width / height, letters, the title line's share of its height, on
     float4 u_deck;   // the phone deck: camera turn and zoom (−1…1, 0 at rest), a shockwave (1→0 over 0.6 s), spare
+    float4 u_lyric;  // a lyric line (in the title card's texture): its start and end (song seconds), on, spare
 };
 
 #define TIME u_time.x

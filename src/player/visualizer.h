@@ -43,6 +43,9 @@ struct VisOptions {
     bool das_lights = false;
     std::string das_wled;        // its address: "192.168.1.50" or "wled.local"
     int das_wled_leds = 60;      // LEDs on the strip (1–490)
+    bool das_wallpaper = false;  // the live wallpaper: DasVis behind the desktop icons while music plays
+    int das_screens = 0;         // with more than one screen, full screen is on: 0 this one, 1 all (spanned), 2 each its own scene
+    bool das_lyrics = false;     // synced lyrics in kinetic type: a .lrc next to the song, else LRCLIB (asks a website: off until turned on)
 
     json to_json() const;
     static VisOptions from_json(const json& j);

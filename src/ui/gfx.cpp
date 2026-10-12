@@ -473,7 +473,8 @@ bool Gfx::draw_title_card(ID3D11Texture2D* target, const std::wstring& title, co
             }
             at += c.length;
         }
-        dc->DrawTextLayout(D2D1::Point2F(8, ln.top), lay.Get(), brushes.empty() ? nullptr : brushes.front().Get());
+        const float x = artist.empty() && SUCCEEDED(lay->GetMetrics(&m)) ? std::max(8.f, (W - m.widthIncludingTrailingWhitespace) / 2) : 8;
+        dc->DrawTextLayout(D2D1::Point2F(x, ln.top), lay.Get(), brushes.empty() ? nullptr : brushes.front().Get());
     }
     if (own_frame) dc->EndDraw();
     else dc->Flush();  // into the texture now: DasVis reads it this frame

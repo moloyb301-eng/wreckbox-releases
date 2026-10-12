@@ -690,7 +690,8 @@ CPU and memory than MilkDrop (≤ +20 MB and < 5 % of a core at Low tier).
       `docs/DASVIS-PLAN.md`
 - [x] Phase 6: Synthwave, Hyperspace, Aurora, Mandelbox Flight, Liquid Chrome, Storm; the ribbon; cover shatter;
       beat sigils; the title card; DasVis is the default visualizer. Details: `docs/DASVIS-PLAN.md`
-- [ ] Phase 7: phone VJ deck, room lights, video export, Spout, wallpaper, lyrics (opt-in)
+- [x] Phase 7: phone VJ deck, room lights (WLED), video export, Spout, live wallpaper, multi-monitor, lyrics (opt-in).
+      Details: `docs/DASVIS-PLAN.md`
 - [ ] Phase 8 (optional): Demucs stems, MilkDrop as a layer
 
 ---

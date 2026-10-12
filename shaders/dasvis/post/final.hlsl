@@ -97,6 +97,30 @@ float4 title_card(float2 uv) {
     return float4(col * cov * keep + PAL(0.95) * cov * spark * 1.5, cov * keep);
 }
 
+// A lyric line in kinetic type (drawn by the app into t_sim like the title card), centred low: the letters pop in one
+// after another as the line starts, each lit in the palette as it's sung, the line punches on the kick, then dissolves
+// into sparks as it ends. Premultiplied.
+float4 lyric(float2 uv) {
+    float T = u_ext.z, t0 = u_lyric.x, t1 = u_lyric.y;
+    if (T < t0 - 0.05 || T > t1 + 0.5) return 0;
+    float h = 0.2 * (1 + 0.06 * KICK * FLASH), w = h * u_title.x / ASPECT;
+    if (w > 0.94) h *= 0.94 / w, w = 0.94;
+    float2 tuv = (uv - float2(0.5, 0.77)) / float2(w, h) + float2(0.5, 0.3);  // the line sits in the texture's top 60 %
+    if (any(tuv < 0) || any(tuv > 1)) return 0;
+    uint tw, th;
+    t_sim.GetDimensions(tw, th);
+    float2 near = t_sim.Load(int3(tuv * float2(tw, th), 0)).rg;
+    float idx = round(near.g / max(near.r, 1e-3) * 255), n = max(u_title.y, 1), dur = max(t1 - t0, 0.5);
+    float arrive = saturate((T - t0 - idx / n * min(dur * 0.3, 1.2)) * 9);
+    float sung = saturate(((T - t0) / (dur * 0.8) * n - idx) * 2);
+    float cov = t_sim.SampleLevel(s_clamp, tuv, 0).r * arrive * (1 + 6 * arrive * (1 - arrive));
+    float dis = saturate((T - t1) / 0.5);
+    float g = hash12(floor(uv * float2(ASPECT, 1) * 260));
+    float keep = step(dis, g), spark = step(g, dis) * step(dis - 0.08, g);
+    float3 col = lerp(0.5, lerp(1, PAL(0.9), 0.45), sung) * (1 + 0.5 * sung * KICK * FLASH);
+    return float4(col * cov * keep + PAL(0.95) * cov * spark * 1.5, cov * keep);
+}
+
 float4 main(VsOut v) : SV_Target {
     float2 d = v.uv - 0.5, uv = v.uv;
     // The phone deck's camera: turn (zoomed in enough that no edge shows) and zoom in, or a fisheye pinch out.
@@ -154,7 +178,7 @@ float4 main(VsOut v) : SV_Target {
         c = c * (1 - o.a * u_post.w) + o.rgb * u_post.w;
     }
     if (u_dir.z > 0.5) c += PAL(hashu(uint(u_ext.y) * 3u)) * sigil(d * float2(ASPECT, 1)) * 0.8;
-    float4 tc = title_card(v.uv);
+    float4 tc = u_lyric.z > 0.5 ? lyric(v.uv) : title_card(v.uv);
     c = c * (1 - tc.a * 0.92) + tc.rgb * 0.92;
     c += (hash12(v.pos.xy + frac(TIME * 7.3) * 157) - 0.5) * u_post.z;
     return float4(pow(saturate(c), 1 / 2.2), 1);

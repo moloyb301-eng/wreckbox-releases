@@ -87,6 +87,7 @@ add_library(wbdasvis STATIC
   src/dasvis/director.cpp
   src/dasvis/video.cpp
   src/dasvis/spout.cpp
+  src/dasvis/lyrics.cpp
   ${DASVIS_GENERATED})
 target_include_directories(wbdasvis PUBLIC src PRIVATE ${CMAKE_BINARY_DIR})
 target_link_libraries(wbdasvis PUBLIC wbengine d3d11 dxgi PRIVATE mfplat mfreadwrite mfuuid)
@@ -107,6 +108,7 @@ add_executable(wreckbox WIN32
   src/ui/screenshot.cpp
   src/ui/view_player.cpp
   src/ui/view_visualizer.cpp
+  src/ui/das_window.cpp
   src/ui/media_controls.cpp
   res/app.rc
   res/app.manifest)
