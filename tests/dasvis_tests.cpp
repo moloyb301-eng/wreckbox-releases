@@ -782,6 +782,63 @@ void lyrics() {
           "LRCLIB without synced lyrics");
 }
 
+// The MilkDrop scene: only with Config::milkdrop; on screen it asks for MilkDrop's picture, shows it the right way up
+// (MilkDrop's rows come bottom-up), holds the last frame until one arrives, and lets its texture go when it's left.
+void milkdrop_scene() {
+    ComPtr<ID3D11Device> dev;
+    const D3D_FEATURE_LEVEL fl = D3D_FEATURE_LEVEL_10_0;
+    if (FAILED(D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, D3D11_CREATE_DEVICE_BGRA_SUPPORT, &fl, 1, D3D11_SDK_VERSION, &dev, nullptr, nullptr)))
+        return std::puts("FAIL: no WARP device"), void(++failures);
+    D3D11_TEXTURE2D_DESC td{160, 90, 1, 1, DXGI_FORMAT_B8G8R8A8_UNORM, {1, 0}, D3D11_USAGE_DEFAULT, D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE};
+    ComPtr<ID3D11Texture2D> screen;
+    dev->CreateTexture2D(&td, nullptr, &screen);
+    Config cfg;
+    cfg.start = Tier::low, cfg.auto_tier = false, cfg.auto_advance = 0;
+    {
+        DasVis plain(dev.Get(), cfg);
+        const auto names = plain.scene_names();
+        CHECK(std::find(names.begin(), names.end(), "MilkDrop") == names.end() && !plain.wants_milkdrop(), "no MilkDrop scene unless asked");
+    }
+    cfg.milkdrop = true;
+    DasVis dv(dev.Get(), cfg);
+    const auto names = dv.scene_names();
+    const size_t milk = size_t(std::find(names.begin(), names.end(), "MilkDrop") - names.begin());
+    CHECK(milk < names.size() && names.size() == 14, "MilkDrop is a scene: %zu scenes", names.size());
+    if (milk >= names.size()) return;
+    Features f;
+    std::vector<float> quiet(Features::kFft);
+    Inputs in;
+    in.f = &f, in.song = "milk-song";
+    const auto frame = [&] {
+        f.update(quiet.data(), 1 / 60.f, 120);
+        dv.render(in, screen.Get());
+    };
+    frame();
+    CHECK(!dv.wants_milkdrop(), "not wanted before it's on screen");
+    dv.lock(true);
+    dv.select(milk);
+    CHECK(dv.wants_milkdrop() && dv.scene_name() == "MilkDrop", "on screen it's wanted: %s", dv.scene_name().c_str());
+    for (int i = 0; i < 10; ++i) frame();  // no picture yet: the last frame holds (nothing breaks)
+    // MilkDrop's picture, bottom-up: the first rows (the bottom of the picture) red, the rest (the top) blue.
+    const int w = 64, h = 36;
+    std::vector<uint8_t> px(size_t(w) * h * 4);
+    for (int y = 0; y < h; ++y)
+        for (int x = 0; x < w; ++x) {
+            uint8_t* q = &px[(size_t(y) * w + x) * 4];
+            q[3] = 255;
+            (y < h / 2 ? q[2] : q[0]) = 230;  // BGRA: red below, blue above
+        }
+    for (int i = 0; i < 90; ++i) dv.set_milkdrop(px.data(), w, h), frame();  // the transition is over
+    std::vector<uint8_t> shot;
+    read(dev.Get(), screen.Get(), &shot);
+    const auto at = [&](int x, int y, int c) { return int(shot[(size_t(y) * 160 + x) * 3 + c]); };  // BGR
+    CHECK(at(80, 15, 0) > at(80, 15, 2) + 40 && at(80, 75, 2) > at(80, 75, 0) + 40, "the right way up: top b %d r %d, bottom b %d r %d",
+          at(80, 15, 0), at(80, 15, 2), at(80, 75, 0), at(80, 75, 2));
+    dv.next();
+    frame();
+    CHECK(!dv.wants_milkdrop(), "left: not wanted any more (%s)", dv.scene_name().c_str());
+}
+
 // The cover shatter on a drop (insane: every event): the cover's shards are on screen after the drop. Two runs with grey
 // covers (no palette from them, so everything else is the same), dark and light: only the shards can differ.
 void cover_shatter() {
@@ -1042,6 +1099,7 @@ int main(int argc, char** argv) {
     lights();
     director_timing();
     lyrics();
+    milkdrop_scene();
     cover_shatter();
     video();
     spout();

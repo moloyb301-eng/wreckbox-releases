@@ -331,16 +331,16 @@ static void visualizer() {
     o.das_costs = wb::json{{"Intel(R) UHD Graphics", {{"Coral|Low", 2.5}}}};
     o.das_taste = wb::json{{"house", {{"Galaxy", 1.5}}}};
     o.das_lights = true, o.das_wled = "wled.local", o.das_wled_leds = 144;
-    o.das_wallpaper = true, o.das_screens = 2, o.das_lyrics = true;
+    o.das_wallpaper = true, o.das_screens = 2, o.das_lyrics = true, o.das_milkdrop = true;
     const VisOptions dv = VisOptions::from_json(o.to_json());
     CHECK(dv.mode == VisOptions::Mode::dasvis && dv.das_intensity == 2 && dv.das_quality == 1 && !dv.das_battery && dv.das_reduce_flash &&
               dv.das_fast_gpu && dv.das_tiers.value("Intel(R) UHD Graphics", "") == "low" && dv.das_costs == o.das_costs &&
               dv.das_taste == o.das_taste && dv.das_lights && dv.das_wled == "wled.local" && dv.das_wled_leds == 144 &&
-              dv.das_wallpaper && dv.das_screens == 2 && dv.das_lyrics,
+              dv.das_wallpaper && dv.das_screens == 2 && dv.das_lyrics && dv.das_milkdrop,
           "dasvis options");
     const VisOptions dd = VisOptions::from_json(wb::json{{"dasvis", {{"intensity", 7}, {"quality", -1}}}});
     CHECK(dd.das_intensity == 2 && dd.das_quality == 0 && dd.das_battery && !dd.das_reduce_flash && !dd.das_fast_gpu && !dd.das_wallpaper &&
-              dd.das_screens == 0 && !dd.das_lyrics,
+              dd.das_screens == 0 && !dd.das_lyrics && !dd.das_milkdrop,
           "dasvis defaults and clamps (lyrics and the wallpaper off)");
 }
 

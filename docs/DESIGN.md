@@ -218,6 +218,9 @@ libVLC (decode, resample to 48 kHz, equalizer, normvol)
   - **Lyrics** (`dasvis/lyrics.*`): LRC parsed into lines; a line is drawn like the title card (`show_lyric`, the
     same texture, `u_lyric` in the constant buffer) and animated in the final pass. Looked up off the UI thread
     (`.lrc` next to the song, cache, LRCLIB), only when turned on.
+  - **MilkDrop as a scene** (opt-in): the *MilkDrop* scene reads a texture the app fills each frame from projectM
+    (`DasVis::wants_milkdrop` / `set_milkdrop`); projectM runs only while that scene is on screen (started when it
+    comes on, let go 20 s after). Too slow together for 60 fps, the visit runs at 30.
   - **Its own GPU:** "Use the fast graphics card" (off by default) makes `Gfx` rebuild its device on the high-performance
     adapter while DasVis is on screen (`Gfx::set_fast_gpu`); NVIDIA's driver costs ~70 MB of RAM, which is why it's off.
   - **Frame pacing:** `Gfx::set_frame_interval` presents every n-th refresh: 60 fps on any screen, 30 on battery.

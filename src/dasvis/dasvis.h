@@ -35,6 +35,7 @@ struct Config {
     std::filesystem::path user_dir;  // the user's own scenes (.hlsl); empty = none
     std::map<std::string, float> costs;  // what each scene measured on this graphics card before (costs())
     float fixed_scale = 0;  // > 0: always this render scale (video export: 1, full size), never adjusted
+    bool milkdrop = false;  // a "MilkDrop" scene too: the app renders projectM while it's on screen (set_milkdrop)
 };
 
 // What the app knows this frame.
@@ -136,6 +137,10 @@ public:
     // and given back in Config::costs next time, so the director knows what fits from the start.
     std::map<std::string, float> costs() const;
     LightState lights() const;  // for the room lights, after render()
+    // The MilkDrop scene (Config::milkdrop) is on screen: the app renders a projectM frame for each DasVis frame and hands
+    // it over before render(). BGRA, rows bottom-up (as OpenGL reads them), any size.
+    bool wants_milkdrop() const;
+    void set_milkdrop(const uint8_t* bgra, int w, int h);
 
 private:
     struct Impl;

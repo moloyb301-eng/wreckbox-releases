@@ -975,7 +975,23 @@ drop (Intro → Verse → Chorus); without a known tempo it finds one. Worth a l
 - **Synced lyrics** from LRCLIB in kinetic type. This sends song titles to an outside service, so it's **off until you
   turn it on**.
 
-### Phase 8: optional, later
+### Phase 8: optional, later (MilkDrop layer ✅ 2026-10-12; real stems waiting on your decision)
+**Built:**
+- **MilkDrop as a DasVis scene** ✅ 2026-10-12: right-click → DasVis → *MilkDrop presets as a scene* (off by default).
+  - A 14th scene, *MilkDrop*, the director can pick like the others (and N / P, the deck). While it's on screen the
+    app renders a projectM frame for each DasVis frame at 540p (`View::milk_frame`, shared with MilkDrop mode) and hands
+    it over (`DasVis::set_milkdrop`: a BGRA texture, rows bottom-up); the scene shader turns it into linear light,
+    punches it on the kick and pulls its colours a little towards the song's palette; DasVis's bloom, transitions,
+    drop events, ring, sigils, title card and lyrics go over it. A different preset each time it comes on.
+  - projectM starts when the scene first comes on (1.3–1.7 s on a worker thread; the last frame holds meanwhile) and is
+    let go 20 s after it leaves; the texture goes as soon as it leaves.
+  - **Measured** (Intel UHD, Low): +58 MB while it shows, back to +9 MB after it's let go. MilkDrop alone already
+    runs at 43–58 fps on this GPU, so the two together can't hold 60: after ~1.5 s of late frames DasVis drops to a
+    steady 30 fps (as *Save battery* does) until the scene changes, then back to 60. Every other frame of MilkDrop
+    at 60 averaged 47 fps but juddered.
+  - **Tested** (`dasvis_tests`): no MilkDrop scene unless asked; on screen it asks for frames, shows them the right
+    way up, holds before the first, and stops asking when it's left. In the app: the scene with a real preset, the
+    release after 20 s.
 - **Real stems:**
   - Demucs (htdemucs) via ONNX Runtime + DirectML, about 1 minute a song on the GTX, cached.
   - About 80 MB of model plus the runtime, downloaded on first use and checked by SHA-256. It uses a lot of memory

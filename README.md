@@ -228,6 +228,8 @@ the screen. The bar fades when the mouse is still. Its ⌄ button, or **H**, hid
   sent the song's title, artist, album and length). Off until you turn it on.
 - **More than one screen:** right-click → DasVis → *Screens*: one picture across all of them, or each its own scene.
 - **Spout:** right-click → DasVis → *Spout output* shares the picture with OBS, Resolume and other Spout programs.
+- **MilkDrop inside DasVis:** right-click → DasVis → *MilkDrop presets as a scene* adds MilkDrop's presets as one of
+  DasVis's scenes, with DasVis's transitions, drops and lyrics over them (about 60 MB more while it's on screen).
 - **It knows the song.** The first time a song plays in DasVis, it's analysed in the background: a few seconds, about
   6 MB of memory. DasVis then knows the beats, the bars, the parts (intro, build-up, drop, breakdown …) and when each
   drop lands. Build-ups drain the colour and close in, the bar before a drop goes quiet, and the drop hits. The player

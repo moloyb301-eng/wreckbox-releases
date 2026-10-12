@@ -62,7 +62,8 @@ json VisOptions::to_json() const {
                         {"wledLeds", das_wled_leds},
                         {"wallpaper", das_wallpaper},
                         {"screens", das_screens == 1 ? "span" : das_screens == 2 ? "each" : "one"},
-                        {"lyrics", das_lyrics}}}};
+                        {"lyrics", das_lyrics},
+                        {"milkdrop", das_milkdrop}}}};
 }
 
 VisOptions VisOptions::from_json(const json& j) {
@@ -103,6 +104,7 @@ VisOptions VisOptions::from_json(const json& j) {
         const std::string screens = d->value("screens", std::string("one"));
         o.das_screens = screens == "span" ? 1 : screens == "each" ? 2 : 0;
         o.das_lyrics = d->value("lyrics", o.das_lyrics);
+        o.das_milkdrop = d->value("milkdrop", o.das_milkdrop);
     }
     return o;
 }

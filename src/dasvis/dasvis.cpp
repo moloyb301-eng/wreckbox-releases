@@ -40,6 +40,7 @@
 #include "dasvis_gen/ps_ridges.h"
 #include "dasvis_gen/ps_star.h"
 #include "dasvis_gen/ps_storm.h"
+#include "dasvis_gen/ps_milkdrop.h"
 #include "dasvis_gen/ps_synthwave.h"
 #include "dasvis_gen/ps_tunnel.h"
 #include "dasvis_gen/vs_fullscreen.h"
@@ -75,6 +76,7 @@ enum class Sim {
     coral,      // Coral: reaction-diffusion
     galaxy,     // Galaxy: stars drawn as points, worked out from the time (nothing stored)
     ridges,     // Ridge Lines: the spectrum's history, drawn as lines with curtains
+    milkdrop,   // MilkDrop: nothing to run here; the app's MilkDrop picture is the scene's texture
 };
 
 struct Scene {
@@ -104,6 +106,9 @@ const BuiltIn kScenes[] = {
     {k_ps_chrome, sizeof k_ps_chrome, Sim::none, {"Liquid Chrome", kMid | kPeak, 'H', false, false, false}},
     {k_ps_storm, sizeof k_ps_storm, Sim::none, {"Storm", kMid | kPeak, 'H', false, false, false}},
 };
+// Only with Config::milkdrop, after the others (the app runs projectM for it).
+const BuiltIn kMilkDrop{k_ps_milkdrop, sizeof k_ps_milkdrop, Sim::milkdrop, {"MilkDrop", kMid | kPeak, 'M', false, true, true}};
+const BuiltIn& builtin_at(size_t i) { return i < std::size(kScenes) ? kScenes[i] : kMilkDrop; }
 
 // The simulations' grids by tier, in cells tall: no bigger, as an integrated GPU's textures come out of the PC's RAM
 // (512 would cost ~10 MB more); the detail on screen comes from the picture drawn at full size over them.
@@ -180,6 +185,7 @@ struct DasVis::Impl {
     float drift_seed[4][2] = {};  // the song's drift waves (periods and phases, 0–1)
 
     Target comp[2], lum, spec, wave, cover, title;
+    Target milk;  // the MilkDrop scene's picture, while it's on screen
     double travel = 0;  // TRAVEL: how far the flights have gone
     // The phone deck: the camera (target, eased), a shockwave's clock, a drop called by hand (seconds since, its events).
     float cam_x = 0, cam_y = 0, cam_tx = 0, cam_ty = 0, shock = 0;
@@ -289,6 +295,7 @@ struct DasVis::Impl {
                 return fail("scene shader", hr);
             scenes.push_back(std::move(sc));
         }
+        if (cfg.milkdrop) scenes.push_back({kMilkDrop.tags.name, nullptr, Sim::milkdrop});  // compiled when first shown
         builtin = scenes.size();
 
         D3D11_BUFFER_DESC bd{sizeof(Uniforms), D3D11_USAGE_DYNAMIC, D3D11_BIND_CONSTANT_BUFFER, D3D11_CPU_ACCESS_WRITE};
@@ -331,7 +338,7 @@ struct DasVis::Impl {
     // The director's list: the built-in scenes' tags, and the user's scenes as light ones that suit anything.
     void tag_scenes() {
         std::vector<SceneTags> tags;
-        for (size_t i = 0; i < scenes.size(); ++i) tags.push_back(i < builtin ? kScenes[i].tags : SceneTags{scenes[i].name});
+        for (size_t i = 0; i < scenes.size(); ++i) tags.push_back(i < builtin ? builtin_at(i).tags : SceneTags{scenes[i].name});
         dir.set_scenes(std::move(tags));
     }
 
@@ -386,8 +393,8 @@ struct DasVis::Impl {
         cue = c;
         cue.scene %= scenes.size();
         if (cue.scene == current) return;
-        if (!scenes[cue.scene].ps && cue.scene < builtin)  // a heavy scene not compiled yet (Low tier): now
-            dev->CreatePixelShader(kScenes[cue.scene].code, kScenes[cue.scene].size, nullptr, &scenes[cue.scene].ps);
+        if (!scenes[cue.scene].ps && cue.scene < builtin)  // a heavy scene not compiled yet (Low tier), or MilkDrop: now
+            dev->CreatePixelShader(builtin_at(cue.scene).code, builtin_at(cue.scene).size, nullptr, &scenes[cue.scene].ps);
         if (!scenes[cue.scene].ps) return;
         previous = current, current = cue.scene;
         transition = 0, since_switch = 0, bars_on = 0, advance_due = false;
@@ -843,9 +850,11 @@ struct DasVis::Impl {
         ensure_sim(layer, cue.mid == Mid::particles ? Sim::particles : Sim::none, float(w) / float(h));
         step_sim(layer, f, dt);
         step_sim(sim, f, dt);  // last: the scene's pass reads its u_sim
+        if (sim.kind == Sim::milkdrop) set_sim(milk.srv ? 1.f : 0.f, 0, 0, 0);  // a picture yet?
+        else milk = {};  // off screen: its texture goes
         const int prev = cur;
         cur ^= 1;
-        pass(scenes[current].ps.Get(), comp[cur], comp[prev], nullptr, false, sim_view(sim));
+        pass(scenes[current].ps.Get(), comp[cur], comp[prev], nullptr, false, sim.kind == Sim::milkdrop ? milk.srv.Get() : sim_view(sim));
         draw_sim(sim, comp[cur]);
         draw_sim(layer, comp[cur]);
         if (cue.mid == Mid::ribbon) draw(vs_ribbon.Get(), ps_ribbon.Get(), comp[cur], D3D11_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP, 1024, wave.srv.Get(), true);
@@ -857,6 +866,12 @@ struct DasVis::Impl {
         final_pass(out);
         if (timing) ctx->End(tm.t1.Get()), ctx->End(tm.disjoint.Get()), tm.issued = true;
         ++frame;
+    }
+
+    void set_milkdrop(const uint8_t* bgra, int w, int h) {
+        if (scenes[current].sim != Sim::milkdrop || !bgra || w <= 0 || h <= 0) return;
+        if (milk.w != w || milk.h != h) milk = make(w, h, DXGI_FORMAT_B8G8R8A8_UNORM, false);
+        if (milk.tex) ctx->UpdateSubresource(milk.tex.Get(), 0, nullptr, bgra, UINT(w) * 4, 0);
     }
 
     ID3D11Texture2D* title_target(int w, int h) {
@@ -954,6 +969,10 @@ void DasVis::set_camera(float turn, float zoom) {
     p_->cam_tx = std::clamp(turn, -1.f, 1.f), p_->cam_ty = std::clamp(zoom, -1.f, 1.f);
 }
 bool DasVis::particles() const { return p_->cue.mid == Mid::particles; }
+bool DasVis::wants_milkdrop() const { return ok() && !p_->scenes.empty() && p_->scenes[p_->current].sim == Sim::milkdrop; }
+void DasVis::set_milkdrop(const uint8_t* bgra, int w, int h) {
+    if (ok()) p_->set_milkdrop(bgra, w, h);
+}
 ID3D11Texture2D* DasVis::title_target(int w, int h) { return ok() ? p_->title_target(w, h) : nullptr; }
 void DasVis::show_lyric(int letters, double start, double end) {
     if (ok()) p_->show_lyric(letters, start, end);

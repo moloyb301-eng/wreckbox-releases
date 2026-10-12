@@ -318,6 +318,11 @@ private:
     void milk_poll();
     void milk_start();                        // creates the engine (once per visit to full screen)
     void milk_screen(float W, float H);       // renders one MilkDrop frame (or keeps the last one) and draws it
+    player::MilkDrop::Frame milk_frame(float W, float H, bool playing, int height);  // one frame of what's heard (MilkDrop or DasVis's scene)
+    bool das_milk_shown_ = false;             // DasVis's MilkDrop scene was on screen last frame
+    bool das_milk_slow_ = false;              // and runs at 30 fps (the two were too slow together for 60)
+    int das_milk_late_ = 0;                   // frames in a row that were late
+    std::chrono::steady_clock::time_point das_milk_at_{};  // and when it last was
     std::filesystem::path user_presets_dir() const;
     bool fullscreen_ = false;
     player::Visualizer vis_;

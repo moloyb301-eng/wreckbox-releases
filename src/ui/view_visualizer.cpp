@@ -299,14 +299,11 @@ int64_t View::heard_end(const player::AudioOutput& out, float frames_ahead) cons
     return out.heard_index(clock_t_::now() + std::chrono::duration_cast<clock_t_::duration>(std::chrono::duration<float, std::milli>(ms)));
 }
 
-void View::milk_screen(float W, float H) {
+// One MilkDrop frame, W × H in shape and `height` pixels tall, of what's heard as it appears (silence while paused). Also
+// moves the beat pulse.
+player::MilkDrop::Frame View::milk_frame(float W, float H, bool playing, int height) {
     const auto now = clock_t_::now();
-    const bool playing = player_.playing();
-    if (playing) audio_at_ = now;
-    // Paused: keep rendering silence for 4 s so the picture calms down, then hold the last frame (no timer, 0% CPU).
-    const bool live = playing || now - audio_at_ < std::chrono::seconds(4);
-    vis_settling_ = !playing && live;
-    if (live) {
+    {
         size_t n = 0;
         player::AudioOutput* out = player_.output();
         if (playing && out) {
@@ -333,13 +330,21 @@ void View::milk_screen(float W, float H) {
             milk_heard_ = -1;
         }
         pulse_.update(pcm_.data(), playing ? n : 0, frame_dt_);
-        const int h = milk_quality_, w = int(std::lround(h * W / std::max(1.f, H))) & ~1;
+        const int h = height, w = int(std::lround(h * W / std::max(1.f, H))) & ~1;
         if ((w != milk_w_ || h != milk_h_) && milk_->resize(w, h)) milk_w_ = w, milk_h_ = h;
-        if (milk_->ok()) {
-            const auto f = milk_->render(pcm_.data(), n);
-            if (f) g_.upload_stream(f.bgra, f.width, f.height);
-        }
+        return milk_->ok() ? milk_->render(pcm_.data(), n) : player::MilkDrop::Frame{};
     }
+}
+
+void View::milk_screen(float W, float H) {
+    const auto now = clock_t_::now();
+    const bool playing = player_.playing();
+    if (playing) audio_at_ = now;
+    // Paused: keep rendering silence for 4 s so the picture calms down, then hold the last frame (no timer, 0% CPU).
+    const bool live = playing || now - audio_at_ < std::chrono::seconds(4);
+    vis_settling_ = !playing && live;
+    if (live)
+        if (const auto f = milk_frame(W, H, playing, milk_quality_)) g_.upload_stream(f.bgra, f.width, f.height);
     // The beat pulse: each kick zooms the picture in and flashes it, then it eases back over ~200 ms.
     const float e = vis_.opt.pulse ? pulse_.envelope() : 0.f;
     const bool strong = vis_.opt.pulse == 2;
@@ -385,7 +390,8 @@ bool View::fast_gpu() const { return fullscreen_ && vis_.opt.mode == VisOptions:
 
 UINT View::frame_interval() const {
     if (!fullscreen_ || vis_.opt.mode != VisOptions::Mode::dasvis) return 1;
-    const float fps = vis_.opt.das_battery && on_battery() ? 30.f : 60.f;  // a 120 Hz screen still gets 60
+    // A 120 Hz screen still gets 60; on battery, or with a MilkDrop scene too slow for 60, 30.
+    const float fps = (vis_.opt.das_battery && on_battery()) || das_milk_slow_ ? 30.f : 60.f;
     return UINT(std::max(1.f, std::round(das_hz_ / fps)));
 }
 
@@ -650,6 +656,28 @@ bool View::das_screen() {
     } else das_status_ = das_map_busy_ ? L"Analysing the song…" : L"Live";
     das_dress(*das_, das_shown_, in, true);
     vj_apply();
+    // The MilkDrop scene: projectM starts when the scene comes on (about a second, off the UI thread; the last frame
+    // holds meanwhile), renders a frame for each DasVis frame while it's on screen, and is let go 20 s after it leaves
+    // (~60 MB: only while it's wanted).
+    if (o.das_milkdrop) {
+        const bool want = das_->wants_milkdrop();
+        if (want) das_milk_at_ = clock_t_::now();
+        if (want && !milk_ && !milk_pending_.valid() && !milk_tried_) milk_start();  // once a visit if it fails
+        milk_poll();
+        if (want && milk_ && milk_->ok()) {
+            if (!das_milk_shown_) milk_->random();  // a different preset each time it comes on
+            // The two together too slow for 60 fps (frames 25 % late for ~1.5 s, so one preset's shader compile doesn't
+            // count; MilkDrop alone nearly fills an Intel UHD's frame): a steady 30 for the rest of this showing (every
+            // other frame of MilkDrop judders more than 30 does).
+            das_milk_late_ = frame_dt_ > 1.25f * float(frame_interval()) / das_hz_ ? das_milk_late_ + 1 : 0;
+            if (!das_milk_slow_ && das_milk_late_ > 90) das_milk_slow_ = true, perf_log("DasVis: MilkDrop scene at 30 fps (too slow together for 60)");
+            // 540p: DasVis draws its scenes at about that size or less anyway.
+            if (const auto f = milk_frame(g_.width(), g_.height(), player_.playing(), 540)) das_->set_milkdrop(f.bgra, f.width, f.height);
+        }
+        das_milk_shown_ = want && milk_;
+        das_milk_slow_ = das_milk_slow_ && das_milk_shown_;
+        if (!want && milk_ && clock_t_::now() - das_milk_at_ > std::chrono::seconds(20)) milk_restart(), perf_log("MilkDrop let go");
+    }
     das_->render(in, back.Get());
     if (spout_) spout_->send(g_.d3d(), back.Get());  // before the player panel is drawn over it
     das_lights();
@@ -670,9 +698,9 @@ bool View::das_screen() {
         if (o.das_tiers.value(gpu, std::string()) != t) o.das_tiers[gpu] = t, save_vis();
     }
     if (++das_frames_ % 300 == 0)
-        perf_log(std::format("DasVis: {}, {} tier at {:.0f} %, GPU {:.2f} ms a frame (budget {:.1f}), every {} refresh(es) of {:.0f} Hz, flash budget {:.2f}{}",
+        perf_log(std::format("DasVis: {}, {} tier at {:.0f} %, GPU {:.2f} ms a frame (budget {:.1f}), every {} refresh(es) of {:.0f} Hz ({:.0f} fps), flash budget {:.2f}{}",
                              das_->scene_name(), dasvis::tier_name(das_->tier()), das_->scale() * 100, das_->gpu_ms(), in.budget_ms,
-                             frame_interval(), das_hz_, das_->flash_budget(), screens_.empty() ? "" : std::format(", {} other screen(s)", screens_.size())));
+                             frame_interval(), das_hz_, 1 / frame_dt_, das_->flash_budget(), screens_.empty() ? "" : std::format(", {} other screen(s)", screens_.size())));
     return true;
 }
 
@@ -689,6 +717,7 @@ dasvis::Config View::das_config(bool wallpaper) const {
     if (wallpaper) cfg.start = cfg.max_tier = dasvis::Tier::low, cfg.auto_tier = false;
     cfg.reduce_flash = o.das_reduce_flash;
     cfg.auto_advance = o.auto_advance;
+    cfg.milkdrop = o.das_milkdrop && !wallpaper;
     cfg.user_dir = das_scenes_dir();
     if (const auto c = o.das_costs.find(gpu); c != o.das_costs.end() && c->is_object())
         for (const auto& [k, ms] : c->items())
@@ -1376,6 +1405,7 @@ void View::vis_menu() {
     radio(das, kDas + 9, L"Spout output (OBS, Resolume…)", spout_ != nullptr);
     radio(das, kDas + 10, L"Live wallpaper (behind the desktop icons)", o.das_wallpaper);
     radio(das, kDas + 11, L"Lyrics (looked up on LRCLIB.net)", o.das_lyrics);
+    radio(das, kDas + 12, L"MilkDrop presets as a scene (~60 MB more while it shows)", o.das_milkdrop);
     if (GetSystemMetrics(SM_CMONITORS) > 1) {
         HMENU screens = CreatePopupMenu();
         const wchar_t* ways[] = {L"This screen", L"All screens, as one picture", L"Each screen its own scene"};
@@ -1478,6 +1508,10 @@ void View::vis_menu() {
             } else if (i == 10) {
                 o.das_wallpaper = !o.das_wallpaper;  // starts when full screen closes
                 show_toast(o.das_wallpaper ? L"Live wallpaper: on when you leave full screen" : L"Live wallpaper: off");
+            } else if (i == 12) {
+                o.das_milkdrop = !o.das_milkdrop;
+                das_free();  // made again with (or without) the scene on the next frame
+                if (!o.das_milkdrop) milk_restart();  // projectM's memory back
             } else if (i == 11) {
                 o.das_lyrics = !o.das_lyrics;
                 das_lyrics_for_.clear(), das_lyrics_.reset();  // looked up now, or let go
