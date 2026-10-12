@@ -930,7 +930,7 @@ drop (Intro → Verse → Chorus); without a known tempo it finds one. Worth a l
   - The desktop doesn't repaint over the last frame by itself: when the wallpaper stops, the desktop's wallpaper is set
     again, the same file, for the session only (nothing saved, nothing announced). After a crash the last frame stays
     until the wallpaper next changes.
-  - Settings → *DasVis wallpaper and lyrics*, or right-click → DasVis → *Live wallpaper*. Off by default.
+  - Settings → *Visualizer*, or right-click → DasVis → *Live wallpaper*. Off by default.
   - **Measured** (Intel UHD, 1920 × 1080): 3.4 ms of GPU a frame at ~31 fps, 0.4 % of the CPU (8 threads), +15 MB.
   - **Checked** in the app (muted): it draws behind the icons; F11 hands over to full screen and Esc brings it back;
     closing the app gives the desktop its own wallpaper back. `WRECKBOX_RENDER_HIDDEN=1` lets it draw behind a

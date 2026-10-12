@@ -15,12 +15,14 @@ Day-to-day work goes on `main`; bigger features on a branch (`feature/<name>`), 
 
 ## Unreleased
 
+- **Choose your visualizer in Settings**: Settings → *Visualizer*: DasVis, MilkDrop or the Winamp bars for full screen,
+  and *MilkDrop inside DasVis*. (Full screen's chips and the D / M keys still switch too.)
 - **MilkDrop inside DasVis**: right-click → DasVis → *MilkDrop presets as a scene*. MilkDrop's presets become one of
   DasVis's scenes, with DasVis's transitions, drops, bloom, ring and lyrics over them. Off by default: MilkDrop runs only
   while that scene is on screen (about 60 MB more then).
 - **DasVis live wallpaper**: DasVis behind your desktop icons while music plays (Low quality, 30 fps at most, about
   3 ms of GPU a frame on an Intel laptop). It pauses on battery and while a game, a full-screen app or a maximised
-  window covers the desktop. Settings → *DasVis wallpaper and lyrics*; off by default.
+  window covers the desktop. Settings → *Visualizer*; off by default.
 - **Synced lyrics in DasVis**: the words being sung, in time, letter by letter over the picture. From a `.lrc` file
   next to the song, else looked up on LRCLIB.net (it sends the title, artist, album and length). Off until you turn it on.
 - **DasVis on more than one screen**: right-click → DasVis → *Screens*: one picture across all of them, or a different

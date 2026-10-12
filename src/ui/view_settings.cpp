@@ -344,7 +344,7 @@ void View::settings_page(const Rect& r) {
         }
     });
 
-    section(L"DasVis wallpaper and lyrics", false, [&] {
+    section(L"Visualizer", false, [&] {
         const VisOptions vo = saved_vis();
         // One option changed in the saved visualizer settings (the rest as they are), and in the running ones.
         const auto toggle = [this](auto member) {
@@ -354,6 +354,26 @@ void View::settings_page(const Rect& r) {
             Settings::current().extra["visualizer"] = o.to_json();
             save_settings();
         };
+        para(L"Which visualizer full screen opens with (F11, or the button on the player bar). You can switch there too: "
+             L"the chips on its player bar, or D for DasVis and M for MilkDrop. DasVis is WreckBox's own and follows the "
+             L"song's build-ups and drops; MilkDrop plays the classic Winamp presets; Bars is the Winamp spectrum.");
+        {
+            using Mode = VisOptions::Mode;
+            const bool bars = vo.mode != Mode::dasvis && vo.mode != Mode::milkdrop;
+            const auto pick = [this](Mode m) {
+                VisOptions o = saved_vis();
+                vis_.opt.mode = o.mode = m;
+                Settings::current().extra["visualizer"] = o.to_json();
+                save_settings();
+            };
+            buttons({{L"DasVis", icon::visualizer, vo.mode == Mode::dasvis ? Ui::Pill::primary : Ui::Pill::glass, [pick] { pick(Mode::dasvis); }},
+                     {L"MilkDrop", icon::visualizer, vo.mode == Mode::milkdrop ? Ui::Pill::primary : Ui::Pill::glass, [pick] { pick(Mode::milkdrop); }},
+                     {L"Bars", icon::visualizer, bars ? Ui::Pill::primary : Ui::Pill::glass, [pick] { pick(Mode::spectrum); }}});
+        }
+        para(L"Both at once: MilkDrop's presets as one of DasVis's scenes, with DasVis's transitions, drops and lyrics over "
+             L"them. MilkDrop runs only while that scene is on screen (about 60 MB more then).");
+        buttons({{vo.das_milkdrop ? L"MilkDrop inside DasVis: on" : L"MilkDrop inside DasVis: off", icon::sparkle,
+                  vo.das_milkdrop ? Ui::Pill::primary : Ui::Pill::glass, [toggle] { toggle(&VisOptions::das_milkdrop); }}});
         para(L"Live wallpaper: DasVis behind your desktop icons while music plays, at Low quality and 30 frames a second at "
              L"most. It pauses on battery and while a game, a full-screen app or a maximised window covers the desktop.");
         buttons({{vo.das_wallpaper ? L"Live wallpaper: on" : L"Live wallpaper: off", icon::sparkle, vo.das_wallpaper ? Ui::Pill::primary : Ui::Pill::glass,
