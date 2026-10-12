@@ -38,6 +38,10 @@ cbuffer DasVis : register(b0) {
     float4 u_title;  // the title card: its texture's width / height, letters, the title line's share of its height, on
     float4 u_deck;   // the phone deck: camera turn and zoom (−1…1, 0 at rest), a shockwave (1→0 over 0.6 s), spare
     float4 u_lyric;  // a lyric line (in the title card's texture): its start and end (song seconds), on, spare
+    float4 u_trail;  // trails under every scene (set by the director, 0 = none): strength (the fade is divided by it), melt
+                     // (0 streaks – 1 the whole picture smears), fade per second, kaleidoscope mirrors (0: none)
+    float4 u_flow;   // and how the last frame moves under the new one: zoom in per second (− out), turn per second,
+                     // swirl, noise flow
 };
 
 #define TIME u_time.x
@@ -201,9 +205,31 @@ float3 into(float2 uv, float3 c) {
     return o;
 }
 
+// Trails, MilkDrop's motion under every scene: the last frame, zoomed in, turned, swirled, carried along a noise flow
+// (and sometimes folded into a kaleidoscope), faded and laid under the new picture. Bright things leave streaks that fly
+// at you, or with melt the whole picture smears and flows. Each kick jolts the zoom, the bass pulls it, a build-up
+// speeds it up and the drop whips it; all of it moves faster with the tempo (hi-tech psytrance flies).
+float3 trails(float2 p, float3 c) {
+    float tempo = clamp(BPM / 125, 0.6, 1.7);
+    float r = length(p);
+    float push = 1 + 1.2 * BASS * INTENSITY + 2 * BUILD + 4 * DROP;
+    float zoom = exp(-DT * tempo * (u_flow.x * push + 2.2 * KICK * INTENSITY * sign(u_flow.x + 1e-4)));
+    float turn = DT * tempo * (u_flow.y * (1 + 2 * DROP) + u_flow.z * sin(TIME * 0.37 + SEED * TAU) * r * 2.5);
+    float2 q = mul(p, rot(turn)) * zoom;
+    if (u_trail.w > 1.5) {  // fold into a kaleidoscope: the picture turns symmetric as it flows
+        float seg = TAU / u_trail.w, a = atan2(q.y, q.x);
+        a = abs(frac(a / seg + 0.5) - 0.5) * seg;
+        q = float2(cos(a), sin(a)) * length(q);
+    }
+    q += (float2(noise(p * 3 + TIME * 0.2), noise(p * 3 - TIME * 0.2 + 5.3)) - 0.5) * DT * u_flow.w * (1 + 2 * HATS);
+    float3 w = PREV(q / float2(ASPECT, 1) + 0.5) * exp(-DT * u_trail.z / u_trail.x);  // stronger: they fade slower
+    return lerp(max(c, w), lerp(c, w, 0.85), u_trail.y * (1 - 0.6 * DROP));  // the drop's new picture punches through the melt
+}
+
 float4 main(VsOut v) : SV_Target {
     float2 p = (v.uv - 0.5) * float2(ASPECT, 1);
     float3 c = scene(v.uv, p);
+    if (u_trail.x > 0) c = trails(p, c);
     if (TRANSITION < 1) c = into(v.uv, c);
     // One bad pixel (NaN or infinity: all exponent bits set) must not spread through the feedback. A bit test, as the
     // compiler assumes floats are never NaN and would drop isnan().

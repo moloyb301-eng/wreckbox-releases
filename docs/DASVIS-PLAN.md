@@ -975,6 +975,23 @@ drop (Intro → Verse → Chorus); without a known tempo it finds one. Worth a l
 - **Synced lyrics** from LRCLIB in kinetic type. This sends song titles to an outside service, so it's **off until you
   turn it on**.
 
+### Journeys J1: trails under every scene ✅ 2026-10-12
+- Why DasVis felt static: only Feedback Classic drew from the last frame (MilkDrop's trick); the rest were drawn fresh
+  each frame, and a song always looked the same.
+- `trails()` in `dasvis.hlsli`'s `main()`: the last frame is zoomed (the bass pulls it, a jolt on each kick, faster in a
+  build-up, whipped on the drop, all scaled by the tempo), turned, swirled, carried on a noise flow, sometimes folded into
+  a 3–8 mirror kaleidoscope, faded over 0.4–1.6 s, and laid under the new picture: streaks behind bright things (`max`),
+  or a melt that smears the whole picture.
+- `trail_style()` (director): a style for each scene, redrawn (mirrors kept) each 16 bars; eased over ~1 s. None under
+  Feedback Classic, Galaxy and MilkDrop (they draw from the last frame, or add points every frame, which would pile up),
+  nor under a particle or ribbon layer.
+- `Config::vary`: a random number from the app, so each play of a song gets its own seed (*Same look each time a song
+  plays* turns it off).
+- **Tested:** styles deterministic and varied (400 seeds: kaleidoscopes, zooms out, melts in the expected shares; chill
+  slower than insane); 8 plays of one song start with 3+ different scenes; every scene with trails for 5 s of loud
+  drums stays under 0.85 mean brightness (highest 0.69) and is visibly changed (2.5–40 %).
+- Next: J2, genomes and the Journey shader (cells, organelles, tunnels), per the plan.
+
 ### Phase 8: optional, later (MilkDrop layer ✅ 2026-10-12; real stems waiting on your decision)
 **Built:**
 - **MilkDrop as a DasVis scene** ✅ 2026-10-12: right-click → DasVis → *MilkDrop presets as a scene* (off by default).

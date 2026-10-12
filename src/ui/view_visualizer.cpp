@@ -10,6 +10,7 @@
 #include <cmath>
 #include <format>
 #include <fstream>
+#include <random>
 
 #include "model/paths.h"
 #include "model/settings.h"
@@ -718,6 +719,7 @@ dasvis::Config View::das_config(bool wallpaper) const {
     cfg.reduce_flash = o.das_reduce_flash;
     cfg.auto_advance = o.auto_advance;
     cfg.milkdrop = o.das_milkdrop && !wallpaper;
+    cfg.vary = o.das_same_look ? 0 : std::random_device{}() | 1;  // a new look each time a song plays
     cfg.user_dir = das_scenes_dir();
     if (const auto c = o.das_costs.find(gpu); c != o.das_costs.end() && c->is_object())
         for (const auto& [k, ms] : c->items())
@@ -1235,15 +1237,15 @@ void View::vis_overlay(const Rect& r, float a) {
     const Rect bar = Rect::xywh(r.l + (r.w() - bar_w()) / 2, r.t + 15, bar_w(), 34);
     g_.fill_round(bar, 17, argb(0xC0141418));
     g_.stroke_round(bar, 17, glass_border);
-    float hx = bar.l + pad;
+    float kx = bar.l + pad;
     for (const Hint& h : hints) {
         const float kw = g_.measure(h.first, key_st) + 2 * cap_pad;
-        const Rect cap = Rect::xywh(hx, bar.t + 7, kw, 20);
+        const Rect cap = Rect::xywh(kx, bar.t + 7, kw, 20);
         g_.fill_round(cap, 5, argb(0x24FFFFFF));
         g_.stroke_round(cap, 5, argb(0x1AFFFFFF));
         g_.text(h.first, Rect{cap.l + cap_pad, cap.t, cap.r, cap.b}, key_st);
         g_.text(h.second, Rect{cap.r + 7, bar.t, cap.r + 7 + g_.measure(h.second, label_st) + 2, bar.b}, label_st);
-        hx += item_w(h) + gap;
+        kx += item_w(h) + gap;
     }
     if (das && !das_->user_errors().empty())  // your scenes: the first error of each that didn't compile
         g_.paragraph(L"Your scenes: " + wide(das_->user_errors()), Rect{r.l + 48, r.t + 60, r.r - 100, r.t + 210}, {Font::ui, 12.5f, 500, peach});
@@ -1432,6 +1434,7 @@ void View::vis_menu() {
     radio(das, kDas + 10, L"Live wallpaper (behind the desktop icons)", o.das_wallpaper);
     radio(das, kDas + 11, L"Lyrics (looked up on LRCLIB.net)", o.das_lyrics);
     radio(das, kDas + 12, L"MilkDrop presets as a scene (~60 MB more while it shows)", o.das_milkdrop);
+    radio(das, kDas + 13, L"Same look each time a song plays", o.das_same_look);
     if (GetSystemMetrics(SM_CMONITORS) > 1) {
         HMENU screens = CreatePopupMenu();
         const wchar_t* ways[] = {L"This screen", L"All screens, as one picture", L"Each screen its own scene"};
@@ -1534,6 +1537,8 @@ void View::vis_menu() {
             } else if (i == 10) {
                 o.das_wallpaper = !o.das_wallpaper;  // starts when full screen closes
                 show_toast(o.das_wallpaper ? L"Live wallpaper: on when you leave full screen" : L"Live wallpaper: off");
+            } else if (i == 13) {
+                o.das_same_look = !o.das_same_look;  // from the next DasVis start
             } else if (i == 12) {
                 o.das_milkdrop = !o.das_milkdrop;
                 das_free();  // made again with (or without) the scene on the next frame

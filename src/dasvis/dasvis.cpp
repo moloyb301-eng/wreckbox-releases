@@ -57,7 +57,7 @@ namespace {
 
 // Mirrors the cbuffer in dasvis.hlsli: float4s only, so the C++ and HLSL layouts can't drift apart.
 struct Uniforms {
-    float time[4], res[4], out[4], beat[4], drums[4], tone[4], look[4], post[4], key[4], pal[5][4], pass[4], song[4], drop[4], hits[4], sim[4], dir[4], drift[4], ext[4], title[4], deck[4], lyric[4];
+    float time[4], res[4], out[4], beat[4], drums[4], tone[4], look[4], post[4], key[4], pal[5][4], pass[4], song[4], drop[4], hits[4], sim[4], dir[4], drift[4], ext[4], title[4], deck[4], lyric[4], trail[4], flow[4];
 };
 static_assert(sizeof(Uniforms) % 16 == 0);
 
@@ -92,13 +92,13 @@ struct BuiltIn {
     SceneTags tags;  // name, energy, cost class, hero, takes the particle layer, suits the ring
 };
 const BuiltIn kScenes[] = {
-    {k_ps_feedback, sizeof k_ps_feedback, Sim::none, {"Feedback Classic", kMid | kPeak, 'L', false, true, false}},
+    {k_ps_feedback, sizeof k_ps_feedback, Sim::none, {"Feedback Classic", kMid | kPeak, 'L', false, true, false, false}},
     {k_ps_tunnel, sizeof k_ps_tunnel, Sim::none, {"Neon Tunnel", kMid | kPeak, 'L', true, true, true}},
     {k_ps_kaleido, sizeof k_ps_kaleido, Sim::none, {"Kaleido Cover", kCalm | kMid, 'L', false, true, false}},
     {k_ps_ink, sizeof k_ps_ink, Sim::fluid, {"Ink Ocean", kCalm | kMid, 'M', false, false, false}},
     {k_ps_ridges, sizeof k_ps_ridges, Sim::ridges, {"Ridge Lines", kCalm | kMid, 'L', false, false, false}},
     {k_ps_coral, sizeof k_ps_coral, Sim::coral, {"Coral", kCalm | kMid, 'M', false, false, false}},
-    {k_ps_galaxy, sizeof k_ps_galaxy, Sim::galaxy, {"Galaxy", kMid | kPeak, 'M', true, false, false}},
+    {k_ps_galaxy, sizeof k_ps_galaxy, Sim::galaxy, {"Galaxy", kMid | kPeak, 'M', true, false, false, false}},
     {k_ps_synthwave, sizeof k_ps_synthwave, Sim::none, {"Synthwave", kMid | kPeak, 'L', false, true, false}},
     {k_ps_hyperspace, sizeof k_ps_hyperspace, Sim::none, {"Hyperspace", kMid | kPeak, 'L', true, false, true}},
     {k_ps_aurora, sizeof k_ps_aurora, Sim::none, {"Aurora", kCalm, 'M', false, false, false}},
@@ -107,7 +107,7 @@ const BuiltIn kScenes[] = {
     {k_ps_storm, sizeof k_ps_storm, Sim::none, {"Storm", kMid | kPeak, 'H', false, false, false}},
 };
 // Only with Config::milkdrop, after the others (the app runs projectM for it).
-const BuiltIn kMilkDrop{k_ps_milkdrop, sizeof k_ps_milkdrop, Sim::milkdrop, {"MilkDrop", kMid | kPeak, 'M', false, true, true}};
+const BuiltIn kMilkDrop{k_ps_milkdrop, sizeof k_ps_milkdrop, Sim::milkdrop, {"MilkDrop", kMid | kPeak, 'M', false, true, true, false}};
 const BuiltIn& builtin_at(size_t i) { return i < std::size(kScenes) ? kScenes[i] : kMilkDrop; }
 
 // The simulations' grids by tier, in cells tall: no bigger, as an integrated GPU's textures come out of the PC's RAM
@@ -182,6 +182,10 @@ struct DasVis::Impl {
     uint32_t picks = 0;    // picks this song
     uint32_t song_seed = 0;
     float ring_from = 0;   // the ring's mix when the last change began
+    // Trails: the style the director drew for this scene and phrase, and the one on screen easing towards it.
+    TrailStyle trail_to, trail_on;
+    uint32_t trail_draws = 0;
+    uint32_t plays = 0;    // songs started (with Config::vary: each one looks different)
     float drift_seed[4][2] = {};  // the song's drift waves (periods and phases, 0–1)
 
     Target comp[2], lum, spec, wave, cover, title;
@@ -398,6 +402,19 @@ struct DasVis::Impl {
         if (!scenes[cue.scene].ps) return;
         previous = current, current = cue.scene;
         transition = 0, since_switch = 0, bars_on = 0, advance_due = false;
+        draw_trails(true);
+    }
+
+    // A trail style for the scene on screen: a new one with each scene (`fresh`: its mirrors too) and each phrase, so a
+    // long part keeps evolving. None under scenes that draw from the last frame themselves.
+    void draw_trails(bool fresh) {
+        const bool calm = now.section == Section::breakdown || now.section == Section::intro || now.section == Section::outro;
+        TrailStyle t = trail_style(song_seed ^ (0x9E37u * ++trail_draws), now.intensity, calm);
+        if (!fresh) t.mirrors = trail_to.mirrors;  // a fold snapping in or out mid-scene would jump
+        const bool on = current < builtin ? builtin_at(current).tags.trails : true;
+        if (!on || !cfg.trails) t.strength = 0;
+        trail_to = t;
+        if (fresh) trail_on.mirrors = t.mirrors;
     }
 
     // What the director knows now, for a pick at the start of a `kind` part (from `from`) with this energy.
@@ -430,6 +447,7 @@ struct DasVis::Impl {
     void new_song(const Inputs& in) {
         song = in.song;
         song_seed = fnv1a(song);
+        if (cfg.vary) song_seed ^= fnv1a(std::to_string(cfg.vary) + "/" + std::to_string(plays++));  // a new look each play
         seed = float(song_seed % 100000) / 100000.f;
         for (int i = 0; i < 4; ++i)
             for (int k = 0; k < 2; ++k) drift_seed[i][k] = float(fnv1a(song + char('a' + 4 * k + i)) % 1000) / 1000.f;
@@ -745,6 +763,7 @@ struct DasVis::Impl {
         // is up (shorter on insane, longer on chill), on a bar's downbeat.
         since_switch += dt;
         const bool new_bar = bar < last_bar;
+        if (new_bar && bars_on > 0 && (bars_on + 1) % 16 == 0) draw_trails(false);  // evolving, each phrase
         bars_on += new_bar;
         last_bar = bar;
         now = moment(in, ms.section, ms.section, has_map ? ms.energy : f.energy);
@@ -829,6 +848,17 @@ struct DasVis::Impl {
         set(u.dir, float(int(cue.transition)), float(events), cue.sigils ? 1.f : 0.f, 0);
         set(u.ext, float(std::fmod(travel, 10000.0)), kicks, float(in.song_time), since_drop);
         set(u.deck, std::fabs(cam_x) < 1e-3f ? 0.f : cam_x, std::fabs(cam_y) < 1e-3f ? 0.f : cam_y, shock, 0);
+        {  // the trails ease to the drawn style over about a second (a scene's new one at once, with its transition)
+            const float k = transition < 1 && since_switch < dt * 1.5 ? 1.f : 1 - std::exp(-dt / 0.8f);
+            const auto toward = [k](float& a, float b) { a += (b - a) * k; };
+            toward(trail_on.strength, trail_to.strength), toward(trail_on.melt, trail_to.melt), toward(trail_on.fade, trail_to.fade);
+            toward(trail_on.zoom, trail_to.zoom), toward(trail_on.turn, trail_to.turn), toward(trail_on.swirl, trail_to.swirl);
+            toward(trail_on.flow, trail_to.flow);
+            // None under a mid layer: its points are added every frame and would pile up on their own trails.
+            const bool off = trail_on.strength < 0.01f || cue.mid != Mid::none;
+            set(u.trail, off ? 0.f : trail_on.strength, trail_on.melt, trail_on.fade, trail_on.mirrors);
+            set(u.flow, trail_on.zoom, trail_on.turn, trail_on.swirl, trail_on.flow);
+        }
         // Drift: four slow waves from the song's seed, so a long section keeps changing without looping.
         for (int i = 0; i < 4; ++i) {
             const float a = drift_seed[i][0], b = drift_seed[i][1];

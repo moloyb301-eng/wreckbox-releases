@@ -24,7 +24,24 @@ struct SceneTags {
     bool hero = false;    // a drop's scene
     bool layers = true;   // a mid layer (particles or the ribbon) may go over it
     bool ring = false;    // the spectrum ring suits it
+    bool trails = true;   // trails go under it (not where it draws from the last frame itself, or adds points every
+                          // frame: they would pile up on their own trails)
 };
+
+// Trails under a scene (the shaders' u_trail / u_flow): MilkDrop's motion, the last frame warped under the new one.
+struct TrailStyle {
+    float strength = 0;  // 0 none; else the fade is divided by it
+    float melt = 0;      // 0: streaks behind bright things; 1: the whole picture smears and flows
+    float fade = 1.5f;   // per second
+    float mirrors = 0;   // 0, or a kaleidoscope fold with this many mirrors
+    float zoom = 0;      // per second (− zooms out)
+    float turn = 0;      // radians per second
+    float swirl = 0;     // turn growing towards the edges, waving
+    float flow = 0;      // a noise flow
+};
+// A style drawn from `seed` (a new one for each scene and phrase): every combination looks right. Chill is gentler,
+// insane faster; calm parts drift rather than fly.
+TrailStyle trail_style(uint32_t seed, int intensity, bool calm);
 
 enum class Transition : uint8_t { crossfade, wipe, zoom, shatter, glitch };  // the shaders' TRANSITION_KIND
 enum class Mid : uint8_t { none, particles, ribbon };                        // the layer over the scene

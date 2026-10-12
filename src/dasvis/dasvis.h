@@ -36,6 +36,8 @@ struct Config {
     std::map<std::string, float> costs;  // what each scene measured on this graphics card before (costs())
     float fixed_scale = 0;  // > 0: always this render scale (video export: 1, full size), never adjusted
     bool milkdrop = false;  // a "MilkDrop" scene too: the app renders projectM while it's on screen (set_milkdrop)
+    bool trails = true;     // MilkDrop-style motion under every scene (the last frame warped under the new one)
+    uint32_t vary = 0;      // ≠ 0: each song looks different every time it plays (the app passes a random number)
 };
 
 // What the app knows this frame.

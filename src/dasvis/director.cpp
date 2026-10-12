@@ -17,6 +17,22 @@ double rnd(uint32_t seed, uint32_t index, uint32_t salt) {
 
 }  // namespace
 
+TrailStyle trail_style(uint32_t seed, int intensity, bool calm) {
+    const auto r = [seed](uint32_t salt) { return float(rnd(seed, 0x7A11, salt)); };
+    const float pace = intensity <= 0 ? 0.6f : intensity >= 2 ? 1.4f : 1.f;
+    TrailStyle t;
+    t.strength = 0.8f + 0.17f * r(1);
+    t.melt = r(2) < 0.3f ? 0.3f + 0.4f * r(3) : 0.f;
+    t.fade = 0.6f + 1.6f * r(4);  // trails of about 0.4–1.6 s, as MilkDrop's presets' decay
+    static constexpr float kMirrors[] = {3, 4, 5, 6, 8};
+    t.mirrors = r(5) < 0.2f ? kMirrors[std::min(4, int(r(6) * 5))] : 0.f;
+    t.zoom = (r(7) < 0.15f ? -(0.3f + 0.5f * r(8)) : 0.2f + 1.3f * r(8)) * pace * (calm ? 0.4f : 1.f);
+    t.turn = (r(9) < 0.5f ? -1.f : 1.f) * (0.05f + 0.75f * r(10)) * pace * (calm ? 0.5f : 1.f);
+    t.swirl = 1.2f * r(11) * r(11);
+    t.flow = 0.02f + 0.23f * r(12);
+    return t;
+}
+
 Director::Director(std::vector<SceneTags> scenes) : scenes_(std::move(scenes)) {}
 
 void Director::set_scenes(std::vector<SceneTags> scenes) {

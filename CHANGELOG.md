@@ -15,6 +15,10 @@ Day-to-day work goes on `main`; bigger features on a branch (`feature/<name>`), 
 
 ## Unreleased
 
+- **DasVis moves like MilkDrop now**: trails under every scene. The last frame is zoomed, turned, swirled, sometimes
+  folded into a kaleidoscope, and laid under the new one. The kick jolts it, the bass pulls it, build-ups speed it up,
+  drops whip it, and it all flies faster at a faster tempo. A new style comes with every scene and evolves every phrase.
+- **A different look every time a song plays** (right-click → DasVis → *Same look each time a song plays* turns it off).
 - **Full screen's key hints** are a glass bar of keycaps at the top instead of a long line of text, the same in every
   mode (and they say how to switch between DasVis and MilkDrop). On a narrow screen the less used ones drop out
   instead of the line being cut off.

@@ -839,6 +839,80 @@ void milkdrop_scene() {
     CHECK(!dv.wants_milkdrop(), "left: not wanted any more (%s)", dv.scene_name().c_str());
 }
 
+// Trails (MilkDrop's motion under every scene): the styles are the same for a seed and varied across seeds, chill is
+// gentler than insane; with Config::vary each play of a song looks different; on screen they change the picture and
+// never white it out, under every scene.
+void trails() {
+    {
+        const TrailStyle a = trail_style(42, 1, false), b = trail_style(42, 1, false);
+        CHECK(a.zoom == b.zoom && a.turn == b.turn && a.mirrors == b.mirrors, "the same seed, the same style");
+        int mirrored = 0, out = 0, melting = 0;
+        float chill = 0, insane = 0;
+        for (uint32_t i = 0; i < 400; ++i) {
+            const TrailStyle t = trail_style(i, 1, false);
+            CHECK(t.strength >= 0.8f && t.strength <= 0.97f && t.fade >= 0.6f && t.fade <= 2.2f && t.flow > 0, "style %u in range", i);
+            mirrored += t.mirrors > 0, out += t.zoom < 0, melting += t.melt > 0;
+            chill += std::fabs(trail_style(i, 0, false).zoom), insane += std::fabs(trail_style(i, 2, false).zoom);
+        }
+        CHECK(mirrored > 40 && mirrored < 140 && out > 20 && out < 110 && melting > 70 && melting < 190,
+              "varied: %d kaleidoscopes, %d zooming out, %d melting of 400", mirrored, out, melting);
+        CHECK(chill < insane, "chill flies slower than insane (%.0f, %.0f)", chill, insane);
+    }
+    ComPtr<ID3D11Device> dev;
+    const D3D_FEATURE_LEVEL fl = D3D_FEATURE_LEVEL_10_0;
+    if (FAILED(D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, D3D11_CREATE_DEVICE_BGRA_SUPPORT, &fl, 1, D3D11_SDK_VERSION, &dev, nullptr, nullptr)))
+        return std::puts("FAIL: no WARP device"), void(++failures);
+    D3D11_TEXTURE2D_DESC td{160, 90, 1, 1, DXGI_FORMAT_B8G8R8A8_UNORM, {1, 0}, D3D11_USAGE_DEFAULT, D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE};
+    ComPtr<ID3D11Texture2D> screen;
+    dev->CreateTexture2D(&td, nullptr, &screen);
+    const auto music = drums(30, 140, true, true);
+    // Each play different: the first scene of the same song over 8 plays (a new DasVis each, as a new visit is).
+    std::set<std::string> firsts;
+    for (uint32_t play = 1; play <= 8; ++play) {
+        Config cfg;
+        cfg.start = Tier::low, cfg.auto_tier = false, cfg.vary = play * 7919u;
+        DasVis dv(dev.Get(), cfg);
+        Features f;
+        Inputs in;
+        in.f = &f, in.song = "same-song";
+        dv.render(in, screen.Get());
+        firsts.insert(dv.scene_name());
+    }
+    CHECK(firsts.size() >= 3, "the same song starts differently each play: %zu different first scenes of 8", firsts.size());
+    // On screen: each built-in scene for 5 s of loud drums with its trails, never washed out; and the trails change it.
+    Config cfg;
+    cfg.start = Tier::low, cfg.auto_tier = false, cfg.auto_advance = 0;
+    DasVis dv(dev.Get(), cfg), plain(dev.Get(), [&] { Config c = cfg; c.trails = false; return c; }());
+    Features f, pf;
+    std::vector<float> win(Features::kFft);
+    size_t at = kHop;
+    Inputs in, pin;
+    in.f = &f, in.song = pin.song = "trail-song";
+    pin.f = &pf;
+    ComPtr<ID3D11Texture2D> other;
+    dev->CreateTexture2D(&td, nullptr, &other);
+    dv.lock(true), plain.lock(true);
+    const auto names = dv.scene_names();
+    int changed = 0, with = 0;
+    for (size_t s = 0; s < builtin_scenes().size(); ++s) {
+        dv.select(s), plain.select(s);
+        for (int i = 0; i < 300; ++i) {
+            for (size_t k = 0; k < Features::kFft; ++k) win[k] = at >= Features::kFft - k ? music[(at - Features::kFft + k) % music.size()] : 0.f;
+            at += kHop;
+            f.update(win.data(), 1 / 60.f, 140), pf.update(win.data(), 1 / 60.f, 140);
+            dv.render(in, screen.Get()), plain.render(pin, other.Get());
+        }
+        std::vector<uint8_t> a, b;
+        const Stats st = read(dev.Get(), screen.Get(), &a);
+        read(dev.Get(), other.Get(), &b);
+        CHECK(st.mean < 0.85, "%s with trails after 5 s: mean %.3f (washed out)", names[s].c_str(), st.mean);
+        if (builtin_scenes()[s].trails) ++with, changed += diff(a, b) > 0.01;
+        else CHECK(diff(a, b) < 0.001, "%s draws no trails (%.3f)", names[s].c_str(), diff(a, b));
+        std::printf("  trails under %s: mean %.3f, differs from none by %.3f\n", names[s].c_str(), st.mean, diff(a, b));
+    }
+    CHECK(changed * 4 >= with * 3, "the trails visibly change most scenes: %d of %d", changed, with);
+}
+
 // The cover shatter on a drop (insane: every event): the cover's shards are on screen after the drop. Two runs with grey
 // covers (no palette from them, so everything else is the same), dark and light: only the shards can differ.
 void cover_shatter() {
@@ -1100,6 +1174,7 @@ int main(int argc, char** argv) {
     director_timing();
     lyrics();
     milkdrop_scene();
+    trails();
     cover_shatter();
     video();
     spout();
