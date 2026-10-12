@@ -42,6 +42,8 @@ cbuffer DasVis : register(b0) {
                      // (0 streaks – 1 the whole picture smears), fade per second, kaleidoscope mirrors (0: none)
     float4 u_flow;   // and how the last frame moves under the new one: zoom in per second (− out), turn per second,
                      // swirl, noise flow
+    float4 u_gen[4]; // the Journey scene's world (src/dasvis/genome.h): genus and warps; their amounts and mirrors;
+                     // density, edge, core, grain; hue, spread, speed, glow
 };
 
 #define TIME u_time.x
@@ -223,7 +225,11 @@ float3 trails(float2 p, float3 c) {
     }
     q += (float2(noise(p * 3 + TIME * 0.2), noise(p * 3 - TIME * 0.2 + 5.3)) - 0.5) * DT * u_flow.w * (1 + 2 * HATS);
     float3 w = PREV(q / float2(ASPECT, 1) + 0.5) * exp(-DT * u_trail.z / u_trail.x);  // stronger: they fade slower
-    return lerp(max(c, w), lerp(c, w, 0.85), u_trail.y * (1 - 0.6 * DROP));  // the drop's new picture punches through the melt
+    // Streaks show where the new picture is dark: over a bright one they'd keep the brightest of the last second and
+    // wash it out (the gate compounds frame on frame, so a bright area clears in a few frames).
+    float lit = saturate(dot(c, float3(0.2126, 0.7152, 0.0722)) * 1.5);
+    float3 streaks = max(c, w * (1 - 0.8 * lit));
+    return lerp(streaks, lerp(c, w, 0.85), u_trail.y * (1 - 0.6 * DROP));  // the drop's new picture punches through the melt
 }
 
 float4 main(VsOut v) : SV_Target {

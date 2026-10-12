@@ -123,6 +123,7 @@ public:
     void set_auto_advance(double seconds);
     void set_reduce_flash(bool on);
     std::string scene_name() const;
+    uint32_t world() const;  // Journey's worlds so far (a new one each time it's picked, even right after itself)
     size_t scene_count() const;
     // Compiles the user's scenes again (F5). Returns the errors, "" if none.
     std::string reload_user_scenes();

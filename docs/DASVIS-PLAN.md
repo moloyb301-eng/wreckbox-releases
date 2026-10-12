@@ -990,7 +990,37 @@ drop (Intro → Verse → Chorus); without a known tempo it finds one. Worth a l
 - **Tested:** styles deterministic and varied (400 seeds: kaleidoscopes, zooms out, melts in the expected shares; chill
   slower than insane); 8 plays of one song start with 3+ different scenes; every scene with trails for 5 s of loud
   drums stays under 0.85 mean brightness (highest 0.69) and is visibly changed (2.5–40 %).
-- Next: J2, genomes and the Journey shader (cells, organelles, tunnels), per the plan.
+- Streaks show only where the new picture is dark (`1 − 0.8 × its brightness`, compounding frame on frame): over a
+  bright, full-screen picture they kept the brightest of the last second and washed it out to white.
+
+### Journeys J2: generated worlds ✅ 2026-10-12
+- `dasvis/genome.*`: a world from a seed:
+  - a genus (cells 40 %, organelles 30 %, tunnel 30 %)
+  - one to three warps of space (twist, kaleidoscope mirror, fold, fluid flow, log-polar spiral, lens, ripples), each
+    with an amount
+  - the numbers that shape it: density, membrane width, nucleus size, grain, palette start and spread, speed, glow
+  - Every number is drawn inside a range that looks right. `mutate()` nudges the numbers, never the genus or warps;
+    `ease()` and `pack()` (the shader's `u_gen[4]`).
+- `scenes/journey.hlsl`: the warps, then the genus, shaded.
+  - **Cells:** wandering Voronoi seeds. Dark grainy cytoplasm in shadow by the wall, crisp glowing membranes that
+    shimmer on the hats, nuclei that swell on the kick.
+  - **Organelles:** metaballs that orbit and swell, with glowing rims.
+  - **Tunnel:** cell-textured walls, a ring down it on each kick.
+  - **The endless zoom (cells, organelles):** level L at its size, level L + 1 (twice as fine) fading in over the last
+    45 % of each doubling, so it never ends or jumps. It flies with TRAVEL × tempo and jolts forward on each kick.
+- **The director:** *Journey* is a lead scene. Outside drops it's picked about two times in three (less if you skip
+  it for the genre), even right after itself, and each pick is a new world flown into with a zoom-through. It
+  mutates (35 %) each phrase, the change growing in over a few seconds. Its trails are streaks only (no melt or extra
+  fold: the world has its own shapes).
+- **Measured** (Intel UHD, Low): 7.5–8.7 ms of GPU at 45–50 % render size, 60 fps; one heavier world reached 13.9 ms
+  and the quality control stepped down.
+- **Tested** (`dasvis_tests`):
+  - The same seed gives the same world. Over 600 seeds every genus and warp appears, all numbers stay in range,
+    mutations keep the genus and warps and move the numbers about 10 %.
+  - Nine worlds in a row are each lit (mean 0.12–0.51), moving, and no two alike.
+  - Four plays of a song look different.
+  - The director's changes, including Journey → a new Journey world, land on parts and phrases.
+- Next: J3, diving from one world into the next (a world inside a cell's nucleus) as the song moves from part to part.
 
 ### Phase 8: optional, later (MilkDrop layer ✅ 2026-10-12; real stems waiting on your decision)
 **Built:**

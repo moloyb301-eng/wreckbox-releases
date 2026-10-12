@@ -88,6 +88,7 @@ add_library(wbdasvis STATIC
   src/dasvis/video.cpp
   src/dasvis/spout.cpp
   src/dasvis/lyrics.cpp
+  src/dasvis/genome.cpp
   ${DASVIS_GENERATED})
 target_include_directories(wbdasvis PUBLIC src PRIVATE ${CMAKE_BINARY_DIR})
 target_link_libraries(wbdasvis PUBLIC wbengine d3d11 dxgi PRIVATE mfplat mfreadwrite mfuuid)

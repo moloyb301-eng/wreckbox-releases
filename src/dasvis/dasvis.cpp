@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "dasvis/director.h"
+#include "dasvis/genome.h"
 #include "dasvis_gen/library.h"
 #include "dasvis_gen/ps_aurora.h"
 #include "dasvis_gen/ps_bloom_down.h"
@@ -41,6 +42,7 @@
 #include "dasvis_gen/ps_star.h"
 #include "dasvis_gen/ps_storm.h"
 #include "dasvis_gen/ps_milkdrop.h"
+#include "dasvis_gen/ps_journey.h"
 #include "dasvis_gen/ps_synthwave.h"
 #include "dasvis_gen/ps_tunnel.h"
 #include "dasvis_gen/vs_fullscreen.h"
@@ -57,7 +59,7 @@ namespace {
 
 // Mirrors the cbuffer in dasvis.hlsli: float4s only, so the C++ and HLSL layouts can't drift apart.
 struct Uniforms {
-    float time[4], res[4], out[4], beat[4], drums[4], tone[4], look[4], post[4], key[4], pal[5][4], pass[4], song[4], drop[4], hits[4], sim[4], dir[4], drift[4], ext[4], title[4], deck[4], lyric[4], trail[4], flow[4];
+    float time[4], res[4], out[4], beat[4], drums[4], tone[4], look[4], post[4], key[4], pal[5][4], pass[4], song[4], drop[4], hits[4], sim[4], dir[4], drift[4], ext[4], title[4], deck[4], lyric[4], trail[4], flow[4], gen[4][4];
 };
 static_assert(sizeof(Uniforms) % 16 == 0);
 
@@ -105,6 +107,7 @@ const BuiltIn kScenes[] = {
     {k_ps_mandelbox, sizeof k_ps_mandelbox, Sim::none, {"Mandelbox Flight", kMid | kPeak, 'H', true, false, false}},
     {k_ps_chrome, sizeof k_ps_chrome, Sim::none, {"Liquid Chrome", kMid | kPeak, 'H', false, false, false}},
     {k_ps_storm, sizeof k_ps_storm, Sim::none, {"Storm", kMid | kPeak, 'H', false, false, false}},
+    {k_ps_journey, sizeof k_ps_journey, Sim::none, {"Journey", kCalm | kMid | kPeak, 'M', false, false, false, true, true}},
 };
 // Only with Config::milkdrop, after the others (the app runs projectM for it).
 const BuiltIn kMilkDrop{k_ps_milkdrop, sizeof k_ps_milkdrop, Sim::milkdrop, {"MilkDrop", kMid | kPeak, 'M', false, true, true, false}};
@@ -184,6 +187,9 @@ struct DasVis::Impl {
     float ring_from = 0;   // the ring's mix when the last change began
     // Trails: the style the director drew for this scene and phrase, and the one on screen easing towards it.
     TrailStyle trail_to, trail_on;
+    // Journey's world: the one drawn for it, and the one on screen easing towards it as it evolves.
+    Genome gen_to, gen_on;
+    uint32_t worlds = 0;
     uint32_t trail_draws = 0;
     uint32_t plays = 0;    // songs started (with Config::vary: each one looks different)
     float drift_seed[4][2] = {};  // the song's drift waves (periods and phases, 0–1)
@@ -402,6 +408,7 @@ struct DasVis::Impl {
         if (!scenes[cue.scene].ps) return;
         previous = current, current = cue.scene;
         transition = 0, since_switch = 0, bars_on = 0, advance_due = false;
+        if (is_lead(current)) new_world();
         draw_trails(true);
     }
 
@@ -413,6 +420,7 @@ struct DasVis::Impl {
         if (!fresh) t.mirrors = trail_to.mirrors;  // a fold snapping in or out mid-scene would jump
         const bool on = current < builtin ? builtin_at(current).tags.trails : true;
         if (!on || !cfg.trails) t.strength = 0;
+        if (is_lead(current)) t.melt = 0, t.mirrors = 0;  // Journey's world has its own shapes: streaks only, no smear or fold
         trail_to = t;
         if (fresh) trail_on.mirrors = t.mirrors;
     }
@@ -429,8 +437,23 @@ struct DasVis::Impl {
 
     // The director picks for `m` (never the scene on screen), and it goes on screen.
     void choose(const Moment& m) {
-        apply(dir.pick(m, current));
+        const Cue c = dir.pick(m, current);
+        if (c.scene == current && is_lead(current)) {  // Journey again: a new world, flown into
+            cue = c;
+            cue.transition = Transition::zoom;
+            new_world();
+            transition = 0, since_switch = 0, bars_on = 0, advance_due = false;
+            draw_trails(true);
+        } else {
+            apply(c);
+        }
         ++picks;
+    }
+
+    bool is_lead(size_t i) const { return i < builtin && builtin_at(i).tags.lead; }
+
+    void new_world() {
+        gen_to = gen_on = make_genome(song_seed ^ (0x51ED27u * ++worlds));
     }
 
     // N / P: the next or previous scene, dressed by the director. Any scene: it's your choice (the heavy ones too, at a
@@ -763,7 +786,10 @@ struct DasVis::Impl {
         // is up (shorter on insane, longer on chill), on a bar's downbeat.
         since_switch += dt;
         const bool new_bar = bar < last_bar;
-        if (new_bar && bars_on > 0 && (bars_on + 1) % 16 == 0) draw_trails(false);  // evolving, each phrase
+        if (new_bar && bars_on > 0 && (bars_on + 1) % 16 == 0) {  // evolving, each phrase
+            draw_trails(false);
+            gen_to = mutate(gen_to, song_seed ^ (0xE701u * (worlds + 1000u * uint32_t(bars_on))), 0.35f);
+        }
         bars_on += new_bar;
         last_bar = bar;
         now = moment(in, ms.section, ms.section, has_map ? ms.energy : f.energy);
@@ -858,6 +884,8 @@ struct DasVis::Impl {
             const bool off = trail_on.strength < 0.01f || cue.mid != Mid::none;
             set(u.trail, off ? 0.f : trail_on.strength, trail_on.melt, trail_on.fade, trail_on.mirrors);
             set(u.flow, trail_on.zoom, trail_on.turn, trail_on.swirl, trail_on.flow);
+            dasvis::ease(gen_on, gen_to, 1 - std::exp(-dt / 2.f));  // a phrase's changes grow in over a few seconds
+            pack(gen_on, u.gen);
         }
         // Drift: four slow waves from the song's seed, so a long section keeps changing without looping.
         for (int i = 0; i < 4; ++i) {
@@ -999,6 +1027,7 @@ void DasVis::set_camera(float turn, float zoom) {
     p_->cam_tx = std::clamp(turn, -1.f, 1.f), p_->cam_ty = std::clamp(zoom, -1.f, 1.f);
 }
 bool DasVis::particles() const { return p_->cue.mid == Mid::particles; }
+uint32_t DasVis::world() const { return p_->worlds; }
 bool DasVis::wants_milkdrop() const { return ok() && !p_->scenes.empty() && p_->scenes[p_->current].sim == Sim::milkdrop; }
 void DasVis::set_milkdrop(const uint8_t* bgra, int w, int h) {
     if (ok()) p_->set_milkdrop(bgra, w, h);

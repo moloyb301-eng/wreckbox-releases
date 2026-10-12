@@ -92,6 +92,19 @@ Cue Director::pick(const Moment& m, size_t current) {
     std::vector<size_t> ok;
     for (size_t i = 0; i < scenes_.size(); ++i)
         if (i != current && fits(i, m.tier, m.budget_ms)) ok.push_back(i);
+    // A lead scene (Journey: a new generated world each time) takes about two picks in three outside drops, even right
+    // after itself, less if you've skipped it for this genre.
+    if (!m.drop)
+        for (size_t i = 0; i < scenes_.size(); ++i) {
+            if (!scenes_[i].lead || !fits(i, m.tier, m.budget_ms)) continue;
+            float like = 1;
+            if (taste_)
+                if (const auto it = taste_->find(scenes_[i].name); it != taste_->end()) like = std::clamp(it->second, 0.05f, 1.4f);
+            if (rnd(m.seed, m.index, 7) < 0.65 * like) {
+                last_energy_ = m.energy;
+                return dress(i, m);
+            }
+        }
     if (ok.empty()) return dress(current, m);  // nothing else fits: stay
     const auto keep = [&](auto pred) {
         std::vector<size_t> sub;

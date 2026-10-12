@@ -13,6 +13,15 @@ After 0.7.0, each release goes up by one patch number: 0.7.1, 0.7.2, and so on u
 
 Day-to-day work goes on `main`; bigger features on a branch (`feature/<name>`), merged when the tests pass.
 
+## Unreleased
+
+- **Journey, DasVis's generated worlds**: a new scene that's different every time. Algorithms build a world from a
+  random recipe (cells, organelles or a tunnel, seen through twists, kaleidoscopes, folds, fluid flows, spirals,
+  lenses and ripples) and fly you into it for ever: cells within cells, nuclei that swell on the kick, membranes that
+  shimmer with the hats. It evolves every phrase, and each time it comes back it's a new world. It leads DasVis now:
+  about two scenes in three.
+- DasVis's trails stay crisp over bright pictures (they streak across the dark parts instead of washing it out).
+
 ## 0.7.5 — 2026-10-12
 
 - **DasVis moves like MilkDrop now**: trails under every scene. The last frame is zoomed, turned, swirled, sometimes
