@@ -53,6 +53,10 @@ Close WreckBox before updating. The command uses `curl` and `tar`, which come wi
 
 > Windows 10 or 11, 64-bit. It uses your existing `Music\WreckBox` library, so nothing needs moving.
 
+> **Handhelds** (ASUS ROG Ally and Ally X, Lenovo Legion Go, MSI Claw and other Windows handhelds) have ordinary
+> 64-bit PC processors, so the same download runs on them as it is. Touch works as mouse clicks. DasVis measures the
+> handheld's graphics and picks its quality itself; unplugged, *Save battery* (on by default) holds it to 30 fps.
+
 > **Good to know:** the account and bug reports still go to the original WreckBox services. The update check only
 > looks at releases of this build. See the [changelog](CHANGELOG.md).
 
