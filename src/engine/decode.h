@@ -2,6 +2,7 @@
 #pragma once
 #include <cstdint>
 #include <filesystem>
+#include <functional>
 #include <vector>
 
 namespace wb {
@@ -18,5 +19,9 @@ struct Audio {
 // Decodes the whole file to mono at kAnalysisRate. WAV/AIFF via dr_wav, everything else via Media Foundation.
 // Throws std::runtime_error with a readable message.
 Audio decode_mono(const std::filesystem::path& path);
+
+// The same samples, handed to `sink` in chunks as they're decoded instead of kept: for analyses that stream through a
+// song (a few MB however long it is, instead of ~5 MB a minute). Returns the original's duration in seconds.
+double decode_mono_stream(const std::filesystem::path& path, const std::function<void(const float*, size_t)>& sink);
 
 }  // namespace wb

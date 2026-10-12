@@ -715,6 +715,10 @@ void View::row_menu(const std::string& id) {
         AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
         if (tr->file_id.empty()) AppendMenuW(m, store_.busy() ? MF_GRAYED : MF_STRING, 1, L"Write tags to file");
         AppendMenuW(m, MF_STRING, 2, L"Show in folder");
+        HMENU video = CreatePopupMenu();
+        const wchar_t* sizes[] = {L"720p, 30 fps (quick)", L"1080p, 60 fps", L"1440p, 60 fps", L"4K, 60 fps (slow)"};
+        for (int i = 0; i < 4; ++i) AppendMenuW(video, MF_STRING | (video_ ? MF_GRAYED : 0), UINT_PTR(20 + i), sizes[i]);
+        AppendMenuW(m, MF_POPUP, UINT_PTR(video), L"Export DasVis video");
         AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
         AppendMenuW(m, MF_STRING, 6, L"Move to Recycle Bin");
     }
@@ -733,6 +737,10 @@ void View::row_menu(const std::string& id) {
         case 5: play_track(id); break;
         case 6: delete_songs({id}); break;
         case 7: want({id}, true); break;
+        case 20:
+        case 21:
+        case 22:
+        case 23: export_video(id, cmd - 20); break;
     }
     InvalidateRect(hwnd_, nullptr, FALSE);
 }

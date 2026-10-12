@@ -1,7 +1,10 @@
 #include "ui/gfx.h"
 
+#include <dxgi1_6.h>
+
 #include <algorithm>
 #include <format>
+#include <iterator>
 #include <vector>
 
 #include "../res/resource.h"
@@ -54,22 +57,88 @@ bool Gfx::load_fonts() {
 
 bool Gfx::create_target() {
     if (rt_) return true;
-    RECT rc;
-    GetClientRect(hwnd_, &rc);
-    // WRECKBOX_SOFTWARE=1 draws on the CPU: an escape hatch for old PCs with broken or flaky graphics drivers.
-    wchar_t sw[4]{};
-    const bool software = GetEnvironmentVariableW(L"WRECKBOX_SOFTWARE", sw, 4) && sw[0] == L'1';
-    const auto props = D2D1::RenderTargetProperties(software ? D2D1_RENDER_TARGET_TYPE_SOFTWARE : D2D1_RENDER_TARGET_TYPE_DEFAULT,
-                                                    D2D1::PixelFormat(), dpi_, dpi_);
-    // Normally don't block the UI thread waiting for the monitor's refresh (the desktop compositor already prevents
-    // tearing); the moving visualizer does want to wait, so its frames are paced by the refresh (set_vsync).
-    const auto hprops = D2D1::HwndRenderTargetProperties(hwnd_, D2D1::SizeU(UINT(rc.right - rc.left), UINT(rc.bottom - rc.top)),
-                                                         vsync_ ? D2D1_PRESENT_OPTIONS_NONE : D2D1_PRESENT_OPTIONS_IMMEDIATELY);
-    if (FAILED(d2d_->CreateHwndRenderTarget(props, hprops, &rt_))) return false;
+    if (!create_device()) {
+        drop_target();
+        return false;
+    }
+    rt_->SetDpi(dpi_, dpi_);
     rt_->SetTextAntialiasMode(D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE);  // ClearType fringes look wrong on translucent fills
     rt_->CreateSolidColorBrush(D2D1::ColorF(1, 1, 1), &brush_);
     target_ = rt_;
     ++generation_;
+    return true;
+}
+
+// A Direct3D 11 device, a swap chain on the window and a Direct2D device context drawing into it. The swap chain uses
+// the bit-block-transfer model, as Direct2D's own window target did: the screen, child windows (the search box),
+// PrintWindow and the visualizer's beat-sync timing behave exactly as before.
+namespace {
+bool env(const wchar_t* name) {  // a WRECKBOX_* switch set to 1
+    wchar_t v[4]{};
+    return GetEnvironmentVariableW(name, v, 4) && v[0] == L'1';
+}
+}  // namespace
+
+bool Gfx::create_device() {
+    // WRECKBOX_SOFTWARE=1 draws on the CPU (WARP): an escape hatch for old PCs with broken or flaky graphics drivers.
+    // WRECKBOX_FL10=1 limits the GPU to Direct3D feature level 10_0, the oldest one supported (for testing old PCs).
+    const bool software = env(L"WRECKBOX_SOFTWARE"), fl10 = env(L"WRECKBOX_FL10");
+    static const D3D_FEATURE_LEVEL levels[] = {D3D_FEATURE_LEVEL_11_1, D3D_FEATURE_LEVEL_11_0, D3D_FEATURE_LEVEL_10_1,
+                                               D3D_FEATURE_LEVEL_10_0};
+    const D3D_FEATURE_LEVEL* first = fl10 ? &levels[3] : levels;
+    const UINT count = fl10 ? 1 : UINT(std::size(levels));
+    D3D_FEATURE_LEVEL level{};
+    HRESULT hr = E_FAIL;
+    ComPtr<IDXGIAdapter1> fast;  // the high-performance GPU, when asked for (Windows 10 1803 and later can tell)
+    ComPtr<IDXGIFactory6> f6;
+    if (fast_gpu_ && !software && SUCCEEDED(CreateDXGIFactory1(IID_PPV_ARGS(&f6))))
+        f6->EnumAdapterByGpuPreference(0, DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE, IID_PPV_ARGS(&fast));
+    // In order: the fast GPU, the default one, WARP (no usable GPU: Remote Desktop, a broken driver).
+    const std::pair<IDXGIAdapter*, D3D_DRIVER_TYPE> tries[] = {
+        {fast.Get(), D3D_DRIVER_TYPE_UNKNOWN}, {nullptr, D3D_DRIVER_TYPE_HARDWARE}, {nullptr, D3D_DRIVER_TYPE_WARP}};
+    for (const auto& [adapter, type] : tries) {
+        if ((type == D3D_DRIVER_TYPE_UNKNOWN && !adapter) || (type == D3D_DRIVER_TYPE_HARDWARE && software)) continue;
+        hr = D3D11CreateDevice(adapter, type, nullptr, D3D11_CREATE_DEVICE_BGRA_SUPPORT, first, count, D3D11_SDK_VERSION, &d3d_, &level,
+                               &d3d_ctx_);
+        if (SUCCEEDED(hr)) break;
+    }
+    if (FAILED(hr)) return false;
+
+    ComPtr<IDXGIDevice1> dxgi;
+    ComPtr<IDXGIAdapter> adapter;
+    ComPtr<IDXGIFactory2> factory;
+    if (FAILED(d3d_.As(&dxgi)) || FAILED(dxgi->GetAdapter(&adapter)) || FAILED(adapter->GetParent(IID_PPV_ARGS(&factory)))) return false;
+    dxgi->SetMaximumFrameLatency(1);  // a vsync'd frame waits for the refresh with nothing queued behind it (beat sync)
+    DXGI_ADAPTER_DESC ad{};
+    adapter->GetDesc(&ad);
+    char name[128]{};
+    WideCharToMultiByte(CP_UTF8, 0, ad.Description, -1, name, int(sizeof name) - 1, nullptr, nullptr);
+    device_name_ = std::format("{}, feature level {}_{}", name, (level >> 12) & 0xF, (level >> 8) & 0xF);
+
+    // Normally the UI thread doesn't wait for the monitor's refresh (the desktop compositor already prevents tearing);
+    // the moving visualizer does, so its frames are paced by the refresh (set_vsync, end()).
+    DXGI_SWAP_CHAIN_DESC1 desc{};  // width / height 0: the window's client size
+    desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+    desc.SampleDesc.Count = 1;
+    desc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+    desc.BufferCount = 1;
+    desc.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
+    if (FAILED(factory->CreateSwapChainForHwnd(d3d_.Get(), hwnd_, &desc, nullptr, nullptr, &swap_))) return false;
+    factory->MakeWindowAssociation(hwnd_, DXGI_MWA_NO_ALT_ENTER);  // full screen is the app's own (F11), not DXGI's
+
+    ComPtr<ID2D1Device> device;
+    if (FAILED(d2d_->CreateDevice(dxgi.Get(), &device)) || FAILED(device->CreateDeviceContext(D2D1_DEVICE_CONTEXT_OPTIONS_NONE, &rt_)))
+        return false;
+    return attach_back_buffer();
+}
+
+bool Gfx::attach_back_buffer() {
+    ComPtr<IDXGISurface> surface;
+    const auto props = D2D1::BitmapProperties1(D2D1_BITMAP_OPTIONS_TARGET | D2D1_BITMAP_OPTIONS_CANNOT_DRAW,
+                                               D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_IGNORE), dpi_, dpi_);
+    if (FAILED(swap_->GetBuffer(0, IID_PPV_ARGS(&surface))) || FAILED(rt_->CreateBitmapFromDxgiSurface(surface.Get(), &props, &back_)))
+        return false;
+    rt_->SetTarget(back_.Get());
     return true;
 }
 
@@ -84,11 +153,19 @@ void Gfx::drop_target() {
     layer_.Reset();
     brush_.Reset();
     target_.Reset();
+    back_.Reset();
     rt_.Reset();
+    swap_.Reset();
+    if (d3d_ctx_) d3d_ctx_->ClearState(), d3d_ctx_->Flush();  // so the old swap chain is really gone before a new one
+    d3d_ctx_.Reset();
+    d3d_.Reset();
 }
 
 void Gfx::resize(UINT w, UINT h) {
-    if (rt_) rt_->Resize(D2D1::SizeU(w, h));
+    if (!swap_) return;
+    rt_->SetTarget(nullptr);  // the buffers can only be resized once nothing holds them
+    back_.Reset();
+    if (FAILED(swap_->ResizeBuffers(0, w, h, DXGI_FORMAT_UNKNOWN, 0)) || !attach_back_buffer()) drop_target();
 }
 
 void Gfx::set_dpi(float dpi) {
@@ -111,12 +188,19 @@ float Gfx::height() const {
 void Gfx::set_vsync(bool on) {
     if (on == vsync_) return;
     vsync_ = on;
-    drop_target();  // made again with the other present option on the next begin()
+    drop_target();  // made again on the next begin()
+}
+
+void Gfx::set_fast_gpu(bool on) {
+    if (on == fast_gpu_) return;
+    fast_gpu_ = on;
+    drop_target();
 }
 
 bool Gfx::begin() {
     if (!create_target()) return false;
     rt_->BeginDraw();
+    drawing_ = true;
     rt_->SetTransform(D2D1::Matrix3x2F::Identity());
     // A screen needs ~200 layouts; keep a few screens' worth (scrolling back is common) and start over beyond that.
     if (layouts_.size() > 800) layouts_.clear();
@@ -124,11 +208,23 @@ bool Gfx::begin() {
 }
 
 void Gfx::end() {
-    if (rt_->EndDraw() == HRESULT(D2DERR_RECREATE_TARGET)) {
+    drawing_ = false;
+    HRESULT hr = rt_->EndDraw();
+    if (SUCCEEDED(hr)) hr = swap_->Present(vsync_ ? interval_ : 0, 0);
+    occluded_ = hr == DXGI_STATUS_OCCLUDED;
+    // WRECKBOX_RENDER_HIDDEN=1 (for measuring a test window behind others): keep drawing, paced as the display would.
+    static const bool render_hidden = env(L"WRECKBOX_RENDER_HIDDEN");
+    if (occluded_ && render_hidden) Sleep(16 * (vsync_ ? interval_ : 1)), occluded_ = false;
+    if (hr == D2DERR_RECREATE_TARGET || hr == DXGI_ERROR_DEVICE_REMOVED || hr == DXGI_ERROR_DEVICE_RESET) {
         // The GPU was reset or changed: drop everything tied to the old target; it's rebuilt on the next paint.
         drop_target();
         InvalidateRect(hwnd_, nullptr, FALSE);
     }
+}
+
+bool Gfx::visible_again() {
+    occluded_ = !swap_ || swap_->Present(0, DXGI_PRESENT_TEST) == DXGI_STATUS_OCCLUDED;
+    return !occluded_;
 }
 
 // MARK: Shapes
@@ -247,6 +343,12 @@ bool Gfx::draw_stream(const Rect& r, bool flip, float zoom) {
     return true;
 }
 
+ComPtr<ID3D11Texture2D> Gfx::back_buffer() const {
+    ComPtr<ID3D11Texture2D> tex;
+    if (swap_) swap_->GetBuffer(0, IID_PPV_ARGS(&tex));
+    return tex;
+}
+
 void Gfx::image(ID2D1Bitmap* bmp, const Rect& r, float radius, float opacity) {
     const auto size = bmp->GetSize();
     // Cover-fit: scale to fill the rect, centred, then clip to the rounded shape via a bitmap brush.
@@ -308,6 +410,79 @@ IDWriteTextFormat* Gfx::format(const TextStyle& st, bool wrap) {
     }
     formats_[key] = f;
     return f.Get();
+}
+
+bool Gfx::draw_title_card(ID3D11Texture2D* target, const std::wstring& title, const std::wstring& artist, int* letters) {
+    *letters = 0;
+    // Drawn with the window's own device context, its target switched to the texture for a moment (Direct2D allows it
+    // mid-frame): a second context would hold its own buffers, ~1.5 MB.
+    ComPtr<IDXGISurface> surface;
+    ComPtr<ID2D1Bitmap1> bmp;
+    ComPtr<ID2D1Image> window;
+    const auto props = D2D1::BitmapProperties1(D2D1_BITMAP_OPTIONS_TARGET | D2D1_BITMAP_OPTIONS_CANNOT_DRAW,
+                                               D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED), 96, 96);
+    if (!target || !rt_ || FAILED(target->QueryInterface(IID_PPV_ARGS(&surface))) || FAILED(rt_->CreateBitmapFromDxgiSurface(surface.Get(), props, &bmp)))
+        return false;
+    ID2D1DeviceContext* dc = rt_.Get();
+    dc->GetTarget(&window);
+    D2D1_MATRIX_3X2_F transform;
+    dc->GetTransform(&transform);
+    const D2D1_TEXT_ANTIALIAS_MODE aa = dc->GetTextAntialiasMode();
+    ComPtr<IDWriteRenderingParams> params, outline;
+    dc->GetTextRenderingParams(&params);
+    // As outlines (shapes), not glyph bitmaps: big text would otherwise get a glyph atlas of its own (~1.5 MB).
+    if (SUCCEEDED(dw_->CreateCustomRenderingParams(1.8f, 0, 0, DWRITE_PIXEL_GEOMETRY_FLAT, DWRITE_RENDERING_MODE_OUTLINE, &outline)))
+        dc->SetTextRenderingParams(outline.Get());
+    dc->SetTransform(D2D1::Matrix3x2F::Identity());
+    D3D11_TEXTURE2D_DESC td;
+    target->GetDesc(&td);
+    const float W = float(td.Width), H = float(td.Height), split = H * kTitleShare;
+    dc->SetTarget(bmp.Get());
+    dc->SetTextAntialiasMode(D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE);  // the channels carry data: no colour fringes
+    const bool own_frame = !drawing_;  // called from a command, not a paint (the video export)
+    if (own_frame) dc->BeginDraw();
+    dc->Clear(D2D1::ColorF(0, 0, 0, 0));
+    struct Line {
+        const std::wstring& s;
+        TextStyle st;
+        float top, height;
+    } lines[] = {{title, {Font::ui, H * 0.42f, 700}, 0, split}, {artist, {Font::ui, H * 0.24f, 500}, split, H - split}};
+    std::vector<ComPtr<ID2D1SolidColorBrush>> brushes;  // one per letter: red 1 (so red = coverage), green its number
+    for (Line& ln : lines) {
+        if (ln.s.empty()) continue;
+        auto lay = layout(ln.s, ln.st, 100000, ln.height, false);
+        DWRITE_TEXT_METRICS m{};
+        if (!lay || FAILED(lay->GetMetrics(&m))) continue;
+        if (m.widthIncludingTrailingWhitespace > W - 16) {  // too long: smaller, to fit
+            ln.st.size *= (W - 16) / m.widthIncludingTrailingWhitespace;
+            lay = layout(ln.s, ln.st, 100000, ln.height, false);
+        }
+        UINT32 n = 0;
+        lay->GetClusterMetrics(nullptr, 0, &n);
+        std::vector<DWRITE_CLUSTER_METRICS> cm(n);
+        if (FAILED(lay->GetClusterMetrics(cm.data(), n, &n))) continue;
+        UINT32 at = 0;
+        for (const auto& c : cm) {
+            if (!c.isWhitespace) {
+                ComPtr<ID2D1SolidColorBrush> br;
+                if (SUCCEEDED(dc->CreateSolidColorBrush(D2D1::ColorF(1, float(std::min(*letters, 255)) / 255.f, 0), &br))) {
+                    lay->SetDrawingEffect(br.Get(), {at, c.length});
+                    brushes.push_back(br);
+                }
+                ++*letters;
+            }
+            at += c.length;
+        }
+        const float x = artist.empty() && SUCCEEDED(lay->GetMetrics(&m)) ? std::max(8.f, (W - m.widthIncludingTrailingWhitespace) / 2) : 8;
+        dc->DrawTextLayout(D2D1::Point2F(x, ln.top), lay.Get(), brushes.empty() ? nullptr : brushes.front().Get());
+    }
+    if (own_frame) dc->EndDraw();
+    else dc->Flush();  // into the texture now: DasVis reads it this frame
+    dc->SetTarget(window.Get());
+    dc->SetTransform(transform);
+    dc->SetTextAntialiasMode(aa);
+    dc->SetTextRenderingParams(params.Get());
+    return true;
 }
 
 ComPtr<IDWriteTextLayout> Gfx::layout(const std::wstring& s, const TextStyle& st, float w, float h, bool wrap) {

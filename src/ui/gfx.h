@@ -1,14 +1,19 @@
 // Drawing layer: Direct2D + DirectWrite with the app's embedded fonts. Everything is in DIPs (device-independent
 // pixels; 1 DIP = 1 px at 100 % scaling), so layout code never thinks about DPI.
+// Direct2D draws through a Direct3D 11 device the app owns (a device context on the window's swap chain), so GPU work
+// such as the DasVis visualizer can share textures with it instead of reading pixels back.
 #pragma once
 #include <d2d1_1.h>
+#include <d3d11.h>
 #include <dwrite_3.h>
+#include <dxgi1_2.h>
 #include <wincodec.h>
 #include <wrl/client.h>
 
 #include <functional>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 namespace wb::ui {
 
@@ -47,16 +52,34 @@ public:
     float width() const;   // client size in DIPs
     float height() const;
 
-    // Present on the display's refresh (EndDraw waits for it) instead of at once: the full-screen visualizer's frames
-    // then land exactly on each refresh. Changing it rebuilds the render target.
+    // Present on the display's refresh (end() waits for it) instead of at once: the full-screen visualizer's frames
+    // then land exactly on each refresh. Changing it rebuilds the device: going into or out of full screen starts the
+    // GPU caches (covers, gradients, text) over, which keeps the full-screen visit from adding to memory (~40 MB).
     void set_vsync(bool on);
+    // While vsync'd, present every n-th refresh (2: 30 fps at 60 Hz, to save battery; 60 fps on a 120 Hz screen).
+    void set_frame_interval(UINT n) { interval_ = n ? n : 1; }
+    // Make the device on the fastest graphics card (a laptop's GeForce / Radeon rather than its Intel chip). Changing it
+    // rebuilds the device. Only for DasVis's full screen: the rest of the time the battery-saving one is fine.
+    void set_fast_gpu(bool on);
     bool begin();  // false if the render target couldn't be created
     void end();    // handles device loss by recreating the target next frame
+    // Nothing of the window is on screen (the display asleep, the screen locked, another window over all of it): the
+    // last present said so. A present then doesn't wait for a refresh, so the full-screen visualizer would draw as fast
+    // as it can for nobody; it waits instead, asking visible_again() a few times a second (a test present, no drawing).
+    bool occluded() const { return occluded_; }
+    bool visible_again();
 
     ID2D1RenderTarget* rt() const { return rt_.Get(); }
+    ID3D11Device* d3d() const { return d3d_.Get(); }  // shared with DasVis
+    // The window's back buffer, for DasVis to draw into before Direct2D draws the panel over it. Don't keep it: the
+    // buffer can only be resized once nothing holds it.
+    ComPtr<ID3D11Texture2D> back_buffer() const;
+    void flush() { rt_->Flush(); }  // Direct2D's queued drawing goes first
     IWICImagingFactory* wic() const { return wic_.Get(); }
     // Bumped whenever the render target is (re)created: bitmaps made on an older target must be dropped.
     int generation() const { return generation_; }
+    // The graphics card and Direct3D feature level in use, e.g. "NVIDIA GeForce GTX 1650 Ti, feature level 11_1".
+    const std::string& device_name() const { return device_name_; }
 
     // Shapes
     void fill(const Rect& r, D2D1_COLOR_F c);
@@ -97,8 +120,17 @@ public:
     // Draws something expensive (e.g. the pixel logo) once into a cached bitmap of `w`×`h` DIPs, then reuses it.
     void cached(const std::wstring& key, const Rect& r, const std::function<void(Gfx&)>& draw);
 
+    // DasVis's title card: `title` over `artist` in the app's font, drawn once a song straight into `target` (a BGRA
+    // render-target texture on this device) on the GPU, with no pixels on the CPU. Premultiplied: the text's coverage
+    // in red, and in green its letter's number (counted across both lines) times the coverage, so the shader can bring
+    // the letters in one by one. The title takes kTitleShare of the height. Without an artist (a lyric line) it's centred.
+    static constexpr float kTitleShare = 0.6f;
+    bool draw_title_card(ID3D11Texture2D* target, const std::wstring& title, const std::wstring& artist, int* letters);
+
 private:
     bool create_target();
+    bool create_device();
+    bool attach_back_buffer();
     void drop_target();
     bool load_fonts();
     IDWriteTextFormat* format(const TextStyle& st, bool wrap);
@@ -108,15 +140,23 @@ private:
 
     HWND hwnd_ = nullptr;
     float dpi_ = 96;
-    ComPtr<ID2D1Factory> d2d_;
+    ComPtr<ID2D1Factory1> d2d_;
     ComPtr<IDWriteFactory5> dw_;
     ComPtr<IDWriteFontCollection1> fonts_;
     ComPtr<IWICImagingFactory> wic_;
-    ComPtr<ID2D1HwndRenderTarget> rt_;
+    ComPtr<ID3D11Device> d3d_;
+    ComPtr<ID3D11DeviceContext> d3d_ctx_;
+    ComPtr<IDXGISwapChain1> swap_;
+    ComPtr<ID2D1DeviceContext> rt_;
+    ComPtr<ID2D1Bitmap1> back_;         // the swap chain's buffer, as rt_'s target
     ComPtr<ID2D1RenderTarget> target_;  // what drawing goes to: the window, or a bitmap while cached() records
     ComPtr<ID2D1SolidColorBrush> brush_;
+    bool occluded_ = false;
+    bool drawing_ = false;  // between begin() and end()
     int generation_ = 0;
-    bool vsync_ = false;
+    bool vsync_ = false, fast_gpu_ = false;
+    UINT interval_ = 1;
+    std::string device_name_;
     std::unordered_map<std::wstring, ComPtr<IDWriteTextFormat>> formats_;
     std::unordered_map<std::wstring, float> widths_;  // measure() cache
     // Per-target caches: creating Direct2D resources every frame is what makes a frame slow, so they're kept and only

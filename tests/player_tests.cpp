@@ -314,14 +314,34 @@ static void visualizer() {
     CHECK(bb.pulse == 1 && !bb.hard_cuts && bb.all_presets && bb.beat_sensitivity == 3 && bb.sync_ms == -75 && !bb.panel);
     const VisOptions clamped = VisOptions::from_json(wb::json{{"pulse", 9}, {"syncMs", 5000}, {"beatSensitivity", 0}});
     CHECK(clamped.pulse == 2 && clamped.sync_ms == 300 && clamped.beat_sensitivity == 1);
-    // MilkDrop is the default look; its options round-trip and a bad value falls back to the nearest choice.
+    // DasVis is the default look; MilkDrop's options round-trip and a bad value falls back to the nearest choice.
     VisOptions d;
-    CHECK(d.mode == VisOptions::Mode::milkdrop && d.quality == 720 && d.auto_advance == 30);
+    CHECK(d.mode == VisOptions::Mode::dasvis && d.quality == 720 && d.auto_advance == 30);
     o.mode = VisOptions::Mode::milkdrop, o.quality = 1080, o.auto_advance = 0;
     const VisOptions m = VisOptions::from_json(o.to_json());
     CHECK(m.mode == VisOptions::Mode::milkdrop && m.quality == 1080 && m.auto_advance == 0, "milkdrop options");
     CHECK(VisOptions::from_json(wb::json{{"quality", 600}, {"autoAdvance", -5}}).quality == 720 && VisOptions::from_json(wb::json{{"autoAdvance", -5}}).auto_advance == 0);
-    CHECK(VisOptions::from_json(wb::json::object()).mode == VisOptions::Mode::milkdrop && VisOptions::from_json(wb::json{{"mode", "both"}}).mode == VisOptions::Mode::both);
+    CHECK(VisOptions::from_json(wb::json::object()).mode == VisOptions::Mode::dasvis && VisOptions::from_json(wb::json{{"mode", "both"}}).mode == VisOptions::Mode::both);
+    // Settings from before DasVis (MilkDrop, no DasVis options) move to DasVis once; a later choice of MilkDrop stays.
+    CHECK(VisOptions::from_json(wb::json{{"mode", "milkdrop"}}).mode == VisOptions::Mode::dasvis, "old MilkDrop default moves to DasVis");
+    CHECK(VisOptions::from_json(wb::json{{"mode", "milkdrop"}, {"dasvis", wb::json::object()}}).mode == VisOptions::Mode::milkdrop, "MilkDrop chosen stays");
+    // DasVis: its mode and options round-trip; out-of-range values are clamped.
+    o.mode = VisOptions::Mode::dasvis, o.das_intensity = 2, o.das_quality = 1, o.das_battery = false, o.das_reduce_flash = true, o.das_fast_gpu = true;
+    o.das_tiers = wb::json{{"Intel(R) UHD Graphics", "low"}};
+    o.das_costs = wb::json{{"Intel(R) UHD Graphics", {{"Coral|Low", 2.5}}}};
+    o.das_taste = wb::json{{"house", {{"Galaxy", 1.5}}}};
+    o.das_lights = true, o.das_wled = "wled.local", o.das_wled_leds = 144;
+    o.das_wallpaper = true, o.das_screens = 2, o.das_lyrics = true, o.das_milkdrop = true;
+    const VisOptions dv = VisOptions::from_json(o.to_json());
+    CHECK(dv.mode == VisOptions::Mode::dasvis && dv.das_intensity == 2 && dv.das_quality == 1 && !dv.das_battery && dv.das_reduce_flash &&
+              dv.das_fast_gpu && dv.das_tiers.value("Intel(R) UHD Graphics", "") == "low" && dv.das_costs == o.das_costs &&
+              dv.das_taste == o.das_taste && dv.das_lights && dv.das_wled == "wled.local" && dv.das_wled_leds == 144 &&
+              dv.das_wallpaper && dv.das_screens == 2 && dv.das_lyrics && dv.das_milkdrop,
+          "dasvis options");
+    const VisOptions dd = VisOptions::from_json(wb::json{{"dasvis", {{"intensity", 7}, {"quality", -1}}}});
+    CHECK(dd.das_intensity == 2 && dd.das_quality == 0 && dd.das_battery && !dd.das_reduce_flash && !dd.das_fast_gpu && !dd.das_wallpaper &&
+              dd.das_screens == 0 && !dd.das_lyrics && !dd.das_milkdrop,
+          "dasvis defaults and clamps (lyrics and the wallpaper off)");
 }
 
 // Real time, and the clock the seek bar shows: through the real sound device (muted — nothing audible), 2 s of wall

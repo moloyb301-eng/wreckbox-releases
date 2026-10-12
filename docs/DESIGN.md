@@ -90,10 +90,22 @@ would have made the port hard to check against the original. So instead:
   scrollable regions; input is matched against the last paint's regions.
 - **Painting happens only after an invalidation**: input that changes what's under the pointer, a store change, or a
   finished job. There is no frame loop, so **idle CPU is 0** (measured).
-- `ID2D1HwndRenderTarget` with `D2D1_PRESENT_OPTIONS_IMMEDIATELY`, so the UI thread never waits for the monitor's
-  refresh. The desktop compositor prevents tearing for windowed apps anyway.
-- **`WRECKBOX_SOFTWARE=1`** renders on the CPU instead, an escape hatch for broken or flaky GPU drivers on old PCs.
-  It's about 1.5× slower to paint and uses ~14 MB less memory.
+- **The app owns its Direct3D 11 device** (DasVis phase 0, 2026-10-11).
+  - `Gfx` creates the device (feature level 11_1 down to 10_0), a swap chain on the window and an
+    `ID2D1DeviceContext` drawing into it, so GPU work such as DasVis can share textures with the UI instead of reading
+    pixels back.
+  - The swap chain uses the bit-block-transfer model (`DXGI_SWAP_EFFECT_DISCARD`, one buffer), as
+    `ID2D1HwndRenderTarget` did. The screen, the `EDIT` child windows, PrintWindow and the visualizer's beat-sync
+    timing behave as before; screenshots of the pages are pixel-identical to the old target.
+  - It presents with sync interval 0, so the UI thread never waits for the monitor's refresh; the desktop compositor
+    prevents tearing for windowed apps anyway. Full screen presents on the refresh (`Gfx::set_vsync`), with a maximum
+    frame latency of 1.
+  - **Going into or out of full screen rebuilds the device**, as the old target was rebuilt. This starts the GPU caches
+    (covers, gradients, text) over. Keeping them made full-screen MilkDrop cost ~40 MB more (151 vs 111 MB private).
+  - The adapter and feature level are logged with the first paint, e.g. `Intel(R) UHD Graphics, feature level 11_1`.
+- **`WRECKBOX_SOFTWARE=1`** renders on the CPU instead (WARP, "Microsoft Basic Render Driver"), an escape hatch for
+  broken or flaky GPU drivers on old PCs; WARP is also used when no GPU device can be made.
+- **`WRECKBOX_FL10=1`** limits the device to feature level 10_0, the oldest DasVis supports, to check old PCs here.
 - **Caches are what make it fast.** The first scroll test averaged 49 ms per frame, because every frame recreated
   ~125 gradient brushes and ~200 text layouts and drew the pixel logo as 800 rectangles. Now:
   - gradient brushes are kept per colour set and only moved
@@ -173,6 +185,56 @@ libVLC (decode, resample to 48 kHz, equalizer, normvol)
   that. It exists only while full screen is open and in MilkDrop mode. Failure at any step leaves `ok() == false`,
   and the screen shows the Winamp bars. Presets: `milkdrop\presets` next to the exe (projectM's "cream of the crop",
   pinned commit) plus the user's own folder under `%APPDATA%`.
+- **DasVis** (`dasvis/*`, plan: `docs/DASVIS-PLAN.md`) is WreckBox's own visualizer, on the app's Direct3D 11 device.
+  - **Audio:** `dasvis::Features` gets the same 2,048 heard samples the bars get, one refresh ahead: drum onsets
+    (spectral flux), smoothed levels, a beat clock (the library's BPM, else the kicks'), spectrum and waveform.
+  - **Director** (`dasvis/director.*`, phase 5): picks the scene, its layers and its transition at each part of the
+    song map (and on 16-bar phrases in long parts), from the scenes that fit the budget (costs measured per scene and
+    tier, saved per graphics card), weighted by energy and by your likes and skips for the genre (saved in the
+    settings), never one of the last 4. Deterministic from the song's seed. Transitions run in `dasvis.hlsli`'s
+    `main` over the last picture; drop events in the final pass.
+  - **Title card** (phase 6): `Gfx::draw_title_card` draws the title and artist with the window's own Direct2D
+    context, its target switched for a moment to DasVis's texture (`DasVis::title_target`), as outlines (no glyph
+    atlas); red is coverage and green each letter's number, for the shader to animate. Freed after 10 s.
+  - **Simulations** (phase 4): a scene can have one: particles, a fluid, reaction-diffusion, stars or the spectrum's
+    history. It's made when the scene comes on screen, at the tier's size (grids 128 / 192 / 256 cells tall), stepped
+    by pixel shaders on ping-pong textures before the scene is drawn, and dropped when the scene goes. Points, stars and
+    ridges are drawn without vertex buffers (`SV_VertexID`).
+  - **Each frame:** the simulation → the scene shader (and its points or lines) → the bloom chain → the final pass, which draws straight into the swap chain's
+    back buffer before Direct2D draws the panel over it (`Gfx::back_buffer()`; `Gfx::flush()` first). Paused, only the
+    final pass is repeated (`redraw()`), because the blt-model back buffer isn't kept between presents.
+  - **Shader Model 4 only** (feature level 10_0). Shaders are compiled by `fxc` at build time into headers
+    (`cmake/dasvis.cmake`); the user's own scenes are compiled with `d3dcompiler_47.dll`, loaded only when there are any.
+  - **Light by design:**
+    - The tier (Low / Medium / High) and render scale come from GPU timestamps.
+    - HDR is R11G11B10, and there's no full-screen texture of DasVis's own.
+    - The flash limiter reads back 16 × 16 bytes two frames late.
+    - It exists only while full screen is open in DasVis mode (and, at Low, while the live wallpaper runs).
+  - **Other windows** (`ui/das_window.*`): the live wallpaper (a child of the desktop's WorkerW) and, in full screen,
+    the other screens each have a swap chain of their own on the app's device and their own DasVis. The frame's inputs
+    (`View::das_inputs`: audio, song, map, taste) are worked out once and given to each; `View::das_dress` gives each
+    the cover (decoded once), the title card and the lyric line. The wallpaper runs on a timer (`kWallTimer`), only
+    while full screen is closed, and is made again when the device is.
+  - **Lyrics** (`dasvis/lyrics.*`): LRC parsed into lines; a line is drawn like the title card (`show_lyric`, the
+    same texture, `u_lyric` in the constant buffer) and animated in the final pass. Looked up off the UI thread
+    (`.lrc` next to the song, cache, LRCLIB), only when turned on.
+  - **MilkDrop as a scene** (opt-in): the *MilkDrop* scene reads a texture the app fills each frame from projectM
+    (`DasVis::wants_milkdrop` / `set_milkdrop`); projectM runs only while that scene is on screen (started when it
+    comes on, let go 20 s after). Too slow together for 60 fps, the visit runs at 30.
+  - **Its own GPU:** "Use the fast graphics card" (off by default) makes `Gfx` rebuild its device on the high-performance
+    adapter while DasVis is on screen (`Gfx::set_fast_gpu`); NVIDIA's driver costs ~70 MB of RAM, which is why it's off.
+  - **Frame pacing:** `Gfx::set_frame_interval` presents every n-th refresh: 60 fps on any screen, 30 on battery.
+  - **The song map** (`dasvis/songmap.*`) is the song's structure, worked out once and cached in `_cache\dasvis\maps`:
+    beats, downbeats, parts (intro, build-up, drop, breakdown …), drops and the quiet bars before them, and the
+    pseudo-stems' envelopes and hits.
+    - **Built** while DasVis is open, on a worker at background priority: the current song first, then the next in the
+      queue. The samples stream through (`decode_mono_stream`), so it needs a few MB, never the whole song.
+    - **Drive** (`dasvis::drive`): the map's stems move the scenes (live ones fill in), with per-drum hit flags and
+      the time since the last kick.
+    - **Palette** (`dasvis/palette.*`): from the cover (k-means in Oklab, dark → light, kept in sRGB), or the key's
+      when the cover is grey; it fades over ~1 s.
+    - **Used:** the renderer looks it up at the heard time (`player.time_ms()` + one refresh − calibration), corrected
+      by the live kicks, and passes the beat, bar, phrase, section, build-up and drop to the shaders.
 - **Threads:** libVLC's events and Windows' media-control button presses arrive on other threads and are posted to
   the window (`WM_APP_DONE`, `WM_APP_MEDIA`); everything in `Player` runs on the UI thread.
 
@@ -317,6 +379,8 @@ gets a 403.
 | `GET /crate` | `[{"id", "ext", "size", "analysis"}]` for each downloaded track whose file exists |
 | `GET /file/<id>` | the audio file. Honours `Range: bytes=a-b` (206 / 416) so the phone can seek while streaming |
 | `GET /art/<id>` | cover JPEG (downloads the 640 px Spotify cover into the cache if needed) |
+| `GET /vj` | the DasVis phone VJ deck (an HTML page) |
+| `POST /vj/cmd` | a deck command (`{"cmd":"drop"}`, `scene`, `camera`, `intensity`, …); replies with what's on screen |
 
 - Pairing URI shown as a QR code: `wreckbox://pair?hosts=<private IPv4s, comma-separated>&port=47390&t=<token>`.
 - The token is 18 random bytes, base64url without padding, stored as `desktopPairToken` in settings.

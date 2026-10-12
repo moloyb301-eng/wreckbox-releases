@@ -72,6 +72,7 @@ Close WreckBox before updating. The command uses `curl` and `tar`, which come wi
 | ▶️ | **Player** | 18+ formats, internet radio and `.m3u` / `.pls` links, files from outside the library, media keys |
 | 🎛️ | **Equalizer & normalizer** | 10-band EQ with presets and preamp, plus a volume normalizer |
 | 🌈 | **MilkDrop visualizer** | Full-screen MilkDrop presets (9,795 of them) with a player bar: song, transport, seek, volume, EQ and "Up next" |
+| ✨ | **DasVis visualizer** | WreckBox's own, and the default: 13 HDR scenes that follow the song's build-ups and drops and move with the kick, snare, hats and the beat. Light enough for old PCs (about 5 % of one core), and you can write your own scenes |
 | 🥁 | **Beat sync** | Kicks pulse the picture, presets change on drops, and you can nudge the timing by 25 ms |
 | 📊 | **Winamp bars** | Classic spectrum and oscilloscope modes. Used automatically on a PC without OpenGL 3.3 |
 | 📱 | **Phone sync** | Pair the WreckBox Android app with a QR code, then sync over your Wi-Fi |
@@ -137,7 +138,7 @@ Measured on the developer's PC:
 | **Language** | C++20, built with MSVC, CMake and vcpkg |
 | **Interface** | Win32 with Direct2D. Urbanist for text, Doto for labels and readouts |
 | **Audio** | libVLC engine, with miniaudio for output |
-| **Visualizer** | projectM (MilkDrop presets) |
+| **Visualizer** | projectM (MilkDrop presets); DasVis on Direct3D 11 (Shader Model 4) |
 | **Tags & decoding** | TagLib, dr_libs |
 | **Network** | WinHTTP, nlohmann-json, cpp-httplib, nayuki QR code generator |
 
@@ -187,6 +188,61 @@ the screen. The bar fades when the mouse is still. Its ⌄ button, or **H**, hid
 - In the bars mode, a click steps through spectrum → oscilloscope → both → off. Right-click has every Winamp option.
   **V** switches between the Classic Winamp and WreckBox colours.
 - A PC without OpenGL 3.3 gets the bars automatically. `WRECKBOX_NO_MILKDROP=1` forces them.
+
+**DasVis** is WreckBox's own visualizer, and the default: **D**, or the *DasVis* chip on the player bar.
+- **Its colours come from the album cover** (or from the song's key when the cover is black and white), and each part
+  of the drums moves something different: the kick sends light down the tunnel, the snare flashes, the hats glint, the
+  vocals and lead shift the colours.
+- **It's the default visualizer** (MilkDrop is one key away: **M**). Thirteen scenes:
+  - *Feedback Classic*: MilkDrop-style trails and a waveform ring, with particles thrown off it on the kicks
+  - *Neon Tunnel*: one ring per beat, with a spectrum ring round the cover
+  - *Kaleido Cover*: a kaleidoscope of the album art
+  - *Ink Ocean*: a real fluid simulation; the drums fire jets of ink in the cover's colours
+  - *Coral*: reaction-diffusion growing coral and spots, lit as relief
+  - *Galaxy*: a spiral galaxy of up to a million stars; the drop is a supernova
+  - *Ridge Lines*: the music's last few seconds as glowing ridges, flowing towards a sun at dusk
+  - *Synthwave*: an outrun sun over a neon grid, mountains made from the spectrum
+  - *Hyperspace*: stars stretching through a build-up, light speed on the drop
+  - *Aurora*: northern lights in the song's key over a lake, for the calm parts
+  - *Mandelbox Flight*, *Liquid Chrome* (metal blobs, one per drum and the bass and vocals, reflecting the cover) and
+    *Storm* (lightning on the snare): the heavy ones, for PCs with the graphics to run them
+- Each song starts with its **title and artist**, letter by letter on the beat; drops bring a **shockwave**, a
+  **white-out** or the **cover shattering** at you; kicks stamp **sigils**, and a **ribbon** of the waveform can fly
+  over the scene.
+- The simulations are sized to the PC and exist only while their scene is on screen.
+- **A director picks the scenes** as the song moves from part to part: calm scenes for breakdowns, a hero scene for
+  each drop (zooming through from the build-up, with a shockwave or a white-out), only scenes your PC can run
+  smoothly, never the same few over and over. Scenes change on the downbeat, with a wipe, crossfade, shatter or (for
+  dubstep and drum & bass) a glitch.
+- **N / P** or a click change the scene, **L** locks it, **F** likes it and **X** skips it: likes and skips are kept per
+  genre, so the director learns what you want to see.
+- **Video export:** right-click a song → *Export DasVis video* (720p to 4K, 60 fps) makes an MP4 of DasVis with the
+  song: every frame exact, at full quality on any PC (a slower one just takes longer).
+- **Room lights:** a WLED LED strip on your Wi-Fi can follow DasVis (Settings → *Room lights*): the song's colours,
+  pulsing with the kick and the bass, lit up on drops.
+- **Phone VJ deck:** right-click → DasVis → *Phone VJ deck…* shows a QR code; scan it with a phone on the same Wi-Fi to
+  steer the camera, call a drop, fire a shockwave, pick scenes and set the intensity from the phone.
+- **Live wallpaper:** DasVis behind your desktop icons while music plays (Settings → *Visualizer*). Low
+  quality and 30 fps at most; it pauses on battery and while something covers the desktop.
+- **Lyrics:** the words being sung, in time, over DasVis: from a `.lrc` file next to the song, else LRCLIB.net (it's
+  sent the song's title, artist, album and length). Off until you turn it on.
+- **More than one screen:** right-click → DasVis → *Screens*: one picture across all of them, or each its own scene.
+- **Spout:** right-click → DasVis → *Spout output* shares the picture with OBS, Resolume and other Spout programs.
+- **MilkDrop inside DasVis:** right-click → DasVis → *MilkDrop presets as a scene* adds MilkDrop's presets as one of
+  DasVis's scenes, with DasVis's transitions, drops and lyrics over them (about 60 MB more while it's on screen).
+- **It knows the song.** The first time a song plays in DasVis, it's analysed in the background: a few seconds, about
+  6 MB of memory. DasVis then knows the beats, the bars, the parts (intro, build-up, drop, breakdown …) and when each
+  drop lands. Build-ups drain the colour and close in, the bar before a drop goes quiet, and the drop hits. The player
+  bar counts down (*Build-up · drop in 4 bars*). **Ctrl+Shift+D** draws the map over the picture. Songs are analysed
+  once and remembered; radio stays live.
+- Right-click → **DasVis**:
+  - **Intensity:** Chill, Normal or Insane
+  - **Quality:** Auto measures this PC and remembers it; or pick Low, Medium or High
+  - **Save battery:** 30 fps on battery
+  - **Reduce flashing:** big flashes are always held to 3 a second; this makes it 1
+  - **Use the fast graphics card:** off by default, because it costs about 70 MB of memory on NVIDIA laptops
+- **Your own scenes:** *Open my scenes folder* has an example and `dasvis.hlsli`, which lists what a scene can use.
+  Save a `.hlsl` file there and press **F5**; any errors show at the top of the screen.
 
 </details>
 
@@ -270,7 +326,7 @@ The output goes to `build\Release\` (or `build\Debug\`):
     library, or a demo.
   - `--background` opens the window behind the others without taking focus.
   - Any other arguments are files, folders or URLs to play, as if you'd dropped them on the window.
-  - `WRECKBOX_PERF=1` logs paint times to `wreckbox.log`. `WRECKBOX_SOFTWARE=1` draws on the CPU, for drivers that misbehave.
+  - `WRECKBOX_PERF=1` logs paint times to `wreckbox.log`. `WRECKBOX_SOFTWARE=1` draws on the CPU, for drivers that misbehave. `WRECKBOX_FL10=1` limits the GPU to Direct3D feature level 10_0 (for testing what old PCs get).
 - Next to it: `libvlc.dll`, `libvlccore.dll`, `plugins\` (keep these together), `milkdrop\` (presets and textures) and
   `licenses\`.
 - **`wbcore.exe`**: the engine's command line.

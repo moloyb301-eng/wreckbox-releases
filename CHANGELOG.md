@@ -15,6 +15,64 @@ Day-to-day work goes on `main`; bigger features on a branch (`feature/<name>`), 
 
 ## Unreleased
 
+- **Choose your visualizer in Settings**: Settings → *Visualizer*: DasVis, MilkDrop or the Winamp bars for full screen,
+  and *MilkDrop inside DasVis*. (Full screen's chips and the D / M keys still switch too.)
+- **MilkDrop inside DasVis**: right-click → DasVis → *MilkDrop presets as a scene*. MilkDrop's presets become one of
+  DasVis's scenes, with DasVis's transitions, drops, bloom, ring and lyrics over them. Off by default: MilkDrop runs only
+  while that scene is on screen (about 60 MB more then).
+- **DasVis live wallpaper**: DasVis behind your desktop icons while music plays (Low quality, 30 fps at most, about
+  3 ms of GPU a frame on an Intel laptop). It pauses on battery and while a game, a full-screen app or a maximised
+  window covers the desktop. Settings → *Visualizer*; off by default.
+- **Synced lyrics in DasVis**: the words being sung, in time, letter by letter over the picture. From a `.lrc` file
+  next to the song, else looked up on LRCLIB.net (it sends the title, artist, album and length). Off until you turn it on.
+- **DasVis on more than one screen**: right-click → DasVis → *Screens*: one picture across all of them, or a different
+  scene on each.
+- **Spout output** (right-click → DasVis): share the picture with OBS, Resolume and other Spout programs on this PC.
+- **Export DasVis videos**: right-click a song → *Export DasVis video* → 720p, 1080p, 1440p or 4K. An MP4 (H.264, AAC)
+  of the song with DasVis, full quality and frame-exact on any PC; it works in the background, about as long as the
+  song at 1080p60 on an Intel laptop GPU.
+- **Room lights**: a WLED LED strip on your network can follow DasVis: the song's colours, brighter on the kick and the
+  bass, lit up on drops, never strobing faster than the screen may. Settings → *Room lights (WLED)*; off by default.
+- **Phone VJ deck for DasVis**: scan a QR code with a phone on the same Wi-Fi and run the show from it: an XY pad for
+  the camera, *Drop now*, *Shockwave* (or shake the phone, where the browser allows it), scene buttons, intensity, like
+  and skip. Protected by the same pairing code as phone sync.
+- **DasVis**: drops land on the right beat (a downbeat guessed wrong could start one a bar early, or miss it); nothing
+  is drawn while the window can't be seen (it ran at full speed for nobody when the display slept); a little less
+  memory on old and fast PCs.
+- **DasVis is now the default visualizer** (MilkDrop is still on **M**), with six more scenes: *Synthwave*,
+  *Hyperspace*, *Aurora*, and for faster graphics cards *Mandelbox Flight*, *Liquid Chrome* and *Storm*. Each song opens
+  with its title and artist, letter by letter on the beat; drops can shatter the cover at you; kicks stamp sigils; a
+  ribbon of the waveform can fly over the scene.
+- **The DasVis director**: scenes now follow the song. A calm scene for the breakdown, a hero scene on each drop
+  (zooming through from the build-up, with a shockwave or a white-out), changes on the downbeat with a wipe,
+  crossfade, shatter or glitch, only scenes this PC runs smoothly, and never the same few in a row. **F** likes a scene
+  and **X** skips it, per genre. Long sections keep evolving, as each scene's settings drift slowly.
+- **Four new DasVis scenes and a particle layer**: *Ink Ocean* (a fluid simulation), *Coral* (reaction-diffusion),
+  *Galaxy* (up to a million stars), *Ridge Lines* (the spectrum's history in 3D), and particles over *Feedback
+  Classic*. All run on old graphics cards (feature level 10_0) and are sized to the PC: on the old-PC check each new
+  scene costs less GPU time than Neon Tunnel, and DasVis stays at about +20 MB.
+- **DasVis takes its colours from the album cover**: five colours picked from the cover (k-means in Oklab), from dark
+  to light; black-and-white covers fall back to the song's key, and minor keys look cooler. The kick, snare, hats, bass
+  and lead found by the song map each move something different, on the song's exact timing.
+- **DasVis knows the song** (the song map): each song is analysed once in the background while DasVis is open (about
+  5 s and 6 MB for a 6-minute song), then cached.
+  - It finds the beats, bars, parts (intro, build-up, drop, breakdown …), each drop and the quiet bars before it.
+  - Build-ups drain the colour and close in, the bar before a drop dims, the drop punches, and a new scene starts on
+    each drop.
+  - The player bar counts down to the drop; **Ctrl+Shift+D** shows the map.
+- **DasVis preview**: WreckBox's own visualizer. **D** or the *DasVis* chip in full screen.
+  - Three scenes (Feedback Classic, Neon Tunnel, Kaleido Cover) that move with the kick, snare, hats, bass and the
+    beat, in HDR with bloom and a filmic finish. Your own scenes from a folder, with F5 to reload.
+  - Measures each PC and picks Low, Medium or High quality, remembered per graphics card. On old-PC settings (feature
+    level 10_0, 2 cores) it uses about 5 % of one core and 19 MB, against MilkDrop's 26–30 % and ~65 MB.
+  - Full-screen flashes held to 3 a second (1 with *Reduce flashing*); 30 fps on battery; 60 fps on high-refresh
+    screens.
+- **Groundwork for DasVis**, WreckBox's own visualizer (`docs/DASVIS-PLAN.md`). The window now draws through a
+  Direct3D 11 device the app owns, so the visualizer will be able to share the GPU with the interface without copying
+  pictures back. Nothing looks different, and memory and start-up time are unchanged. Old graphics cards (Direct3D
+  feature level 10_0) and PCs with no usable GPU (Windows' software renderer) both work. The log names the graphics card
+  in use.
+
 ## 0.7.3 — 2026-10-09
 
 - **Download queue page, rebuilt.**

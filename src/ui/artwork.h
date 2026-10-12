@@ -11,6 +11,9 @@
 
 namespace wb::ui {
 
+// Decodes `file` to premultiplied BGRA at most `px` on its longer side. For worker threads (it makes its own WIC factory).
+ComPtr<IWICBitmap> decode_image(const std::filesystem::path& file, UINT px);
+
 class ArtworkCache {
 public:
     ArtworkCache(LibraryStore& store, Jobs& jobs, Gfx& gfx) : store_(store), jobs_(jobs), gfx_(gfx) {}

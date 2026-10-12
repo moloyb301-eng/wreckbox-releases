@@ -19,10 +19,11 @@
 namespace wb::ui {
 
 using namespace theme;
+using player::VisOptions;
 
 namespace {
 
-enum Field : int { kSpotifyId = 101, kGoogleId, kGoogleSecret, kReporterName, kReporterContact, kSlskUser, kSlskPass };
+enum Field : int { kSpotifyId = 101, kGoogleId, kGoogleSecret, kReporterName, kReporterContact, kSlskUser, kSlskPass, kWledHost, kWledLeds };
 
 std::string trim(std::string s) {
     s.erase(0, s.find_first_not_of(" \t\r\n"));
@@ -56,6 +57,10 @@ std::vector<std::string> pick_csv_files(HWND owner) {
     return out;
 }
 
+// The visualizer's options as saved: vis_.opt is only loaded while full screen is open, so the Settings page works on
+// the saved copy (writing vis_.opt here would put its defaults over everything else saved).
+VisOptions saved_vis() { return VisOptions::from_json(Settings::current().extra.value("visualizer", json::object())); }
+
 void copy_to_clipboard(HWND owner, const std::string& value) {
     const std::wstring w = widen(value);
     if (!OpenClipboard(owner)) return;
@@ -80,6 +85,14 @@ bool View::save_settings() {
     take(kGoogleSecret, s.google_client_secret);
     take(kReporterName, s.reporter_name);
     take(kReporterContact, s.reporter_contact);
+    if (edits_.contains(kWledHost)) {  // the room lights live with the visualizer's options
+        VisOptions o = saved_vis();
+        o.das_wled = trim(edit_text(kWledHost));
+        if (edits_.contains(kWledLeds)) o.das_wled_leds = std::clamp(std::atoi(trim(edit_text(kWledLeds)).c_str()), 1, 490);
+        s.extra["visualizer"] = o.to_json();
+        vis_.opt.das_wled = o.das_wled, vis_.opt.das_wled_leds = o.das_wled_leds;
+        das_wled_for_.clear();  // looked up again
+    }
     try {
         s.save();
         return true;
@@ -329,6 +342,83 @@ void View::settings_page(const Rect& r) {
         } else {
             buttons({{L"Sign in on Sync to phone", icon::phone, Ui::Pill::glass, [this] { go(Page::phone); }}});
         }
+    });
+
+    section(L"Visualizer", false, [&] {
+        const VisOptions vo = saved_vis();
+        // One option changed in the saved visualizer settings (the rest as they are), and in the running ones.
+        const auto toggle = [this](auto member) {
+            VisOptions o = saved_vis();
+            o.*member = !(o.*member);
+            vis_.opt.*member = o.*member;
+            Settings::current().extra["visualizer"] = o.to_json();
+            save_settings();
+        };
+        para(L"Which visualizer full screen opens with (F11, or the button on the player bar). You can switch there too: "
+             L"the chips on its player bar, or D for DasVis and M for MilkDrop. DasVis is WreckBox's own and follows the "
+             L"song's build-ups and drops; MilkDrop plays the classic Winamp presets; Bars is the Winamp spectrum.");
+        {
+            using Mode = VisOptions::Mode;
+            const bool bars = vo.mode != Mode::dasvis && vo.mode != Mode::milkdrop;
+            const auto pick = [this](Mode m) {
+                VisOptions o = saved_vis();
+                vis_.opt.mode = o.mode = m;
+                Settings::current().extra["visualizer"] = o.to_json();
+                save_settings();
+            };
+            buttons({{L"DasVis", icon::visualizer, vo.mode == Mode::dasvis ? Ui::Pill::primary : Ui::Pill::glass, [pick] { pick(Mode::dasvis); }},
+                     {L"MilkDrop", icon::visualizer, vo.mode == Mode::milkdrop ? Ui::Pill::primary : Ui::Pill::glass, [pick] { pick(Mode::milkdrop); }},
+                     {L"Bars", icon::visualizer, bars ? Ui::Pill::primary : Ui::Pill::glass, [pick] { pick(Mode::spectrum); }}});
+        }
+        para(L"Both at once: MilkDrop's presets as one of DasVis's scenes, with DasVis's transitions, drops and lyrics over "
+             L"them. MilkDrop runs only while that scene is on screen (about 60 MB more then).");
+        buttons({{vo.das_milkdrop ? L"MilkDrop inside DasVis: on" : L"MilkDrop inside DasVis: off", icon::sparkle,
+                  vo.das_milkdrop ? Ui::Pill::primary : Ui::Pill::glass, [toggle] { toggle(&VisOptions::das_milkdrop); }}});
+        para(L"Live wallpaper: DasVis behind your desktop icons while music plays, at Low quality and 30 frames a second at "
+             L"most. It pauses on battery and while a game, a full-screen app or a maximised window covers the desktop.");
+        buttons({{vo.das_wallpaper ? L"Live wallpaper: on" : L"Live wallpaper: off", icon::sparkle, vo.das_wallpaper ? Ui::Pill::primary : Ui::Pill::glass,
+                  [this, toggle] {
+                      toggle(&VisOptions::das_wallpaper);
+                      wall_restart();
+                  }}});
+        para(L"Lyrics: the words being sung, in time, over DasVis. From a .lrc file next to the song if there is one, else "
+             L"looked up on LRCLIB.net, a free lyrics database: that sends the song's title, artist, album and length, nothing "
+             L"else. Off until you turn it on.");
+        buttons({{vo.das_lyrics ? L"Lyrics: on" : L"Lyrics: off", icon::sparkle, vo.das_lyrics ? Ui::Pill::primary : Ui::Pill::glass,
+                  [this, toggle] {
+                      toggle(&VisOptions::das_lyrics);
+                      das_lyrics_for_.clear(), das_lyrics_.reset();
+                  }}});
+        if (GetSystemMetrics(SM_CMONITORS) > 1) {
+            para(L"Full screen with more than one screen:");
+            const wchar_t* ways[] = {L"This screen", L"All, as one picture", L"Each its own scene"};
+            std::vector<Button> chips;
+            for (int i = 0; i < 3; ++i)
+                chips.push_back({ways[i], icon::visualizer, vo.das_screens == i ? Ui::Pill::primary : Ui::Pill::glass, [this, i] {
+                                     VisOptions o = saved_vis();
+                                     vis_.opt.das_screens = o.das_screens = i;
+                                     Settings::current().extra["visualizer"] = o.to_json();
+                                     save_settings();
+                                 }});
+            buttons(chips);
+        }
+    });
+
+    section(L"Room lights (WLED)", false, [&] {
+        para(L"A WLED LED strip on your network can follow DasVis: the song's colours, brighter on the kick and the bass, lit up "
+             L"on drops, and never strobing faster than the screen may. WreckBox sends to it directly over Wi-Fi; nothing "
+             L"to install, no account. It goes back to its own effect a couple of seconds after DasVis closes.");
+        const VisOptions vo = saved_vis();
+        field(kWledHost, L"WLED address (as in the WLED app: an IP like 192.168.1.50, or wled.local)", vo.das_wled, false, L"192.168.1.50");
+        field(kWledLeds, L"LEDs on the strip", std::to_string(vo.das_wled_leds));
+        buttons({{vo.das_lights ? L"Lights follow DasVis: on" : L"Lights follow DasVis: off", icon::sparkle,
+                  vo.das_lights ? Ui::Pill::primary : Ui::Pill::glass, [this] {
+                      if (!save_settings()) return;  // the address and count first
+                      VisOptions o = saved_vis();
+                      vis_.opt.das_lights = o.das_lights = !o.das_lights;
+                      Settings::current().extra["visualizer"] = o.to_json();
+                      save_settings();
+                  }}});
     });
 
     section(L"Bug reports", false, [&] {

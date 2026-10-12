@@ -112,6 +112,8 @@ inline constexpr const wchar_t* exit_full = L"\uE73F";
 inline constexpr const wchar_t* chevron_up = L"\uE70E";
 inline constexpr const wchar_t* chevron_down = L"\uE70D";
 inline constexpr const wchar_t* trash = L"\uE74D";
+inline constexpr const wchar_t* heart = L"\uEB51";
+inline constexpr const wchar_t* heart_fill = L"\uEB52";
 }  // namespace icon
 
 }  // namespace wb::theme

@@ -34,7 +34,7 @@ E parse(const json& j, const char* key, E fallback, std::initializer_list<const 
 }  // namespace
 
 json VisOptions::to_json() const {
-    return {{"mode", name(mode, {"spectrum", "scope", "both", "off", "milkdrop"})},
+    return {{"mode", name(mode, {"spectrum", "scope", "both", "off", "milkdrop", "dasvis"})},
             {"bars", name(bars, {"normal", "fire", "line"})},
             {"scope", name(scope, {"dots", "lines", "solid"})},
             {"barFalloff", bar_falloff},
@@ -48,13 +48,31 @@ json VisOptions::to_json() const {
             {"presets", all_presets ? "all" : "beat"},
             {"beatSensitivity", beat_sensitivity},
             {"syncMs", sync_ms},
-            {"panel", panel}};
+            {"panel", panel},
+            {"dasvis", {{"intensity", das_intensity},
+                        {"quality", das_quality},
+                        {"saveBattery", das_battery},
+                        {"reduceFlashing", das_reduce_flash},
+                        {"fastGpu", das_fast_gpu},
+                        {"tiers", das_tiers},
+                        {"costs", das_costs},
+                        {"taste", das_taste},
+                        {"lights", das_lights},
+                        {"wled", das_wled},
+                        {"wledLeds", das_wled_leds},
+                        {"wallpaper", das_wallpaper},
+                        {"screens", das_screens == 1 ? "span" : das_screens == 2 ? "each" : "one"},
+                        {"lyrics", das_lyrics},
+                        {"milkdrop", das_milkdrop}}}};
 }
 
 VisOptions VisOptions::from_json(const json& j) {
     VisOptions o;
     if (!j.is_object()) return o;
-    o.mode = parse(j, "mode", o.mode, {"spectrum", "scope", "both", "off", "milkdrop"});
+    o.mode = parse(j, "mode", o.mode, {"spectrum", "scope", "both", "off", "milkdrop", "dasvis"});
+    // DasVis became the default: settings from before it existed (no DasVis options in them, MilkDrop being the default
+    // then) move to it, once; anyone who then picks MilkDrop keeps it.
+    if (o.mode == Mode::milkdrop && !j.contains("dasvis")) o.mode = Mode::dasvis;
     o.bars = parse(j, "bars", o.bars, {"normal", "fire", "line"});
     o.scope = parse(j, "scope", o.scope, {"dots", "lines", "solid"});
     o.bar_falloff = std::clamp(j.value("barFalloff", o.bar_falloff), 0, 4);
@@ -70,6 +88,24 @@ VisOptions VisOptions::from_json(const json& j) {
     o.beat_sensitivity = std::clamp(j.value("beatSensitivity", o.beat_sensitivity), 1, 3);
     o.sync_ms = std::clamp(j.value("syncMs", o.sync_ms), -300, 300);
     o.panel = j.value("panel", o.panel);
+    if (const auto d = j.find("dasvis"); d != j.end() && d->is_object()) {
+        o.das_intensity = std::clamp(d->value("intensity", o.das_intensity), 0, 2);
+        o.das_quality = std::clamp(d->value("quality", o.das_quality), 0, 3);
+        o.das_battery = d->value("saveBattery", o.das_battery);
+        o.das_reduce_flash = d->value("reduceFlashing", o.das_reduce_flash);
+        o.das_fast_gpu = d->value("fastGpu", o.das_fast_gpu);
+        if (const auto t = d->find("tiers"); t != d->end() && t->is_object()) o.das_tiers = *t;
+        if (const auto t = d->find("costs"); t != d->end() && t->is_object()) o.das_costs = *t;
+        if (const auto t = d->find("taste"); t != d->end() && t->is_object()) o.das_taste = *t;
+        o.das_lights = d->value("lights", o.das_lights);
+        o.das_wled = d->value("wled", o.das_wled);
+        o.das_wled_leds = std::clamp(d->value("wledLeds", o.das_wled_leds), 1, 490);
+        o.das_wallpaper = d->value("wallpaper", o.das_wallpaper);
+        const std::string screens = d->value("screens", std::string("one"));
+        o.das_screens = screens == "span" ? 1 : screens == "each" ? 2 : 0;
+        o.das_lyrics = d->value("lyrics", o.das_lyrics);
+        o.das_milkdrop = d->value("milkdrop", o.das_milkdrop);
+    }
     return o;
 }
 

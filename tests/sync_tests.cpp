@@ -24,6 +24,9 @@
 #include "net/http_client.h"
 #include "net/sync_server.h"
 #include "net/tunnel.h"
+#include "net/wled.h"
+
+#include <ws2tcpip.h>
 
 namespace fs = std::filesystem;
 using namespace std::chrono_literals;
@@ -121,6 +124,26 @@ static void server_tests(wb::LibraryStore& store) {
         CHECK(wb::http::get(base + path + "?t=wrong").status == 403);
     }
     const wb::http::Headers auth{{"x-wreckbox-token", token}};
+
+    // The phone VJ deck: its page and commands need the token too; commands reach the handler and get its state back.
+    CHECK(wb::http::get(base + "/vj").status == 403 && wb::http::request("POST", base + "/vj/cmd", {}, R"({"cmd":"next"})").status == 403,
+          "the deck without a token");
+    const auto page = wb::http::get(base + "/vj?t=" + token);
+    CHECK(page.status == 200 && page.body.find("DasVis deck") != std::string::npos && page.header("content-type").rfind("text/html", 0) == 0,
+          "the deck's page");
+    CHECK(json::parse(wb::http::request("POST", base + "/vj/cmd", auth, R"({"cmd":"next"})").body, nullptr, false).value("open", true) == false,
+          "no deck handler: DasVis isn't open");
+    std::vector<std::string> got;
+    server.set_vj([&got](const std::string& body) {
+        got.push_back(body);
+        return std::string(R"({"open":true,"scene":"Galaxy"})");
+    });
+    const auto cmd = wb::http::request("POST", base + "/vj/cmd", auth, R"({"cmd":"drop"})");
+    CHECK(cmd.status == 200 && json::parse(cmd.body, nullptr, false).value("scene", "") == "Galaxy" && got.size() == 1 &&
+              got[0] == R"({"cmd":"drop"})",
+          "a deck command: %s", cmd.body.c_str());
+    server.set_vj(nullptr);
+    CHECK(server.vj_url().empty() || server.vj_url().find("/vj?t=" + token) != std::string::npos, "the deck's address: %s", server.vj_url().c_str());
 
     const auto info = wb::http::get(base + "/info", auth);
     const json ij = json::parse(info.body, nullptr, false);
@@ -457,6 +480,30 @@ static void tunnel_tests(wb::LibraryStore& store) {
     fs::remove_all(dir);
 }
 
+// Room lights: a WLED frame reaches a UDP socket on this PC standing in for the strip, as DRGB.
+static void wled_tests() {
+    const auto to = wb::lights::resolve("127.0.0.1:0");
+    CHECK(to.has_value(), "an address with a port");
+    CHECK(!wb::lights::resolve("").has_value(), "no address");
+    SOCKET strip = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+    sockaddr_in at{};
+    at.sin_family = AF_INET, at.sin_port = 0;
+    inet_pton(AF_INET, "127.0.0.1", &at.sin_addr);
+    bind(strip, reinterpret_cast<sockaddr*>(&at), sizeof at);
+    int len = sizeof at;
+    getsockname(strip, reinterpret_cast<sockaddr*>(&at), &len);
+    DWORD wait = 2000;
+    setsockopt(strip, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char*>(&wait), sizeof wait);
+    const auto dest = wb::lights::resolve("127.0.0.1:" + std::to_string(ntohs(at.sin_port)));
+    wb::lights::Wled wled;
+    std::vector<uint8_t> rgb(600 * 3, 7);  // more than one packet carries
+    CHECK(dest && wled.send(*dest, rgb), "sent");
+    char buf[2048];
+    const int got = recv(strip, buf, sizeof buf, 0);
+    CHECK(got == 2 + int(wb::lights::kMaxLeds) * 3 && buf[0] == 2 && buf[1] == 2 && buf[2] == 7, "a DRGB packet of %d bytes", got);
+    closesocket(strip);
+}
+
 int main() {
     const fs::path root = fs::temp_directory_path() / L"wreckbox-sync-tests";
     wb::LibraryStore store;
@@ -464,6 +511,7 @@ int main() {
     server_tests(store);
     account_tests(store);
     tunnel_tests(store);
+    wled_tests();
     fs::remove_all(root);
     if (failures) {
         std::fprintf(stderr, "%d check(s) failed\n", failures);

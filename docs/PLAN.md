@@ -667,6 +667,34 @@ You asked for full control over what Soulseek downloads, and for ways to delete 
 - [x] Cancel the song downloading right now (0.7.2): `cancelAt` in overrides.json, `active.json` from both runners
 - [x] Download queue page with progress (0.7.3): Now (progress bars) / Up next / Just finished (10 min) / playlists
 
+## DasVis — WreckBox's own visualizer (planned, 2026-10-11)
+
+The full plan is in `docs/DASVIS-PLAN.md`. The visualizer analyses each song before it plays (beats, phrases,
+build-ups, drops, pseudo-stems), so it can anticipate drops. It renders on Direct3D 11 with HDR, particles, fluid and
+fractals, and an auto-director cuts between scenes on phrase boundaries. MilkDrop stays as a mode.
+It runs on old PCs too: Direct3D feature level 10_0 with pixel shaders only, tiers measured on each PC, and less
+CPU and memory than MilkDrop (≤ +20 MB and < 5 % of a core at Low tier).
+- [x] Phase 0: Gfx on a D3D11 device + swap chain + `ID2D1DeviceContext` (no visible change; memory, first paint and
+      screenshots unchanged; runs at feature level 10_0 and on WARP). Details: `docs/DASVIS-PLAN.md`
+- [x] Phase 1: engine, post chain, tiers and dynamic resolution, flash limiter, 3 scenes + your own, DasVis chip and
+      menu. Low tier on old-PC settings: 5.1 % CPU, +19 MB. Details: `docs/DASVIS-PLAN.md`
+- [x] Phase 2: song map (beat grid, sections, drops, the breath before them), streamed (6 MB for a 6-minute song),
+      cached; scenes build and drop with the song; panel countdown; Ctrl+Shift+D. Details: `docs/DASVIS-PLAN.md`
+- [x] Phase 3: the map's stems drive the scenes (kick pulse, snare flashes, hat glints, lead colours), the palette
+      from the cover (k-means in Oklab), cooler minor keys. Details: `docs/DASVIS-PLAN.md`
+- [x] Phase 4: Ink Ocean (fluid), Coral (reaction-diffusion), Galaxy (a million stars on High), Ridge Lines, a particle
+      layer over Feedback Classic. Each simulation exists only while its scene is on screen. Details:
+      `docs/DASVIS-PLAN.md`
+- [x] Phase 5: the director: scenes picked by the song's sections, energy, this PC's budget and your likes (F) and
+      skips (X); transitions on downbeats; shockwave and white-out on drops; parameters drift. Details:
+      `docs/DASVIS-PLAN.md`
+- [x] Phase 6: Synthwave, Hyperspace, Aurora, Mandelbox Flight, Liquid Chrome, Storm; the ribbon; cover shatter;
+      beat sigils; the title card; DasVis is the default visualizer. Details: `docs/DASVIS-PLAN.md`
+- [x] Phase 7: phone VJ deck, room lights (WLED), video export, Spout, live wallpaper, multi-monitor, lyrics (opt-in).
+      Details: `docs/DASVIS-PLAN.md`
+- [ ] Phase 8 (optional): MilkDrop as a DasVis scene (done, opt-in); real stems with Demucs (waiting on a decision)
+- [ ] Phase 8 (optional): Demucs stems, MilkDrop as a layer
+
 ---
 
 ## Cross-cutting

@@ -9,11 +9,11 @@
 namespace wb::player {
 
 struct VisOptions {
-    // milkdrop last so the Winamp modes keep their numbers (click cycles the first four).
-    enum class Mode { spectrum, scope, both, off, milkdrop };
+    // milkdrop and dasvis last so the Winamp modes keep their numbers (click cycles the first four).
+    enum class Mode { spectrum, scope, both, off, milkdrop, dasvis };
     enum class Bars { normal, fire, line };
     enum class Scope { dots, lines, solid };
-    Mode mode = Mode::milkdrop;
+    Mode mode = Mode::dasvis;  // WreckBox's own; MilkDrop is one key (M) away
     Bars bars = Bars::normal;
     Scope scope = Scope::lines;
     int bar_falloff = 2;   // 0 slowest … 4 fastest, as in Winamp's options
@@ -28,6 +28,25 @@ struct VisOptions {
     int beat_sensitivity = 2;   // 1 low, 2 normal, 3 high
     int sync_ms = 0;            // your calibration: + draws the pictures later, − earlier (−300…300)
     bool panel = true;          // the full-screen player bar is shown (false: hidden, a "Show player" button instead)
+    // DasVis (docs/DASVIS-PLAN.md)
+    int das_intensity = 1;      // 0 chill, 1 normal, 2 insane
+    int das_quality = 0;        // 0 auto, 1 low, 2 medium, 3 high
+    bool das_battery = true;    // on battery: 30 fps and at most Medium
+    bool das_reduce_flash = false;  // at most 1 big flash a second, and gentler ones (always at most 3)
+    // Use the fast graphics card while DasVis is on screen (laptops with two). Off by default: its driver costs ~70 MB
+    // of RAM, and the battery-saving one runs DasVis well (measured: Intel UHD, High tier, 7–8 ms a frame).
+    bool das_fast_gpu = false;
+    json das_tiers = json::object();  // the measured tier per graphics card: {"<name>": "low" | "medium" | "high"}
+    json das_costs = json::object();  // what each scene measured, per graphics card: {"<name>": {"<scene>|<tier>": ms}}
+    json das_taste = json::object();  // likes and skips, per genre: {"<genre>" (or "any"): {"<scene>": weight}}
+    // Room lights: a WLED strip that follows DasVis (net/wled.h). Off until turned on in Settings.
+    bool das_lights = false;
+    std::string das_wled;        // its address: "192.168.1.50" or "wled.local"
+    int das_wled_leds = 60;      // LEDs on the strip (1–490)
+    bool das_wallpaper = false;  // the live wallpaper: DasVis behind the desktop icons while music plays
+    int das_screens = 0;         // with more than one screen, full screen is on: 0 this one, 1 all (spanned), 2 each its own scene
+    bool das_milkdrop = false;   // MilkDrop's presets as one of DasVis's scenes (projectM runs while it shows: ~60 MB more)
+    bool das_lyrics = false;     // synced lyrics in kinetic type: a .lrc next to the song, else LRCLIB (asks a website: off until turned on)
 
     json to_json() const;
     static VisOptions from_json(const json& j);

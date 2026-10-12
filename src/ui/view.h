@@ -11,16 +11,23 @@
 #include <vector>
 
 #include <chrono>
+#include <thread>
+#include <atomic>
 #include <filesystem>
 #include <future>
 #include <memory>
 
+#include "dasvis/dasvis.h"
+#include "dasvis/lyrics.h"
 #include "library/store.h"
 #include "net/bug_report.h"
+#include "net/wled.h"
+#include "dasvis/spout.h"
 #include "net/updates.h"
 #include "player/milkdrop.h"
 #include "player/player.h"
 #include "player/visualizer.h"
+#include "ui/das_window.h"
 #include "ui/jobs.h"
 #include "ui/ui.h"
 
@@ -41,6 +48,8 @@ inline constexpr int kBugTitle = 401, kBugBody = 402;  // Report a bug
 inline constexpr int kSlskQuery = 403;                  // Soulseek: custom search words
 inline constexpr UINT_PTR kRefreshTimer = 1, kPlayerTimer = 2, kTooltipTimer = 3;
 inline constexpr UINT_PTR kTrimTimer = 4;  // releases idle memory pages once full screen has been torn down
+inline constexpr UINT_PTR kOccludedTimer = 5;  // the visualizer's window isn't on screen: is it back yet?
+inline constexpr UINT_PTR kWallTimer = 6;      // the live wallpaper's next frame (or a look at whether it may run)
 
 // Hands the pages this process isn't using back to Windows (they return by themselves if needed). For moments when a lot
 // was just let go: minimized, or after the full-screen visualizer (the OpenGL driver's pages).
@@ -70,10 +79,17 @@ public:
     bool fullscreen() const { return fullscreen_; }
     // The full-screen visualizer is moving: the window repaints right after each frame, paced by the compositor.
     bool vsync_loop() const { return vsync_loop_; }
+    bool fast_gpu() const;        // DasVis is on screen: Gfx makes its device on the fast graphics card
+    UINT frame_interval() const;  // display refreshes per frame in full screen (DasVis: 60 fps, or 30 on battery)
     void set_update(std::optional<updates::Info> info);  // the startup check found a newer release (or nothing)
     void attach_soulseek(soulseek::Sync& sl);
     void attach_phone(sync::Server& server, sync::Tunnel& tunnel);  // the phone-sync services (owned by the app)
     void play_paths(std::vector<std::string> paths);  // files, folders, playlists or URLs (Open, drop, command line)
+    // The live wallpaper (DasVis behind the desktop icons, Low tier, 30 fps at most): a frame, or a look at whether it may
+    // run (kWallTimer). wall_restart(): turned on or off, or full screen closed.
+    void wall_tick();
+    void wall_restart();
+    void wall_stop() { wall_.reset(); }  // the app is closing: the desktop gets its own wallpaper back
 
     void paint();
     void store_changed() { dirty_ = true; }  // data changed: recompute lists on the next paint
@@ -298,10 +314,15 @@ private:
     bool vis_key(WPARAM vk);
     float overlay_alpha() const;
     void vis_click();
-    void vis_use_milk(bool milk);  // M, and the MilkDrop / Bars chips
+    void vis_use(player::VisOptions::Mode m);  // M / D and the chips: MilkDrop or DasVis (again: back to the bars)
     void milk_poll();
     void milk_start();                        // creates the engine (once per visit to full screen)
     void milk_screen(float W, float H);       // renders one MilkDrop frame (or keeps the last one) and draws it
+    player::MilkDrop::Frame milk_frame(float W, float H, bool playing, int height);  // one frame of what's heard (MilkDrop or DasVis's scene)
+    bool das_milk_shown_ = false;             // DasVis's MilkDrop scene was on screen last frame
+    bool das_milk_slow_ = false;              // and runs at 30 fps (the two were too slow together for 60)
+    int das_milk_late_ = 0;                   // frames in a row that were late
+    std::chrono::steady_clock::time_point das_milk_at_{};  // and when it last was
     std::filesystem::path user_presets_dir() const;
     bool fullscreen_ = false;
     player::Visualizer vis_;
@@ -335,7 +356,91 @@ private:
     void draw_toast();
     void milk_restart();         // rebuild the engine (a different set of presets)
     std::chrono::steady_clock::time_point audio_at_{};  // last time sound was playing: pictures settle for 4 s after
-    player::VisOptions::Mode winamp_mode_ = player::VisOptions::Mode::spectrum;  // what M switches back to
+    player::VisOptions::Mode winamp_mode_ = player::VisOptions::Mode::spectrum;  // what M / D switch back to
+    // DasVis: made when full screen opens in that mode, freed when it closes or another mode is picked (GPU and RAM
+    // back). It lives on Gfx's device; a rebuilt device (another GPU, device loss) means a new one.
+    std::unique_ptr<dasvis::DasVis> das_;
+    dasvis::Features das_feat_;
+    int das_gen_ = -1;           // the Gfx generation it was made on
+    DasShown das_shown_;         // what it has been given for the song (cover, title, lyric line)
+    // The song's cover, decoded once for every DasVis showing it (full screen, the other screens, the wallpaper).
+    struct DasCover {
+        std::vector<uint8_t> px;  // BGRA, 512 px at most
+        int w = 0, h = 0;
+    };
+    std::string das_cover_for_;  // the song it is (or is being decoded) for
+    std::shared_ptr<const DasCover> das_cover_;
+    // Lyrics (turned on in Settings or the menu): the song's, once found.
+    std::shared_ptr<const dasvis::Lyrics> das_lyrics_;
+    std::string das_lyrics_for_;  // the song they are (or are being looked up) for
+    void das_request_lyrics(const player::Item& item, const std::optional<TrackRow>& row);
+    // Full screen "each screen its own": a DasVis on each other monitor (das_window.h). The live wallpaper.
+    std::vector<std::unique_ptr<DasWindow>> screens_;
+    void das_open_screens();
+    std::unique_ptr<DasWindow> wall_;
+    std::chrono::steady_clock::time_point wall_at_{};  // its last frame
+    int wall_frames_ = 0;
+    bool wall_paused_ = false;
+    dasvis::Config das_config(bool wallpaper) const;
+    dasvis::Inputs das_inputs(float budget_ms);  // this frame's, for every DasVis
+    void das_dress(dasvis::DasVis& d, DasShown& shown, const dasvis::Inputs& in, bool words);
+    float das_hz_ = 60;          // the display's refresh rate
+    bool das_tier_saved_ = false;
+    int das_frames_ = 0;         // WRECKBOX_PERF: logged every 300 frames
+    // The song map: analysed in the background (only while DasVis is open), cached on disk, one song at a time.
+    std::shared_ptr<const dasvis::SongMap> das_map_;
+    std::string das_map_for_;    // the song it is (or will be) for
+    bool das_map_busy_ = false;  // being analysed
+    bool das_next_busy_ = false; // the next song in the queue is being analysed (into the cache only)
+    bool das_dev_ = false;       // Ctrl+Shift+D: the map drawn over the picture
+    double das_song_t_ = 0;      // where the song is, for the frame being drawn
+    std::wstring das_status_;    // the panel's line: the section, a build-up's countdown, "Analysing the song…", "Live"
+    std::string das_gpu_;        // the graphics card it was made on (its measured costs are saved under it)
+    std::string das_genre_ = "\x01";  // the genre whose likes are loaded (lower case, "" none; "\x01" none loaded yet)
+    std::map<std::string, float> das_taste_;  // that genre's likes and skips: scene → weight
+    void das_rate(bool like);    // F: more of this scene for this genre; X: less, and another now
+    // The phone VJ deck: its commands arrive on the sync server's thread and wait here for the next frame; the state it
+    // shows is written here each frame. Shared with the server's handler, so either can go first.
+    struct VjDeck {
+        std::mutex m;
+        std::vector<json> commands;
+        std::string state = R"({"open":false})";
+    };
+    std::shared_ptr<VjDeck> vj_ = std::make_shared<VjDeck>();
+    bool vj_card_ = false;        // the deck's QR code over the picture
+    void vj_apply();              // runs the waiting commands and writes the state (UI thread, DasVis open)
+    void vj_card(float W, float H);
+    // Room lights: the WLED strip's address, looked up off the UI thread when it changes; a frame sent after each picture.
+    std::unique_ptr<lights::Wled> wled_;
+    std::optional<sockaddr_in> wled_to_;
+    std::string das_wled_for_;     // the address wled_to_ was looked up for
+    bool wled_busy_ = false;
+    std::chrono::steady_clock::time_point wled_at_;  // the last frame sent
+    void das_lights();
+    // Video export (dasvis/video.h): one at a time, on its own thread; the sidebar shows how far it's got.
+    struct VideoJob {
+        std::thread thread;
+        std::atomic<double> progress{0};
+        std::atomic<bool> cancel{false}, finished{false};
+        std::string error;
+        std::filesystem::path out;
+        ~VideoJob() {
+            cancel = true;
+            if (thread.joinable()) thread.join();
+        }
+    };
+    std::unique_ptr<VideoJob> video_;
+    std::unique_ptr<dasvis::SpoutSender> spout_;  // Spout output on (right-click → DasVis), for this full-screen visit
+    void export_video(const std::string& id, int preset);  // preset: 0 720p30, 1 1080p60, 2 1440p60, 3 4K60
+    float video_status(const Rect& r);                     // the sidebar's line while one runs: its height
+    void das_request_map(const player::Item& item, double bpm);
+    void das_prepare_next();     // the next song in the queue, so its map is ready when it starts
+    void das_dev_view(float W);
+    bool das_screen();  // false: DasVis can't run here (the bars are drawn instead)
+    void das_free();
+    void das_reload();                  // F5: the user's scenes again
+    std::filesystem::path das_scenes_dir() const;
+    bool on_battery() const;
     player::VisOptions::Mode mode_before_click_{};
     LONG saved_style_ = 0;
     WINDOWPLACEMENT saved_place_{sizeof(WINDOWPLACEMENT)};
