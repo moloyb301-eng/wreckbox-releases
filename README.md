@@ -27,11 +27,11 @@
 
 <div align="center">
 
-[![Download zip](https://img.shields.io/badge/WreckBox%200.7.4-win--native--x64.zip%20%C2%B7%2072%20MB-EFAF86?style=for-the-badge&logo=windows&logoColor=08080A&labelColor=08080A)](https://raw.githubusercontent.com/moloyb301-eng/wreckbox-releases/windows-native/downloads/WreckBox-0.7.4-win-native-x64.zip)
+[![Download zip](https://img.shields.io/badge/WreckBox%200.7.5-win--native--x64.zip%20%C2%B7%2072%20MB-EFAF86?style=for-the-badge&logo=windows&logoColor=08080A&labelColor=08080A)](https://raw.githubusercontent.com/moloyb301-eng/wreckbox-releases/windows-native/downloads/WreckBox-0.7.5-win-native-x64.zip)
 
 </div>
 
-The latest build (0.7.4). **DasVis**, WreckBox's own visualizer, is here: 13 scenes that follow each song's build-ups and drops, take their colours from the album cover, and run on old PCs too. Choose DasVis, MilkDrop or the Winamp bars in Settings → *Visualizer* (or MilkDrop inside DasVis), and try the live wallpaper, synced lyrics, the phone VJ deck and video export.
+The latest build (0.7.5). **DasVis**, WreckBox's own visualizer, now moves like MilkDrop: every scene leaves trails that zoom, swirl, melt and fold into kaleidoscopes, jolting on each kick and flying faster with the tempo, and a song looks different every time it plays. DasVis has 13 scenes that follow each song's build-ups and drops, take their colours from the album cover, and run on old PCs too. Choose DasVis, MilkDrop or the Winamp bars in Settings → *Visualizer*, and try the live wallpaper, synced lyrics, the phone VJ deck and video export.
 
 ### ⚡ One command
 
@@ -39,7 +39,7 @@ Press **Win + R**, type `cmd`, press Enter, then paste this (the copy button is 
 Enter. It downloads WreckBox, unzips it into `%LOCALAPPDATA%\Programs\WreckBox` and starts it. Run it again to update.
 
 ```cmd
-curl -fL -o "%TEMP%\WreckBox.zip" https://raw.githubusercontent.com/moloyb301-eng/wreckbox-releases/windows-native/downloads/WreckBox-0.7.4-win-native-x64.zip && (if not exist "%LOCALAPPDATA%\Programs\WreckBox" mkdir "%LOCALAPPDATA%\Programs\WreckBox") && tar -xf "%TEMP%\WreckBox.zip" -C "%LOCALAPPDATA%\Programs\WreckBox" && del "%TEMP%\WreckBox.zip" && start "" "%LOCALAPPDATA%\Programs\WreckBox\wreckbox.exe"
+curl -fL -o "%TEMP%\WreckBox.zip" https://raw.githubusercontent.com/moloyb301-eng/wreckbox-releases/windows-native/downloads/WreckBox-0.7.5-win-native-x64.zip && (if not exist "%LOCALAPPDATA%\Programs\WreckBox" mkdir "%LOCALAPPDATA%\Programs\WreckBox") && tar -xf "%TEMP%\WreckBox.zip" -C "%LOCALAPPDATA%\Programs\WreckBox" && del "%TEMP%\WreckBox.zip" && start "" "%LOCALAPPDATA%\Programs\WreckBox\wreckbox.exe"
 ```
 
 Close WreckBox before updating. The command uses `curl` and `tar`, which come with Windows 10 and 11.
@@ -72,7 +72,7 @@ Close WreckBox before updating. The command uses `curl` and `tar`, which come wi
 | ▶️ | **Player** | 18+ formats, internet radio and `.m3u` / `.pls` links, files from outside the library, media keys |
 | 🎛️ | **Equalizer & normalizer** | 10-band EQ with presets and preamp, plus a volume normalizer |
 | 🌈 | **MilkDrop visualizer** | Full-screen MilkDrop presets (9,795 of them) with a player bar: song, transport, seek, volume, EQ and "Up next" |
-| ✨ | **DasVis visualizer** | WreckBox's own, and the default: 13 HDR scenes that follow the song's build-ups and drops and move with the kick, snare, hats and the beat. Light enough for old PCs (about 5 % of one core), and you can write your own scenes |
+| ✨ | **DasVis visualizer** | WreckBox's own, and the default: 13 HDR scenes that follow the song's build-ups and drops, with MilkDrop-style trails, zooms and kaleidoscopes that move with the kick, bass and tempo, and a new look every time a song plays. Light enough for old PCs (about 5 % of one core), and you can write your own scenes |
 | 🥁 | **Beat sync** | Kicks pulse the picture, presets change on drops, and you can nudge the timing by 25 ms |
 | 📊 | **Winamp bars** | Classic spectrum and oscilloscope modes. Used automatically on a PC without OpenGL 3.3 |
 | 📱 | **Phone sync** | Pair the WreckBox Android app with a QR code, then sync over your Wi-Fi |
@@ -210,12 +210,19 @@ the screen. The bar fades when the mouse is still. Its ⌄ button, or **H**, hid
   **white-out** or the **cover shattering** at you; kicks stamp **sigils**, and a **ribbon** of the waveform can fly
   over the scene.
 - The simulations are sized to the PC and exist only while their scene is on screen.
+- **It moves like MilkDrop.** Every scene leaves trails: the last frame is zoomed, turned, swirled and carried along
+  a flow under the new one, so bright things streak towards you, or the whole picture melts and flows, or folds into a
+  kaleidoscope. Each kick jolts the zoom, the bass pulls it, build-ups speed it up and drops whip it, and it all flies
+  faster at a faster tempo. Every scene gets its own style, which keeps evolving every 16 bars.
+- **A different look every time.** Play the same song twice and it starts with different scenes, styles and camera
+  moves. Right-click → DasVis → *Same look each time a song plays* keeps each song the same.
 - **A director picks the scenes** as the song moves from part to part: calm scenes for breakdowns, a hero scene for
   each drop (zooming through from the build-up, with a shockwave or a white-out), only scenes your PC can run
   smoothly, never the same few over and over. Scenes change on the downbeat, with a wipe, crossfade, shatter or (for
   dubstep and drum & bass) a glitch.
 - **N / P** or a click change the scene, **L** locks it, **F** likes it and **X** skips it: likes and skips are kept per
-  genre, so the director learns what you want to see.
+  genre, so the director learns what you want to see. The keys are shown as a bar at the top of full screen while the
+  player bar is visible.
 - **Video export:** right-click a song → *Export DasVis video* (720p to 4K, 60 fps) makes an MP4 of DasVis with the
   song: every frame exact, at full quality on any PC (a slower one just takes longer).
 - **Room lights:** a WLED LED strip on your Wi-Fi can follow DasVis (Settings → *Room lights*): the song's colours,

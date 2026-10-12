@@ -13,7 +13,7 @@ After 0.7.0, each release goes up by one patch number: 0.7.1, 0.7.2, and so on u
 
 Day-to-day work goes on `main`; bigger features on a branch (`feature/<name>`), merged when the tests pass.
 
-## Unreleased
+## 0.7.5 — 2026-10-12
 
 - **DasVis moves like MilkDrop now**: trails under every scene. The last frame is zoomed, turned, swirled, sometimes
   folded into a kaleidoscope, and laid under the new one. The kick jolts it, the bass pulls it, build-ups speed it up,
