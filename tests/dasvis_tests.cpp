@@ -852,7 +852,7 @@ void trails() {
         float chill = 0, insane = 0;
         for (uint32_t i = 0; i < 400; ++i) {
             const TrailStyle t = trail_style(i, 1, false);
-            CHECK(t.strength >= 0.8f && t.strength <= 0.97f && t.fade >= 0.6f && t.fade <= 2.2f && t.flow > 0, "style %u in range", i);
+            CHECK(t.strength >= 0.8f && t.strength <= 0.97f && t.fade >= 1.4f && t.fade <= 3.4f && t.flow > 0, "style %u in range", i);
             mirrored += t.mirrors > 0, out += t.zoom < 0, melting += t.melt > 0;
             chill += std::fabs(trail_style(i, 0, false).zoom), insane += std::fabs(trail_style(i, 2, false).zoom);
         }

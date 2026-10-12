@@ -23,7 +23,7 @@ TrailStyle trail_style(uint32_t seed, int intensity, bool calm) {
     TrailStyle t;
     t.strength = 0.8f + 0.17f * r(1);
     t.melt = r(2) < 0.3f ? 0.3f + 0.4f * r(3) : 0.f;
-    t.fade = 0.6f + 1.6f * r(4);  // trails of about 0.4–1.6 s, as MilkDrop's presets' decay
+    t.fade = 1.4f + 2.0f * r(4);  // trails of about 0.3–0.7 s: longer ones drag behind the music
     static constexpr float kMirrors[] = {3, 4, 5, 6, 8};
     t.mirrors = r(5) < 0.2f ? kMirrors[std::min(4, int(r(6) * 5))] : 0.f;
     t.zoom = (r(7) < 0.15f ? -(0.3f + 0.5f * r(8)) : 0.2f + 1.3f * r(8)) * pace * (calm ? 0.4f : 1.f);

@@ -50,7 +50,7 @@ constexpr auto kWinampPeak = argb(0xFFC8C8C8), kWinampScopeLow = argb(0xFF7C8690
 // WRECKBOX_PERF=1 also logs what MilkDrop does (quality drops) to wreckbox.log.
 void perf_log(const std::string& line) {
     wchar_t v[4]{};
-    if (!GetEnvironmentVariableW(L"WRECKBOX_PERF", v, 4) || v[0] != L'1') return;
+    if (!GetEnvironmentVariableW(L"WRECKBOX_PERF", v, 4) || (v[0] != L'1' && v[0] != L'2')) return;
     std::ofstream(paths::app_log(), std::ios::app) << iso_seconds_now() << " " << line << "\n";
 }
 
@@ -555,12 +555,14 @@ void View::das_dress(dasvis::DasVis& d, DasShown& shown, const dasvis::Inputs& i
         d.set_cover(das_cover_->px.data(), das_cover_->w, das_cover_->h), shown.cover = true;
     if (!words || !vis_.opt.das_lyrics || !das_lyrics_ || das_lyrics_for_ != in.song) return;
     // A new line: drawn the same way, in place of the card. Between lines the last one dissolves by itself.
-    const int line = das_lyrics_->at(in.song_time);
+    const int line = das_lyrics_->at(in.song_time + 0.15);  // drawn as it comes on screen, 0.15 s early
     if (line < 0 || line == shown.lyric) return;
     shown.lyric = line;
     const auto& l = das_lyrics_->lines[size_t(line)];
     int letters = 0;
+    const auto t0 = clock_t_::now();
     if (g_.draw_title_card(d.title_target(1536, 192), wide(l.text), L"", &letters)) d.show_lyric(letters, l.start, l.end);
+    perf_log(std::format("lyric line {} drawn in {:.2f} ms", line, std::chrono::duration<double, std::milli>(clock_t_::now() - t0).count()));
 }
 
 namespace {
@@ -646,7 +648,9 @@ bool View::das_screen() {
         return true;
     }
     // The other screens share the frame's time (each its own scene).
-    const dasvis::Inputs in = das_inputs(0.75f * 1000.f * float(frame_interval()) / das_hz_ / float(1 + screens_.size()));
+    // 60 % of the frame: on integrated graphics the compositor and the player bar need the GPU each frame too, and a
+    // frame that runs over the refresh is a visible stutter.
+    const dasvis::Inputs in = das_inputs(0.6f * 1000.f * float(frame_interval()) / das_hz_ / float(1 + screens_.size()));
     // The panel's line (only worked out while the panel or the dev view shows it).
     if (overlay_alpha() <= 0 && !das_dev_) {
     } else if (das_map_) {

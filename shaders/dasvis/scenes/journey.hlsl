@@ -126,13 +126,15 @@ float3 scene(float2 uv, float2 p) {
         // The endless zoom: level L at its size, level L + 1 (twice as fine) fading in under it as L grows to double.
         float z = travel * 0.5, f = frac(z), level = floor(z);
         float2 a = q * DENSITY / exp2(f), b = a * 2;
-        float3 ca, cb;
-        [branch] if (GENUS == 1) {
-            ca = organelles(a * 0.45, level, t), cb = organelles(b * 0.45, level + 1, t);
-        } else {
-            ca = cells(a, level, t), cb = cells(b, level + 1, t);
+        float mix_in = smoothstep(0.55, 1, f);  // one level crisp most of the time; the next comes in as it doubles
+        [branch] if (GENUS == 1) c = organelles(a * 0.45, level, t);
+        else c = cells(a, level, t);
+        [branch] if (mix_in > 0) {  // only drawn while it's fading in: about half the cost
+            float3 cb;
+            [branch] if (GENUS == 1) cb = organelles(b * 0.45, level + 1, t);
+            else cb = cells(b, level + 1, t);
+            c = lerp(c, cb, mix_in);
         }
-        c = lerp(ca, cb, smoothstep(0.55, 1, f));  // one level crisp most of the time; the next comes in as it doubles
     }
     return c * (1 + 0.5 * DROP);
 }

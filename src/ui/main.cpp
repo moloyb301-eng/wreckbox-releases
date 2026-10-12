@@ -133,13 +133,14 @@ struct App {
         });
     }
 
-    // WRECKBOX_PERF=1: log paint times (average / worst per 100 paints) to wreckbox.log — for checking weak PCs.
+    // WRECKBOX_PERF=1: log paint times (average / worst per 100 paints) to wreckbox.log — for checking weak PCs. =2: the
+    // same without the memory samples (they walk the heaps every 2 s, which can cost a frame).
     const bool perf = [] {
         wchar_t v[4]{};
-        return GetEnvironmentVariableW(L"WRECKBOX_PERF", v, 4) && v[0] == L'1';
+        return GetEnvironmentVariableW(L"WRECKBOX_PERF", v, 4) && (v[0] == L'1' || v[0] == L'2');
     }();
     double perf_build = 0, perf_total = 0, perf_max = 0;
-    int perf_n = 0;
+    int perf_n = 0, perf_late = 0;  // paints over 20 ms (a missed refresh in the full-screen visualizer)
     ULONGLONG perf_since = GetTickCount64();
     int why_done = 0, why_changed = 0, why_timer = 0, why_input = 0, why_size = 0;
 
@@ -162,14 +163,14 @@ struct App {
         if (perf) {
             const auto ms = [](auto a, auto b) { return std::chrono::duration<double, std::milli>(b - a).count(); };
             const double total = ms(t0, clock::now());
-            perf_build += ms(t0, t1), perf_total += total, perf_max = std::max(perf_max, total);
+            perf_build += ms(t0, t1), perf_total += total, perf_max = std::max(perf_max, total), perf_late += total > 20;
             if (++perf_n == 100) {
-                app_log(std::format("perf: 100 paints in {:.1f} s — build avg {:.2f} ms, with present avg {:.2f} ms, worst {:.2f} ms "
+                app_log(std::format("perf: 100 paints in {:.1f} s — build avg {:.2f} ms, with present avg {:.2f} ms, worst {:.2f} ms, {} over 20 ms "
                                     "(requests: jobs {}, store {}, timer {}, input {}, size {})",
-                                    double(GetTickCount64() - perf_since) / 1000, perf_build / 100, perf_total / 100, perf_max, why_done,
+                                    double(GetTickCount64() - perf_since) / 1000, perf_build / 100, perf_total / 100, perf_max, perf_late, why_done,
                                     why_changed, why_timer, why_input, why_size));
                 why_done = why_changed = why_timer = why_input = why_size = 0;
-                perf_build = perf_total = perf_max = 0, perf_n = 0;
+                perf_build = perf_total = perf_max = 0, perf_n = perf_late = 0;
                 perf_since = GetTickCount64();
             }
         }

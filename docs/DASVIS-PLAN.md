@@ -1020,6 +1020,16 @@ drop (Intro → Verse → Chorus); without a known tempo it finds one. Worth a l
   - Nine worlds in a row are each lit (mean 0.12–0.51), moving, and no two alike.
   - Four plays of a song look different.
   - The director's changes, including Journey → a new Journey world, land on parts and phrases.
+- **Smoothness pass** (it felt laggy):
+  - The frame budget is 60 % of the refresh (was 75 %): on integrated graphics the compositor and the player bar
+    need the GPU too, and running over is a stutter.
+  - Trails fade over 0.3–0.7 s (were up to 1.6 s, which dragged behind the music).
+  - Journey draws the finer zoom level only while it fades in: 5.9–7.4 ms at Low (was 8–9 ms).
+  - Lyrics: shown 0.15 s before the line, letters all in within 0.25 s (was up to 1.2 s), a 2 % kick nudge (was 6 %,
+    which jittered), a 0.35 s dissolve.
+  - Measured: drawing a lyric line costs 0.9–2 ms of CPU, once a line.
+  - `WRECKBOX_PERF=2`: paint timings (now with a count of paints over 20 ms) without the 2-second memory samples,
+    which walk the heaps and can cost a frame themselves.
 - Next: J3, diving from one world into the next (a world inside a cell's nucleus) as the song moves from part to part.
 
 ### Phase 8: optional, later (MilkDrop layer ✅ 2026-10-12; real stems waiting on your decision)
