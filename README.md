@@ -27,11 +27,11 @@
 
 <div align="center">
 
-[![Download zip](https://img.shields.io/badge/WreckBox%200.7.5-win--native--x64.zip%20%C2%B7%2072%20MB-EFAF86?style=for-the-badge&logo=windows&logoColor=08080A&labelColor=08080A)](https://raw.githubusercontent.com/moloyb301-eng/wreckbox-releases/windows-native/downloads/WreckBox-0.7.5-win-native-x64.zip)
+[![Download zip](https://img.shields.io/badge/WreckBox%200.7.6-win--native--x64.zip%20%C2%B7%2070%20MB-EFAF86?style=for-the-badge&logo=windows&logoColor=08080A&labelColor=08080A)](https://raw.githubusercontent.com/moloyb301-eng/wreckbox-releases/windows-native/downloads/WreckBox-0.7.6-win-native-x64.zip)
 
 </div>
 
-The latest build (0.7.5). **DasVis**, WreckBox's own visualizer, now moves like MilkDrop: every scene leaves trails that zoom, swirl, melt and fold into kaleidoscopes, jolting on each kick and flying faster with the tempo, and a song looks different every time it plays. DasVis has 13 scenes that follow each song's build-ups and drops, take their colours from the album cover, and run on old PCs too. Choose DasVis, MilkDrop or the Winamp bars in Settings → *Visualizer*, and try the live wallpaper, synced lyrics, the phone VJ deck and video export.
+The latest build (0.7.6). **DasVis** gets two new scenes: *Journey*, generated worlds of cells, organelles and tunnels that are built from a new recipe every time, and *Score*, the song drawn as a sequencer grid whose blocks light, turn and ripple as they play. A new **Web player** page plays Spotify and YouTube Music inside WreckBox. DasVis also runs smoother, with lyrics on time. Every scene leaves MilkDrop-style trails that zoom, swirl and fold into kaleidoscopes, and a song looks different every time it plays. DasVis has 15 scenes that follow each song's build-ups and drops, take their colours from the album cover, and run on old PCs too. Choose DasVis, MilkDrop or the Winamp bars in Settings → *Visualizer*, and try the live wallpaper, synced lyrics, the phone VJ deck and video export.
 
 ### ⚡ One command
 
@@ -39,7 +39,7 @@ Press **Win + R**, type `cmd`, press Enter, then paste this (the copy button is 
 Enter. It downloads WreckBox, unzips it into `%LOCALAPPDATA%\Programs\WreckBox` and starts it. Run it again to update.
 
 ```cmd
-curl -fL -o "%TEMP%\WreckBox.zip" https://raw.githubusercontent.com/moloyb301-eng/wreckbox-releases/windows-native/downloads/WreckBox-0.7.5-win-native-x64.zip && (if not exist "%LOCALAPPDATA%\Programs\WreckBox" mkdir "%LOCALAPPDATA%\Programs\WreckBox") && tar -xf "%TEMP%\WreckBox.zip" -C "%LOCALAPPDATA%\Programs\WreckBox" && del "%TEMP%\WreckBox.zip" && start "" "%LOCALAPPDATA%\Programs\WreckBox\wreckbox.exe"
+curl -fL -o "%TEMP%\WreckBox.zip" https://raw.githubusercontent.com/moloyb301-eng/wreckbox-releases/windows-native/downloads/WreckBox-0.7.6-win-native-x64.zip && (if not exist "%LOCALAPPDATA%\Programs\WreckBox" mkdir "%LOCALAPPDATA%\Programs\WreckBox") && tar -xf "%TEMP%\WreckBox.zip" -C "%LOCALAPPDATA%\Programs\WreckBox" && del "%TEMP%\WreckBox.zip" && start "" "%LOCALAPPDATA%\Programs\WreckBox\wreckbox.exe"
 ```
 
 Close WreckBox before updating. The command uses `curl` and `tar`, which come with Windows 10 and 11.
@@ -74,9 +74,10 @@ Close WreckBox before updating. The command uses `curl` and `tar`, which come wi
 | 📁 | **My folders** | The songs already on your PC, in the folders you pick. WreckBox's own downloads are left out |
 | ⬇️ | **Downloads organiser** | Watches your Downloads folder and files new songs into the library |
 | ▶️ | **Player** | 18+ formats, internet radio and `.m3u` / `.pls` links, files from outside the library, media keys |
+| 🌐 | **Web player** | Spotify and YouTube Music inside WreckBox (sidebar → *Web player*). Playing in WreckBox pauses them, and they pause WreckBox; they follow its mute |
 | 🎛️ | **Equalizer & normalizer** | 10-band EQ with presets and preamp, plus a volume normalizer |
 | 🌈 | **MilkDrop visualizer** | Full-screen MilkDrop presets (9,795 of them) with a player bar: song, transport, seek, volume, EQ and "Up next" |
-| ✨ | **DasVis visualizer** | WreckBox's own, and the default: 13 HDR scenes that follow the song's build-ups and drops, with MilkDrop-style trails, zooms and kaleidoscopes that move with the kick, bass and tempo, and a new look every time a song plays. Light enough for old PCs (about 5 % of one core), and you can write your own scenes |
+| ✨ | **DasVis visualizer** | WreckBox's own, and the default: 15 HDR scenes that follow the song's build-ups and drops, with MilkDrop-style trails, zooms and kaleidoscopes that move with the kick, bass and tempo, and a new look every time a song plays. Light enough for old PCs (about 5 % of one core), and you can write your own scenes |
 | 🥁 | **Beat sync** | Kicks pulse the picture, presets change on drops, and you can nudge the timing by 25 ms |
 | 📊 | **Winamp bars** | Classic spectrum and oscilloscope modes. Used automatically on a PC without OpenGL 3.3 |
 | 📱 | **Phone sync** | Pair the WreckBox Android app with a QR code, then sync over your Wi-Fi |
@@ -197,7 +198,12 @@ the screen. The bar fades when the mouse is still. Its ⌄ button, or **H**, hid
 - **Its colours come from the album cover** (or from the song's key when the cover is black and white), and each part
   of the drums moves something different: the kick sends light down the tunnel, the snare flashes, the hats glint, the
   vocals and lead shift the colours.
-- **It's the default visualizer** (MilkDrop is one key away: **M**). Thirteen scenes:
+- **It's the default visualizer** (MilkDrop is one key away: **M**). Fifteen scenes:
+  - *Journey*: generated worlds (skin cells, organelles budding and splitting, tunnels) built from a new random recipe
+    every time, so no two plays look the same
+  - *Score*: the song as a sequencer grid. Each hit is a block that lights and turns a quarter turn when it plays and
+    throws rings of pixels across the grid; it's drawn in one of four styles (scattered, crossword, diagonal
+    escalators or tall stacks), a new one each time it comes on
   - *Feedback Classic*: MilkDrop-style trails and a waveform ring, with particles thrown off it on the kicks
   - *Neon Tunnel*: one ring per beat, with a spectrum ring round the cover
   - *Kaleido Cover*: a kaleidoscope of the album art

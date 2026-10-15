@@ -27,6 +27,20 @@ Day-to-day work goes on `main`; bigger features on a branch (`feature/<name>`), 
 - **Lyrics keep up with the singer**: each line is on screen a moment before it's sung, with all its letters in within
   a quarter second (they took up to 1.2 s), steady instead of jumping on every kick, and gone faster when it ends.
 
+## 0.7.6 — 2026-10-15
+
+- **Web player**: Spotify and YouTube Music inside WreckBox (sidebar → *Web player*), signed in with your own accounts.
+  Playing a song in WreckBox pauses them, and playing on either site pauses WreckBox; they follow WreckBox's mute.
+  Needs the Microsoft Edge WebView2 Runtime (built into Windows 11 and up-to-date Windows 10); without it the page
+  says where to get it. About 200–300 MB more memory once it's opened.
+- **DasVis: Journey**, generated worlds you fly through: skin cells, organelles that bud and split, and tunnels, each
+  built from a new random recipe every time.
+- **DasVis: Score**, the song as a sequencer grid: each hit is a block that lights and turns a quarter turn when it
+  plays and throws rings of pixels across the grid. For an analysed song the next two bars are written in before the
+  playhead gets there. Four styles (scattered, crossword, diagonal escalators, tall stacks), a new one each visit.
+- **DasVis runs smoother**: more frame headroom, shorter trails and a cheaper Journey; synced lyrics land on time.
+- **Fix**: DasVis could stay dimmed long after a run of bright flashes.
+
 ## 0.7.5 — 2026-10-12
 
 - **DasVis moves like MilkDrop now**: trails under every scene. The last frame is zoomed, turned, swirled, sometimes
