@@ -30,6 +30,7 @@
 #include "ui/das_window.h"
 #include "ui/jobs.h"
 #include "ui/ui.h"
+#include "ui/web_player.h"
 
 namespace wb::sync {
 class Server;
@@ -104,7 +105,7 @@ public:
     void tab(int from_id, bool back);  // Tab / Shift+Tab inside a text box
 
 private:
-    enum class Page { home, all, downloaded, missing, ignored, on_pc, playlist, queue, soulseek, phone, settings };
+    enum class Page { home, web, all, downloaded, missing, ignored, on_pc, playlist, queue, soulseek, phone, settings };
     enum class Sort { none, title, artist, bpm, key, energy, type, size };
     enum class Format { any, flac, not_flac };  // not_flac: has a file, of another type
     struct Mix {
@@ -129,6 +130,8 @@ private:
     void page(const Rect& r);
     void welcome(const Rect& r);
     void home(const Rect& r);
+    void web_page(const Rect& r);  // Spotify's and YouTube Music's web players (ui/web_player.h)
+    void web_sync();               // each paint: one thing plays at a time, the app's mute, hidden off its page
     void placeholder(const Rect& r, const std::wstring& title, const std::wstring& subtitle, const std::wstring& phase);
     void track_page(const Rect& r);
     float filters(const Rect& r);  // returns the height used (the row wraps when the page is narrow)
@@ -298,6 +301,9 @@ private:
     void update_timer();  // repaint ticks: 4 a second while playing, ~60 in the full-screen visualizer
     player::Player& player_;
     bool eq_open_ = false, url_open_ = false;
+    std::unique_ptr<WebPlayer> web_;  // made the first time the Web player opens
+    WebPlayer::Site web_site_ = WebPlayer::spotify;
+    bool was_playing_ = false;        // the app's player, at the last paint
     float eq_x_ = 0, bar_top_ = 0;     // where the equalizer pop-over hangs from
     std::optional<float> seek_drag_;   // 0–1 while the seek slider is held
     UINT timer_ms_ = 0;

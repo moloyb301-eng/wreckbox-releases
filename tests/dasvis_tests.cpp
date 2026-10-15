@@ -27,6 +27,8 @@
 #include "dasvis/control.h"
 #include "dasvis/dasvis.h"
 #include "dasvis/director.h"
+#include "dasvis/genome.h"
+#include "dasvis/score.h"
 #include "dasvis/lyrics.h"
 #include "dasvis/features.h"
 #include "dasvis/palette.h"
@@ -544,7 +546,7 @@ void gpu(bool fl10) {
     DasVis dv(dev.Get(), cfg);
     CHECK(dv.ok(), "DasVis on %s: %s", label, dv.error().c_str());
     if (!dv.ok()) return;
-    CHECK(dv.scene_count() == 14, "scenes: %zu (13 built in + the example)", dv.scene_count());
+    CHECK(dv.scene_count() == 16, "scenes: %zu (15 built in + the example)", dv.scene_count());
     CHECK(dv.user_errors().find("broken.hlsl") != std::string::npos && dv.user_errors().find("nope") != std::string::npos,
           "the broken scene's error names it: %s", dv.user_errors().c_str());
 
@@ -679,7 +681,7 @@ void director() {
     int repeats = 0, unheroic = 0, heavy_on_low = 0;
     for (size_t i = 0; i < a.size(); ++i) {
         if (a[i].second) unheroic += !tags[a[i].first].hero;
-        else
+        else if (!tags[a[i].first].lead)  // Journey may follow itself: each pick is a new world
             for (size_t k = i >= 4 ? i - 4 : 0; k < i; ++k) repeats += a[k].first == a[i].first;
     }
     CHECK(repeats == 0, "no scene repeats within 4 picks (%d did)", repeats);
@@ -739,7 +741,8 @@ void director_timing() {
         for (int i = 0; i < 176 * 30; ++i) {
             in.song_time = i / 30.0, in.dt = 1 / 30.f;
             dv.render(in, screen.Get());
-            if (changes.empty() || changes.back().second != dv.scene_name()) changes.emplace_back(in.song_time, dv.scene_name());
+            const std::string now = dv.scene_name() == "Journey" ? std::format("Journey {}", dv.world()) : dv.scene_name();  // a new world is a change
+            if (changes.empty() || changes.back().second != now) changes.emplace_back(in.song_time, now);
         }
         return changes;
     };
@@ -753,8 +756,10 @@ void director_timing() {
     for (const auto& [t, name] : one) got += std::format("{:.2f} {}; ", t, name);
     CHECK(on_time, "scene changes at the starts of parts and phrases: %s", got.c_str());
     const auto at_drop = std::find_if(one.begin(), one.end(), [](const auto& c) { return c.first >= 96; });
-    CHECK(at_drop != one.end() && (at_drop->second == "Neon Tunnel" || at_drop->second == "Galaxy"), "the drop gets a hero: %s",
-          at_drop != one.end() ? at_drop->second.c_str() : "none");
+    const auto tags = builtin_scenes();
+    const bool hero = at_drop != one.end() &&
+                      std::any_of(tags.begin(), tags.end(), [&](const SceneTags& t) { return t.hero && t.name == at_drop->second; });
+    CHECK(hero, "the drop gets a hero: %s", at_drop != one.end() ? at_drop->second.c_str() : "none");
     std::printf("  director in the renderer: %s\n", got.c_str());
 }
 
@@ -803,7 +808,7 @@ void milkdrop_scene() {
     DasVis dv(dev.Get(), cfg);
     const auto names = dv.scene_names();
     const size_t milk = size_t(std::find(names.begin(), names.end(), "MilkDrop") - names.begin());
-    CHECK(milk < names.size() && names.size() == 14, "MilkDrop is a scene: %zu scenes", names.size());
+    CHECK(milk < names.size() && names.size() == 16, "MilkDrop is a scene: %zu scenes", names.size());
     if (milk >= names.size()) return;
     Features f;
     std::vector<float> quiet(Features::kFft);
@@ -850,7 +855,7 @@ void trails() {
         float chill = 0, insane = 0;
         for (uint32_t i = 0; i < 400; ++i) {
             const TrailStyle t = trail_style(i, 1, false);
-            CHECK(t.strength >= 0.8f && t.strength <= 0.97f && t.fade >= 0.6f && t.fade <= 2.2f && t.flow > 0, "style %u in range", i);
+            CHECK(t.strength >= 0.8f && t.strength <= 0.97f && t.fade >= 1.4f && t.fade <= 3.4f && t.flow > 0, "style %u in range", i);
             mirrored += t.mirrors > 0, out += t.zoom < 0, melting += t.melt > 0;
             chill += std::fabs(trail_style(i, 0, false).zoom), insane += std::fabs(trail_style(i, 2, false).zoom);
         }
@@ -866,19 +871,23 @@ void trails() {
     ComPtr<ID3D11Texture2D> screen;
     dev->CreateTexture2D(&td, nullptr, &screen);
     const auto music = drums(30, 140, true, true);
-    // Each play different: the first scene of the same song over 8 plays (a new DasVis each, as a new visit is).
-    std::set<std::string> firsts;
-    for (uint32_t play = 1; play <= 8; ++play) {
+    // Each play different: the same song's first second over 4 plays (a new DasVis each, as a new visit is) looks
+    // different every time: another scene, or another generated world.
+    std::vector<std::vector<uint8_t>> shots;
+    for (uint32_t play = 1; play <= 4; ++play) {
         Config cfg;
         cfg.start = Tier::low, cfg.auto_tier = false, cfg.vary = play * 7919u;
         DasVis dv(dev.Get(), cfg);
         Features f;
         Inputs in;
         in.f = &f, in.song = "same-song";
-        dv.render(in, screen.Get());
-        firsts.insert(dv.scene_name());
+        for (int i = 0; i < 60; ++i) dv.render(in, screen.Get());
+        read(dev.Get(), screen.Get(), &shots.emplace_back());
     }
-    CHECK(firsts.size() >= 3, "the same song starts differently each play: %zu different first scenes of 8", firsts.size());
+    int differ = 0;
+    for (size_t i = 0; i < shots.size(); ++i)
+        for (size_t k = i + 1; k < shots.size(); ++k) differ += diff(shots[i], shots[k]) > 0.04;
+    CHECK(differ == 6, "the same song looks different each play: %d of 6 pairs differ", differ);
     // On screen: each built-in scene for 5 s of loud drums with its trails, never washed out; and the trails change it.
     Config cfg;
     cfg.start = Tier::low, cfg.auto_tier = false, cfg.auto_advance = 0;
@@ -911,6 +920,172 @@ void trails() {
         std::printf("  trails under %s: mean %.3f, differs from none by %.3f\n", names[s].c_str(), st.mean, diff(a, b));
     }
     CHECK(changed * 4 >= with * 3, "the trails visibly change most scenes: %d of %d", changed, with);
+}
+
+// Genomes: the same seed gives the same world, seeds give every genus and every warp, every number stays in its range
+// (also after mutating, which keeps the genus and warps and moves the numbers only a little).
+void genomes() {
+    const Genome a = make_genome(9), b = make_genome(9);
+    CHECK(a.genus == b.genus && a.warps[0] == b.warps[0] && a.density == b.density && a.hue == b.hue, "the same seed, the same world");
+    int genus[Genome::kGenera] = {}, warp[Genome::kWarps] = {}, bad = 0;
+    const auto in_range = [](const Genome& g) {
+        return g.density >= 1.5f && g.density <= 7 && g.edge >= 0.02f && g.edge <= 0.18f && g.core >= 0.15f && g.core <= 0.6f && g.grain >= 0 &&
+               g.grain <= 1 && g.spread >= 0.15f && g.spread <= 1 && g.speed >= 0.5f && g.speed <= 1.6f && g.glow >= 0.2f && g.glow <= 1.2f &&
+               g.mirrors >= 3 && g.mirrors <= 9 && g.amount[0] >= 0.2f && g.amount[0] <= 1 && g.amount[2] >= 0.2f && g.amount[2] <= 1;
+    };
+    float moved = 0;
+    for (uint32_t i = 0; i < 600; ++i) {
+        const Genome g = make_genome(i * 2654435761u);
+        ++genus[g.genus];
+        for (const auto w : g.warps) ++warp[w];
+        bad += !in_range(g);
+        const Genome m = mutate(g, i, 0.35f);
+        bad += !in_range(m) || m.genus != g.genus || m.warps[0] != g.warps[0] || m.hue != g.hue;
+        moved += std::fabs(m.density - g.density) / 5.5f;
+    }
+    CHECK(bad == 0, "%d genomes out of range", bad);
+    for (int k = 0; k < Genome::kGenera; ++k) CHECK(genus[k] > 100, "genus %d in %d of 600", k, genus[k]);
+    for (int k = 1; k < Genome::kWarps; ++k) CHECK(warp[k] > 50, "warp %d in %d of 600", k, warp[k]);
+    CHECK(warp[0] > 400, "some worlds have fewer warps (%d empty slots)", warp[0]);
+    CHECK(moved / 600 > 0.03f && moved / 600 < 0.2f, "a mutation moves things a little: %.3f of the range on average", moved / 600);
+    float out[4][4];
+    pack(a, out);
+    CHECK(out[0][0] == float(a.genus) && out[2][0] == a.density && out[3][3] == a.glow, "packed for the shader");
+}
+
+// Journey on screen: 9 worlds in a row (each pick a new one), each lit but not washed out and moving, and no two alike.
+// The Score grid: each style places a bar of drums and bass; the same hits land on the same blocks (so a repeated
+// pattern stays and turns), a block lights when its hit plays and throws ripples that die away, and blocks the music
+// stops playing fade once the playhead has passed them.
+void score_grid() {
+    const auto pattern = [](Score& s, long page) {  // two bars: kick on the beats, snare on 2 and 4, hats on the eighths
+        const double b0 = 2.0 * double(page);
+        for (int i = 0; i < 8; ++i) s.place(Score::kick, b0 + i / 4.0, (b0 + i / 4.0) * 2, 0.8f);
+        for (int i = 0; i < 4; ++i) s.place(Score::snare, b0 + 0.25 + i / 2.0, (b0 + 0.25 + i / 2.0) * 2, 0.6f);
+        for (int i = 0; i < 16; ++i) s.place(Score::hats, b0 + i / 8.0, (b0 + i / 8.0) * 2, 0.4f);
+        s.place(Score::bass, b0 + 0.5, (b0 + 0.5) * 2, 0.9f);
+    };
+    std::vector<float> tex(size_t(Score::kCols * 2 * Score::kRows * 4));
+    const auto turns = [&] {
+        float most = 0;
+        for (int r = 0; r < Score::kRows; ++r)
+            for (int c = 0; c < Score::kCols; ++c) most = std::max(most, tex[size_t((r * Score::kCols * 2 + c) * 4 + 3)]);
+        return most;
+    };
+    bool styles[Score::kStyles] = {};
+    for (uint32_t seed = 1; seed < 40; ++seed) {
+        Score s;
+        s.reset(seed, 0);
+        const int st = s.style();
+        if (styles[st]) continue;
+        styles[st] = true;
+        // A bar is 2 s here (bars × 2 = seconds). Page 0 written in at the start, played through; then again (page 1).
+        pattern(s, 0);
+        const size_t first = s.blocks();
+        CHECK(first >= 3, "style %d: %zu blocks for a bar of drums", st, first);
+        size_t peak_ripples = 0;
+        for (double t = 0; t < 4; t += 1 / 60.0) {
+            s.update(t / 2, t);
+            s.write(tex.data(), t);
+            peak_ripples = std::max(peak_ripples, s.ripples());
+        }
+        CHECK(peak_ripples > 0, "style %d: hits throw ripples", st);
+        pattern(s, 1);
+        CHECK(s.blocks() == first, "style %d: the same pattern, the same blocks (%zu then %zu)", st, first, s.blocks());
+        for (double t = 4; t < 8; t += 1 / 60.0) s.update(t / 2, t);
+        s.write(tex.data(), 8);
+        CHECK(turns() >= 1.5f, "style %d: blocks played again turned (%.2f quarter turns)", st, turns());
+        for (double t = 8; t < 12.5; t += 1 / 60.0) s.update(t / 2, t);  // a page with nothing played
+        CHECK(s.blocks() == 0 && s.ripples() == 0, "style %d: unplayed blocks fade (%zu left, %zu ripples)", st, s.blocks(), s.ripples());
+    }
+    for (int k = 0; k < Score::kStyles; ++k) CHECK(styles[k], "style %d picked by some seed", k);
+}
+
+// Score on screen (live: no map): lit, not washed out, and moving as the playhead sweeps and hits land.
+void score_scene() {
+    ComPtr<ID3D11Device> dev;
+    const D3D_FEATURE_LEVEL fl = D3D_FEATURE_LEVEL_10_0;
+    if (FAILED(D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, D3D11_CREATE_DEVICE_BGRA_SUPPORT, &fl, 1, D3D11_SDK_VERSION, &dev, nullptr, nullptr)))
+        return std::puts("FAIL: no WARP device"), void(++failures);
+    D3D11_TEXTURE2D_DESC td{160, 90, 1, 1, DXGI_FORMAT_B8G8R8A8_UNORM, {1, 0}, D3D11_USAGE_DEFAULT, D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE};
+    ComPtr<ID3D11Texture2D> screen;
+    dev->CreateTexture2D(&td, nullptr, &screen);
+    Config cfg;
+    cfg.start = Tier::low, cfg.auto_tier = false, cfg.auto_advance = 0;
+    DasVis dv(dev.Get(), cfg);
+    const auto names = dv.scene_names();
+    const size_t at_score = size_t(std::find(names.begin(), names.end(), "Score") - names.begin());
+    CHECK(at_score < names.size(), "Score is a scene");
+    if (at_score >= names.size()) return;
+    const auto music = drums(20, 128, true, true);
+    Features f;
+    std::vector<float> win(Features::kFft);
+    size_t pos = kHop;
+    Inputs in;
+    in.f = &f, in.song = "score-song";
+    const auto frame = [&] {
+        for (size_t k = 0; k < Features::kFft; ++k) win[k] = pos >= Features::kFft - k ? music[(pos - Features::kFft + k) % music.size()] : 0.f;
+        pos += kHop;
+        f.update(win.data(), 1 / 60.f, 128);
+        dv.render(in, screen.Get());
+    };
+    dv.lock(true);
+    dv.select(at_score);
+    for (int i = 0; i < 240; ++i) frame();
+    std::vector<uint8_t> a, b;
+    const Stats st = read(dev.Get(), screen.Get(), &a);
+    for (int i = 0; i < 20; ++i) frame();
+    read(dev.Get(), screen.Get(), &b);
+    std::printf("  Score: mean %.3f, moving %.4f\n", st.mean, diff(a, b));
+    CHECK(st.mean > 0.004 && st.mean < 0.5, "Score is drawn, not washed out: mean %.3f", st.mean);
+    CHECK(diff(a, b) > 0.001, "Score moves (%.4f)", diff(a, b));
+}
+
+void journey_worlds() {
+    ComPtr<ID3D11Device> dev;
+    const D3D_FEATURE_LEVEL fl = D3D_FEATURE_LEVEL_10_0;
+    if (FAILED(D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, D3D11_CREATE_DEVICE_BGRA_SUPPORT, &fl, 1, D3D11_SDK_VERSION, &dev, nullptr, nullptr)))
+        return std::puts("FAIL: no WARP device"), void(++failures);
+    D3D11_TEXTURE2D_DESC td{160, 90, 1, 1, DXGI_FORMAT_B8G8R8A8_UNORM, {1, 0}, D3D11_USAGE_DEFAULT, D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE};
+    ComPtr<ID3D11Texture2D> screen;
+    dev->CreateTexture2D(&td, nullptr, &screen);
+    Config cfg;
+    cfg.start = Tier::low, cfg.auto_tier = false, cfg.auto_advance = 0, cfg.trails = false;  // the world itself
+    DasVis dv(dev.Get(), cfg);
+    const auto names = dv.scene_names();
+    const size_t journey = size_t(std::find(names.begin(), names.end(), "Journey") - names.begin());
+    CHECK(journey < names.size(), "Journey is a scene");
+    if (journey >= names.size()) return;
+    const auto music = drums(20, 150, true, true);
+    Features f;
+    std::vector<float> win(Features::kFft);
+    size_t at = kHop;
+    Inputs in;
+    in.f = &f, in.song = "journey-song";
+    const auto frame = [&] {
+        for (size_t k = 0; k < Features::kFft; ++k) win[k] = at >= Features::kFft - k ? music[(at - Features::kFft + k) % music.size()] : 0.f;
+        at += kHop;
+        f.update(win.data(), 1 / 60.f, 150);
+        dv.render(in, screen.Get());
+    };
+    dv.lock(true);
+    std::vector<std::vector<uint8_t>> worlds;
+    for (int w = 0; w < 9; ++w) {
+        dv.next(), dv.select(journey);  // away and back: a new world
+        for (int i = 0; i < 70; ++i) frame();
+        std::vector<uint8_t> a, b;
+        const Stats st = read(dev.Get(), screen.Get(), &a);
+        for (int i = 0; i < 20; ++i) frame();
+        read(dev.Get(), screen.Get(), &b);
+        CHECK(st.mean > 0.03 && st.mean < 0.8, "world %d (%u): mean %.3f", w, dv.world(), st.mean);
+        CHECK(diff(a, b) > 0.005, "world %d moves (%.4f)", w, diff(a, b));
+        std::printf("  Journey world %u: mean %.3f, moving %.3f\n", dv.world(), st.mean, diff(a, b));
+        worlds.push_back(std::move(a));
+    }
+    int alike = 0;
+    for (size_t i = 0; i < worlds.size(); ++i)
+        for (size_t k = i + 1; k < worlds.size(); ++k) alike += diff(worlds[i], worlds[k]) < 0.03;
+    CHECK(alike == 0, "no two worlds alike (%d pairs were)", alike);
 }
 
 // The cover shatter on a drop (insane: every event): the cover's shards are on screen after the drop. Two runs with grey
@@ -1175,6 +1350,10 @@ int main(int argc, char** argv) {
     lyrics();
     milkdrop_scene();
     trails();
+    genomes();
+    journey_worlds();
+    score_grid();
+    score_scene();
     cover_shatter();
     video();
     spout();

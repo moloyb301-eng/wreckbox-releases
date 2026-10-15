@@ -65,6 +65,7 @@ target_link_libraries(wblibrary PUBLIC wbengine wbmodel PRIVATE winhttp ws2_32 b
 # Player: VLC's engine (libVLC, downloaded by cmake/vlc.cmake) → miniaudio output, with a tap for the visualizer.
 include(cmake/vlc.cmake)
 include(cmake/milkdrop.cmake)
+include(cmake/webview2.cmake)
 find_path(MINIAUDIO_INCLUDE_DIR miniaudio.h REQUIRED)
 add_library(wbplayer STATIC
   src/player/audio_output.cpp
@@ -88,6 +89,8 @@ add_library(wbdasvis STATIC
   src/dasvis/video.cpp
   src/dasvis/spout.cpp
   src/dasvis/lyrics.cpp
+  src/dasvis/genome.cpp
+  src/dasvis/score.cpp
   ${DASVIS_GENERATED})
 target_include_directories(wbdasvis PUBLIC src PRIVATE ${CMAKE_BINARY_DIR})
 target_link_libraries(wbdasvis PUBLIC wbengine d3d11 dxgi PRIVATE mfplat mfreadwrite mfuuid)
@@ -110,10 +113,11 @@ add_executable(wreckbox WIN32
   src/ui/view_visualizer.cpp
   src/ui/das_window.cpp
   src/ui/media_controls.cpp
+  src/ui/web_player.cpp
   res/app.rc
   res/app.manifest)
 target_compile_definitions(wreckbox PRIVATE "WB_VER_COMMA=${PROJECT_VERSION_MAJOR},${PROJECT_VERSION_MINOR},${PROJECT_VERSION_PATCH},0")
-target_link_libraries(wreckbox PRIVATE wbplayer wbdasvis unofficial::nayuki-qr-code-generator::nayuki-qr-code-generator d2d1 d3d11 dxgi dwrite windowscodecs dwmapi shell32 ole32 comctl32 runtimeobject shlwapi shcore)
+target_link_libraries(wreckbox PRIVATE wbplayer wbdasvis webview2 unofficial::nayuki-qr-code-generator::nayuki-qr-code-generator d2d1 d3d11 dxgi dwrite windowscodecs dwmapi shell32 ole32 comctl32 runtimeobject shlwapi shcore)
 # libVLC loads on first use (the first play), not at startup: ~3 MB of DLLs off the cold-start path.
 target_link_options(wreckbox PRIVATE /DELAYLOAD:libvlc.dll)
 target_link_libraries(wreckbox PRIVATE delayimp)

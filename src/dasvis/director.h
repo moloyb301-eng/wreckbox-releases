@@ -26,6 +26,7 @@ struct SceneTags {
     bool ring = false;    // the spectrum ring suits it
     bool trails = true;   // trails go under it (not where it draws from the last frame itself, or adds points every
                           // frame: they would pile up on their own trails)
+    bool lead = false;    // Journey: picked most of the time (a new world each time, so it may follow itself)
 };
 
 // Trails under a scene (the shaders' u_trail / u_flow): MilkDrop's motion, the last frame warped under the new one.

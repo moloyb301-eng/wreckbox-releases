@@ -1,5 +1,6 @@
 // Shell, sidebar, headers, Home and the placeholder pages. Track lists and the inspector are in view_tracks.cpp.
 #include "ui/view.h"
+#include "model/paths.h"
 #include "model/settings.h"
 
 #include <commctrl.h>
@@ -174,6 +175,7 @@ void View::paint() {
     ui_.begin_frame();
     if (fullscreen_) {
         visualizer_screen();
+        web_sync();
         draw_toast();
         if (const UINT due = ui_.draw_tooltip()) SetTimer(hwnd_, kTooltipTimer, due + 10, nullptr);
         hide_unused_edits();
@@ -186,7 +188,7 @@ void View::paint() {
 
     sidebar(Rect{10, 10, 252, H - 10});
     const auto focus = store_.focus();
-    const bool tools = page_ == Page::queue || page_ == Page::soulseek || page_ == Page::phone || page_ == Page::settings;
+    const bool tools = page_ == Page::web || page_ == Page::queue || page_ == Page::soulseek || page_ == Page::phone || page_ == Page::settings;
     const bool inspect = focus && !tools && lib_;
     const bool overlay = W < 1320;
     // The page column: the page, and the player bar under it (original: Column(page, PlayerBar)).
@@ -195,6 +197,7 @@ void View::paint() {
     if (banner) update_banner(Rect{252 + 22, 10, column_r - 10, 54});
     page(Rect{252 + 22, banner ? 56.f : 0.f, column_r - 22, H - 10 - bar_h - 10});
     player_bar(Rect{252 + 22, H - 10 - bar_h, column_r - 10, H - 10});
+    web_sync();
     if (inspect) inspector(Rect{W - 340, 10, W - 10, H - 10}, overlay);
     if (eq_open_ || url_open_ || bug_open_ || slsk_query_open_) {
         // Native text boxes would sit on top of a pop-over: hide them while one is open (the dialogs' own boxes excepted).
@@ -255,6 +258,7 @@ void View::sidebar(const Rect& r) {
         y += 24;
     };
     item(Page::home, L"Home", icon::home, std::nullopt);
+    item(Page::web, L"Web player", icon::globe, std::nullopt);
     section(L"Library");
     item(Page::all, L"All tracks", icon::list, lib_ ? std::optional(lib_->tracks.size()) : std::nullopt);
     item(Page::downloaded, L"In my crate", icon::check_circle, n_downloaded_);
@@ -335,6 +339,7 @@ void View::page(const Rect& r) {
     if (!lib_ && page_ != Page::settings) return welcome(r);
     switch (page_) {
         case Page::home: return home(r);
+        case Page::web: return web_page(r);
         case Page::settings: return settings_page(r);
         case Page::soulseek: return soulseek_page(r);
         case Page::phone: return phone_page(r);
@@ -352,6 +357,53 @@ void View::welcome(const Rect& r) {
     const std::wstring label = L"Set up";
     const float w = ui_.pill_width(label, icon::arrow_right);
     ui_.pill(cx - w / 2, cy + 44, label, icon::arrow_right, Ui::Pill::primary, [this] { go(Page::settings); });
+}
+
+// MARK: Web player
+
+void View::web_page(const Rect& r) {
+    if (!web_) {
+        web_ = std::make_unique<WebPlayer>(hwnd_, paths::settings_dir() / L"web");
+        web_->on_playing = [this](WebPlayer::Site) {
+            if (player_.playing()) player_.toggle();  // the site plays: the app pauses
+        };
+        web_->on_changed = [this] { InvalidateRect(hwnd_, nullptr, FALSE); };
+    }
+    std::vector<Action> actions;
+    for (const auto site : {WebPlayer::spotify, WebPlayer::youtube}) {
+        const std::wstring label = web_->playing(site) ? std::wstring(WebPlayer::name(site)) + L" \u266A" : WebPlayer::name(site);
+        actions.push_back({ui_.chip_width(label) + 12, [this, label, site](float x, float y) {
+                               ui_.chip(x, y + 6, label, std::nullopt, web_site_ == site, false, [this, site] { web_site_ = site; });
+                           }});
+    }
+    const std::wstring reload = L"Reload";
+    actions.push_back({ui_.pill_width(reload, icon::sync), [this, reload](float x, float y) {
+                           ui_.pill(x, y, reload, icon::sync, Ui::Pill::glass, [this] { web_->reload(web_site_); });
+                       }});
+    const float h = header(r, L"Listen", L"Web player", L"Spotify and YouTube Music's own players. Sign in once; it remembers you.", actions);
+    const Rect box{r.l, r.t + h, r.r, r.b};
+    ui_.glass(box, 16);
+    const std::wstring& err = web_->error();
+    if (!err.empty()) {
+        g_.paragraph(err, box.inset(24, 24), {Font::ui, 14, 400, text2});
+        web_->hide();
+        return;
+    }
+    if (web_->loading(web_site_))
+        g_.text(L"Opening " + std::wstring(WebPlayer::name(web_site_)) + L"…", box, {Font::ui, 14, 400, text2, Align::center});
+    if (eq_open_ || url_open_ || bug_open_ || slsk_query_open_) return web_->hide();  // a pop-over sits on top of it
+    const float k = g_.dpi() / 96.f;
+    const Rect in = box.inset(6, 6);
+    web_->show(web_site_, RECT{LONG(in.l * k), LONG(in.t * k), LONG(in.r * k), LONG(in.b * k)});
+}
+
+void View::web_sync() {
+    if (!web_) return;
+    const bool playing = player_.playing();
+    if (playing && !was_playing_) web_->pause();  // the app plays: the sites pause
+    was_playing_ = playing;
+    web_->set_muted(player_.muted());
+    if (page_ != Page::web || fullscreen_) web_->hide();
 }
 
 void View::placeholder(const Rect& r, const std::wstring& title, const std::wstring& subtitle, const std::wstring& phase) {

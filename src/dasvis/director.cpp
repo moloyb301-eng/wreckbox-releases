@@ -23,7 +23,7 @@ TrailStyle trail_style(uint32_t seed, int intensity, bool calm) {
     TrailStyle t;
     t.strength = 0.8f + 0.17f * r(1);
     t.melt = r(2) < 0.3f ? 0.3f + 0.4f * r(3) : 0.f;
-    t.fade = 0.6f + 1.6f * r(4);  // trails of about 0.4–1.6 s, as MilkDrop's presets' decay
+    t.fade = 1.4f + 2.0f * r(4);  // trails of about 0.3–0.7 s: longer ones drag behind the music
     static constexpr float kMirrors[] = {3, 4, 5, 6, 8};
     t.mirrors = r(5) < 0.2f ? kMirrors[std::min(4, int(r(6) * 5))] : 0.f;
     t.zoom = (r(7) < 0.15f ? -(0.3f + 0.5f * r(8)) : 0.2f + 1.3f * r(8)) * pace * (calm ? 0.4f : 1.f);
@@ -92,6 +92,19 @@ Cue Director::pick(const Moment& m, size_t current) {
     std::vector<size_t> ok;
     for (size_t i = 0; i < scenes_.size(); ++i)
         if (i != current && fits(i, m.tier, m.budget_ms)) ok.push_back(i);
+    // A lead scene (Journey: a new generated world each time) takes about two picks in three outside drops, even right
+    // after itself, less if you've skipped it for this genre.
+    if (!m.drop)
+        for (size_t i = 0; i < scenes_.size(); ++i) {
+            if (!scenes_[i].lead || !fits(i, m.tier, m.budget_ms)) continue;
+            float like = 1;
+            if (taste_)
+                if (const auto it = taste_->find(scenes_[i].name); it != taste_->end()) like = std::clamp(it->second, 0.05f, 1.4f);
+            if (rnd(m.seed, m.index, 7) < 0.65 * like) {
+                last_energy_ = m.energy;
+                return dress(i, m);
+            }
+        }
     if (ok.empty()) return dress(current, m);  // nothing else fits: stay
     const auto keep = [&](auto pred) {
         std::vector<size_t> sub;

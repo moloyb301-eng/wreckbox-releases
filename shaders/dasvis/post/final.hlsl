@@ -102,8 +102,9 @@ float4 title_card(float2 uv) {
 // into sparks as it ends. Premultiplied.
 float4 lyric(float2 uv) {
     float T = u_ext.z, t0 = u_lyric.x, t1 = u_lyric.y;
-    if (T < t0 - 0.05 || T > t1 + 0.5) return 0;
-    float h = 0.2 * (1 + 0.06 * KICK * FLASH), w = h * u_title.x / ASPECT;
+    t0 -= 0.15;  // a moment before it's sung, so it's there to read when the voice comes in
+    if (T < t0 || T > t1 + 0.35) return 0;
+    float h = 0.2 * (1 + 0.02 * KICK * FLASH), w = h * u_title.x / ASPECT;  // only a nudge on the kick: a jittering line is hard to read
     if (w > 0.94) h *= 0.94 / w, w = 0.94;
     float2 tuv = (uv - float2(0.5, 0.77)) / float2(w, h) + float2(0.5, 0.3);  // the line sits in the texture's top 60 %
     if (any(tuv < 0) || any(tuv > 1)) return 0;
@@ -111,10 +112,10 @@ float4 lyric(float2 uv) {
     t_sim.GetDimensions(tw, th);
     float2 near = t_sim.Load(int3(tuv * float2(tw, th), 0)).rg;
     float idx = round(near.g / max(near.r, 1e-3) * 255), n = max(u_title.y, 1), dur = max(t1 - t0, 0.5);
-    float arrive = saturate((T - t0 - idx / n * min(dur * 0.3, 1.2)) * 9);
-    float sung = saturate(((T - t0) / (dur * 0.8) * n - idx) * 2);
+    float arrive = saturate((T - t0 - idx / n * min(dur * 0.12, 0.25)) * 14);  // the whole line in within a quarter second
+    float sung = saturate(((T - t0 - 0.15) / (dur * 0.75) * n - idx) * 2);
     float cov = t_sim.SampleLevel(s_clamp, tuv, 0).r * arrive * (1 + 6 * arrive * (1 - arrive));
-    float dis = saturate((T - t1) / 0.5);
+    float dis = saturate((T - t1) / 0.35);
     float g = hash12(floor(uv * float2(ASPECT, 1) * 260));
     float keep = step(dis, g), spark = step(g, dis) * step(dis - 0.08, g);
     float3 col = lerp(0.5, lerp(1, PAL(0.9), 0.45), sung) * (1 + 0.5 * sung * KICK * FLASH);

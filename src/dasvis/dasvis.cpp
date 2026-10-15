@@ -13,6 +13,8 @@
 #include <vector>
 
 #include "dasvis/director.h"
+#include "dasvis/genome.h"
+#include "dasvis/score.h"
 #include "dasvis_gen/library.h"
 #include "dasvis_gen/ps_aurora.h"
 #include "dasvis_gen/ps_bloom_down.h"
@@ -41,6 +43,8 @@
 #include "dasvis_gen/ps_star.h"
 #include "dasvis_gen/ps_storm.h"
 #include "dasvis_gen/ps_milkdrop.h"
+#include "dasvis_gen/ps_journey.h"
+#include "dasvis_gen/ps_score.h"
 #include "dasvis_gen/ps_synthwave.h"
 #include "dasvis_gen/ps_tunnel.h"
 #include "dasvis_gen/vs_fullscreen.h"
@@ -57,7 +61,7 @@ namespace {
 
 // Mirrors the cbuffer in dasvis.hlsli: float4s only, so the C++ and HLSL layouts can't drift apart.
 struct Uniforms {
-    float time[4], res[4], out[4], beat[4], drums[4], tone[4], look[4], post[4], key[4], pal[5][4], pass[4], song[4], drop[4], hits[4], sim[4], dir[4], drift[4], ext[4], title[4], deck[4], lyric[4], trail[4], flow[4];
+    float time[4], res[4], out[4], beat[4], drums[4], tone[4], look[4], post[4], key[4], pal[5][4], pass[4], song[4], drop[4], hits[4], sim[4], dir[4], drift[4], ext[4], title[4], deck[4], lyric[4], trail[4], flow[4], gen[4][4];
 };
 static_assert(sizeof(Uniforms) % 16 == 0);
 
@@ -77,6 +81,7 @@ enum class Sim {
     galaxy,     // Galaxy: stars drawn as points, worked out from the time (nothing stored)
     ridges,     // Ridge Lines: the spectrum's history, drawn as lines with curtains
     milkdrop,   // MilkDrop: nothing to run here; the app's MilkDrop picture is the scene's texture
+    score,      // Score: the sequencer grid (score.h), worked out on the CPU and uploaded each frame (16 KB)
 };
 
 struct Scene {
@@ -105,6 +110,8 @@ const BuiltIn kScenes[] = {
     {k_ps_mandelbox, sizeof k_ps_mandelbox, Sim::none, {"Mandelbox Flight", kMid | kPeak, 'H', true, false, false}},
     {k_ps_chrome, sizeof k_ps_chrome, Sim::none, {"Liquid Chrome", kMid | kPeak, 'H', false, false, false}},
     {k_ps_storm, sizeof k_ps_storm, Sim::none, {"Storm", kMid | kPeak, 'H', false, false, false}},
+    {k_ps_journey, sizeof k_ps_journey, Sim::none, {"Journey", kCalm | kMid | kPeak, 'M', false, false, false, true, true}},
+    {k_ps_score, sizeof k_ps_score, Sim::score, {"Score", kCalm | kMid | kPeak, 'L', false, false, false, false}},
 };
 // Only with Config::milkdrop, after the others (the app runs projectM for it).
 const BuiltIn kMilkDrop{k_ps_milkdrop, sizeof k_ps_milkdrop, Sim::milkdrop, {"MilkDrop", kMid | kPeak, 'M', false, true, true, false}};
@@ -184,6 +191,17 @@ struct DasVis::Impl {
     float ring_from = 0;   // the ring's mix when the last change began
     // Trails: the style the director drew for this scene and phrase, and the one on screen easing towards it.
     TrailStyle trail_to, trail_on;
+    // Journey's world: the one drawn for it, and the one on screen easing towards it as it evolves.
+    Genome gen_to, gen_on;
+    uint32_t worlds = 0;
+    // Score: its grid, while it's on screen. A new style each visit; with the map, each two-bar page is written in as it
+    // starts (all its hits, so the score is there before the playhead reaches it); live, each hit as it's heard.
+    Score score;
+    bool score_on = false, score_mapped = false;
+    uint32_t score_visits = 0;
+    long score_page = 0;
+    float score_drop = 0, score_bass = 0, score_lead = 0;
+    std::vector<float> score_tex;
     uint32_t trail_draws = 0;
     uint32_t plays = 0;    // songs started (with Config::vary: each one looks different)
     float drift_seed[4][2] = {};  // the song's drift waves (periods and phases, 0–1)
@@ -227,7 +245,7 @@ struct DasVis::Impl {
     // carries on from the live clock without jumping when the map arrives.
     double map_offset = 0, kick_drift = 0, beats_shift = 0;
     bool had_map = false;
-    float gpu_ms = 0;
+    float gpu_ms = 0, lum_dt = 0;  // lum_dt: time since the flash limiter's last measure
     double time = 0;
     std::string song, camelot;
     float seed = 0;
@@ -402,6 +420,7 @@ struct DasVis::Impl {
         if (!scenes[cue.scene].ps) return;
         previous = current, current = cue.scene;
         transition = 0, since_switch = 0, bars_on = 0, advance_due = false;
+        if (is_lead(current)) new_world();
         draw_trails(true);
     }
 
@@ -413,6 +432,7 @@ struct DasVis::Impl {
         if (!fresh) t.mirrors = trail_to.mirrors;  // a fold snapping in or out mid-scene would jump
         const bool on = current < builtin ? builtin_at(current).tags.trails : true;
         if (!on || !cfg.trails) t.strength = 0;
+        if (is_lead(current)) t.melt = 0, t.mirrors = 0;  // Journey's world has its own shapes: streaks only, no smear or fold
         trail_to = t;
         if (fresh) trail_on.mirrors = t.mirrors;
     }
@@ -429,8 +449,23 @@ struct DasVis::Impl {
 
     // The director picks for `m` (never the scene on screen), and it goes on screen.
     void choose(const Moment& m) {
-        apply(dir.pick(m, current));
+        const Cue c = dir.pick(m, current);
+        if (c.scene == current && is_lead(current)) {  // Journey again: a new world, flown into
+            cue = c;
+            cue.transition = Transition::zoom;
+            new_world();
+            transition = 0, since_switch = 0, bars_on = 0, advance_due = false;
+            draw_trails(true);
+        } else {
+            apply(c);
+        }
         ++picks;
+    }
+
+    bool is_lead(size_t i) const { return i < builtin && builtin_at(i).tags.lead; }
+
+    void new_world() {
+        gen_to = gen_on = make_genome(song_seed ^ (0x51ED27u * ++worlds));
     }
 
     // N / P: the next or previous scene, dressed by the director. Any scene: it's your choice (the heavy ones too, at a
@@ -560,6 +595,7 @@ struct DasVis::Impl {
         if (kind == Sim::fluid || kind == Sim::coral) w = std::max(16, int(std::lround(float(n) * aspect))), h = n;
         else if (kind == Sim::particles) w = h = n;
         else if (kind == Sim::ridges) w = int(Features::kBins), h = kHistory;
+        else if (kind == Sim::score) w = Score::kCols * 2, h = Score::kRows;
         if (s.kind == kind && s.tier == qc.tier() && s.w == w && s.h == h) return;
         s = {};
         s.kind = kind, s.tier = qc.tier(), s.w = w, s.h = h;
@@ -575,6 +611,7 @@ struct DasVis::Impl {
         case Sim::particles: both(s.a, DXGI_FORMAT_R32G32B32A32_FLOAT, zero); break;
         case Sim::fluid: both(s.a, DXGI_FORMAT_R16G16_FLOAT, zero), both(s.b, DXGI_FORMAT_R16G16_FLOAT, zero); break;
         case Sim::coral: both(s.a, fine, food); break;  // all food and nothing growing: the first frame seeds it
+        case Sim::score: s.a[0] = make(w, h, DXGI_FORMAT_R32G32B32A32_FLOAT, false); break;
         case Sim::ridges:
             s.a[0] = make(w, h, DXGI_FORMAT_R32_FLOAT);
             if (s.a[0].rtv) ctx->ClearRenderTargetView(s.a[0].rtv.Get(), zero);
@@ -621,6 +658,7 @@ struct DasVis::Impl {
     static ID3D11ShaderResourceView* sim_view(const SimState& s) {
         if (s.kind == Sim::fluid) return s.a[0].srv.Get();
         if (s.kind == Sim::coral) return s.a[s.ai].srv.Get();
+        if (s.kind == Sim::score) return s.a[0].srv.Get();
         return nullptr;
     }
 
@@ -669,12 +707,14 @@ struct DasVis::Impl {
         if (frame < 2) return;
         ID3D11Texture2D* s = lum_stage[(frame + 1) % 3].Get();  // copied two frames ago
         D3D11_MAPPED_SUBRESOURCE m;
+        lum_dt += dt;  // a frame whose measure isn't ready yet still counts: the flashes of the last second must expire
         if (ctx->Map(s, 0, D3D11_MAP_READ, D3D11_MAP_FLAG_DO_NOT_WAIT, &m) != S_OK) return;
         unsigned sum = 0;
         for (int y = 0; y < 16; ++y)
             for (int x = 0; x < 16; ++x) sum += static_cast<const uint8_t*>(m.pData)[size_t(y) * m.RowPitch + size_t(x)];
         ctx->Unmap(s, 0);
-        limiter.update(float(sum) / (256.f * 255.f), dt);
+        limiter.update(float(sum) / (256.f * 255.f), lum_dt);
+        lum_dt = 0;
     }
 
     // Everything this pipeline needs, set every frame: Direct2D shares the device and may have left its own state.
@@ -763,7 +803,10 @@ struct DasVis::Impl {
         // is up (shorter on insane, longer on chill), on a bar's downbeat.
         since_switch += dt;
         const bool new_bar = bar < last_bar;
-        if (new_bar && bars_on > 0 && (bars_on + 1) % 16 == 0) draw_trails(false);  // evolving, each phrase
+        if (new_bar && bars_on > 0 && (bars_on + 1) % 16 == 0) {  // evolving, each phrase
+            draw_trails(false);
+            gen_to = mutate(gen_to, song_seed ^ (0xE701u * (worlds + 1000u * uint32_t(bars_on))), 0.35f);
+        }
         bars_on += new_bar;
         last_bar = bar;
         now = moment(in, ms.section, ms.section, has_map ? ms.energy : f.energy);
@@ -858,6 +901,8 @@ struct DasVis::Impl {
             const bool off = trail_on.strength < 0.01f || cue.mid != Mid::none;
             set(u.trail, off ? 0.f : trail_on.strength, trail_on.melt, trail_on.fade, trail_on.mirrors);
             set(u.flow, trail_on.zoom, trail_on.turn, trail_on.swirl, trail_on.flow);
+            dasvis::ease(gen_on, gen_to, 1 - std::exp(-dt / 2.f));  // a phrase's changes grow in over a few seconds
+            pack(gen_on, u.gen);
         }
         // Drift: four slow waves from the song's seed, so a long section keeps changing without looping.
         for (int i = 0; i < 4; ++i) {
@@ -882,6 +927,7 @@ struct DasVis::Impl {
         step_sim(sim, f, dt);  // last: the scene's pass reads its u_sim
         if (sim.kind == Sim::milkdrop) set_sim(milk.srv ? 1.f : 0.f, 0, 0, 0);  // a picture yet?
         else milk = {};  // off screen: its texture goes
+        score_on = sim.kind == Sim::score && score_frame(in, f, has_map, ms, beats);
         const int prev = cur;
         cur ^= 1;
         pass(scenes[current].ps.Get(), comp[cur], comp[prev], nullptr, false, sim.kind == Sim::milkdrop ? milk.srv.Get() : sim_view(sim));
@@ -896,6 +942,80 @@ struct DasVis::Impl {
         final_pass(out);
         if (timing) ctx->End(tm.t1.Get()), ctx->End(tm.disjoint.Get()), tm.issued = true;
         ++frame;
+    }
+
+    // Score's frame: where the playhead is, the hits written in, the grid uploaded. False if it couldn't be.
+    bool score_frame(const Inputs& in, const Features& f, bool has_map, const SongMap::State& ms, double beats) {
+        if (!sim.a[0].tex) return false;
+        const SongMap* map = has_map ? in.map : nullptr;
+        const double t = map ? in.song_time + map_offset : time;  // the song's clock, or DasVis's own for live
+        const double bars = map ? (ms.beats - map->downbeat) / 4 : beats / 4;
+        const long page = long(std::floor(bars / 2));
+        const bool fresh = !score_on || score_mapped != (map != nullptr);
+        if (fresh || (map && page != score_page && page != score_page + 1)) {  // a new visit, the map arrived, or a seek
+            if (fresh) ++score_visits;
+            score.reset(song_seed ^ (0x5C0E5u * score_visits), t);
+            score_mapped = map != nullptr, score_page = page - 1;
+        }
+        if (map && page != score_page) score_page = page, score_fill(*map, page);
+        if (!map) {  // live: each hit where the playhead is
+            const float s = 0.5f + 0.5f * f.energy;
+            if (drv.kick_hit) score.place(Score::kick, bars, t, s);
+            if (drv.snare_hit) score.place(Score::snare, bars, t, s);
+            if (drv.hats_hit) score.place(Score::hats, bars, t, s * 0.7f);
+            if (drv.bass > 0.55f && score_bass <= 0.55f) score.place(Score::bass, bars, t, drv.bass);
+            if (drv.lead > 0.55f && score_lead <= 0.55f) score.place(Score::lead, bars, t, drv.lead);
+        }
+        score_bass = drv.bass < 0.35f ? 0.f : std::max(score_bass, drv.bass), score_lead = drv.lead < 0.35f ? 0.f : std::max(score_lead, drv.lead);
+        if (ms.drop > 0.9f && score_drop <= 0.9f) score.burst(t);
+        score_drop = ms.drop;
+        score.update(bars, t);
+        score_tex.resize(size_t(Score::kCols * 2 * Score::kRows * 4));
+        score.write(score_tex.data(), t);
+        ctx->UpdateSubresource(sim.a[0].tex.Get(), 0, nullptr, score_tex.data(), UINT(Score::kCols * 2 * 4 * sizeof(float)), 0);
+        set_sim(float(Score::kCols), float(Score::kRows), score.playhead(), 0);
+        return true;
+    }
+
+    // Writes in two bars of the map (`page`): the drums' hits, and where the bass and lead come in (their envelopes
+    // rising through ~55 %).
+    void score_fill(const SongMap& m, long page) {
+        const auto time_of = [&m](double beat) {  // the inverse of SongMap::at's beat count
+            const size_t n = m.beats.size();
+            const double step = m.bpm > 0 ? 60 / m.bpm : 0.5;
+            if (beat <= 0) return m.beats[0] + beat * step;
+            if (beat >= double(n - 1)) return m.beats[n - 1] + (beat - double(n - 1)) * step;
+            const size_t i = size_t(beat);
+            return m.beats[i] + (m.beats[i + 1] - m.beats[i]) * (beat - double(i));
+        };
+        const double t0 = time_of(m.downbeat + 8.0 * double(page)), t1 = time_of(m.downbeat + 8.0 * double(page + 1));
+        const auto bars_at = [&m](double t) { return (m.at(t).beats - m.downbeat) / 4; };
+        const auto env = [&m](int stem, double t) {
+            const auto& e = m.env[size_t(stem)];
+            const size_t i = size_t(std::max(0.0, t * SongMap::kFps));
+            return i < e.size() ? float(e[i]) / 255.f : 0.f;
+        };
+        const Score::Voice drums[] = {Score::kick, Score::snare, Score::hats};
+        const SongMap::Stem stems[] = {SongMap::kick, SongMap::snare, SongMap::hats};
+        for (int k = 0; k < 3; ++k) {
+            const auto& hs = m.hits[size_t(stems[k])];
+            for (auto it = std::lower_bound(hs.begin(), hs.end(), t0); it != hs.end() && *it < t1; ++it)
+                score.place(drums[k], bars_at(*it), *it, std::clamp(0.4f + env(stems[k], *it + 0.02), 0.f, 1.f));
+        }
+        const std::pair<Score::Voice, SongMap::Stem> tones[] = {{Score::bass, SongMap::bass}, {Score::lead, SongMap::lead}};
+        for (const auto& [voice, stem] : tones) {
+            const auto& e = m.env[size_t(stem)];
+            const long i0 = long(t0 * SongMap::kFps), i1 = std::min(long(e.size()), long(t1 * SongMap::kFps));
+            bool armed = i0 <= 0 || i0 > long(e.size()) || e[size_t(i0 - 1)] < 90;
+            for (long i = std::max(0L, i0); i < i1; ++i) {
+                if (e[size_t(i)] < 90) armed = true;
+                else if (armed && e[size_t(i)] >= 140) {
+                    armed = false;
+                    const double t = double(i) / SongMap::kFps;
+                    score.place(voice, bars_at(t), t, float(e[size_t(i)]) / 255.f);
+                }
+            }
+        }
     }
 
     void set_milkdrop(const uint8_t* bgra, int w, int h) {
@@ -999,6 +1119,7 @@ void DasVis::set_camera(float turn, float zoom) {
     p_->cam_tx = std::clamp(turn, -1.f, 1.f), p_->cam_ty = std::clamp(zoom, -1.f, 1.f);
 }
 bool DasVis::particles() const { return p_->cue.mid == Mid::particles; }
+uint32_t DasVis::world() const { return p_->worlds; }
 bool DasVis::wants_milkdrop() const { return ok() && !p_->scenes.empty() && p_->scenes[p_->current].sim == Sim::milkdrop; }
 void DasVis::set_milkdrop(const uint8_t* bgra, int w, int h) {
     if (ok()) p_->set_milkdrop(bgra, w, h);
