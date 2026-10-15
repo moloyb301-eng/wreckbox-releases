@@ -28,6 +28,7 @@
 #include "dasvis/dasvis.h"
 #include "dasvis/director.h"
 #include "dasvis/genome.h"
+#include "dasvis/score.h"
 #include "dasvis/lyrics.h"
 #include "dasvis/features.h"
 #include "dasvis/palette.h"
@@ -545,7 +546,7 @@ void gpu(bool fl10) {
     DasVis dv(dev.Get(), cfg);
     CHECK(dv.ok(), "DasVis on %s: %s", label, dv.error().c_str());
     if (!dv.ok()) return;
-    CHECK(dv.scene_count() == 15, "scenes: %zu (14 built in + the example)", dv.scene_count());
+    CHECK(dv.scene_count() == 16, "scenes: %zu (15 built in + the example)", dv.scene_count());
     CHECK(dv.user_errors().find("broken.hlsl") != std::string::npos && dv.user_errors().find("nope") != std::string::npos,
           "the broken scene's error names it: %s", dv.user_errors().c_str());
 
@@ -755,8 +756,10 @@ void director_timing() {
     for (const auto& [t, name] : one) got += std::format("{:.2f} {}; ", t, name);
     CHECK(on_time, "scene changes at the starts of parts and phrases: %s", got.c_str());
     const auto at_drop = std::find_if(one.begin(), one.end(), [](const auto& c) { return c.first >= 96; });
-    CHECK(at_drop != one.end() && (at_drop->second == "Neon Tunnel" || at_drop->second == "Galaxy"), "the drop gets a hero: %s",
-          at_drop != one.end() ? at_drop->second.c_str() : "none");
+    const auto tags = builtin_scenes();
+    const bool hero = at_drop != one.end() &&
+                      std::any_of(tags.begin(), tags.end(), [&](const SceneTags& t) { return t.hero && t.name == at_drop->second; });
+    CHECK(hero, "the drop gets a hero: %s", at_drop != one.end() ? at_drop->second.c_str() : "none");
     std::printf("  director in the renderer: %s\n", got.c_str());
 }
 
@@ -805,7 +808,7 @@ void milkdrop_scene() {
     DasVis dv(dev.Get(), cfg);
     const auto names = dv.scene_names();
     const size_t milk = size_t(std::find(names.begin(), names.end(), "MilkDrop") - names.begin());
-    CHECK(milk < names.size() && names.size() == 15, "MilkDrop is a scene: %zu scenes", names.size());
+    CHECK(milk < names.size() && names.size() == 16, "MilkDrop is a scene: %zu scenes", names.size());
     if (milk >= names.size()) return;
     Features f;
     std::vector<float> quiet(Features::kFft);
@@ -951,6 +954,93 @@ void genomes() {
 }
 
 // Journey on screen: 9 worlds in a row (each pick a new one), each lit but not washed out and moving, and no two alike.
+// The Score grid: each style places a bar of drums and bass; the same hits land on the same blocks (so a repeated
+// pattern stays and turns), a block lights when its hit plays and throws ripples that die away, and blocks the music
+// stops playing fade once the playhead has passed them.
+void score_grid() {
+    const auto pattern = [](Score& s, long page) {  // two bars: kick on the beats, snare on 2 and 4, hats on the eighths
+        const double b0 = 2.0 * double(page);
+        for (int i = 0; i < 8; ++i) s.place(Score::kick, b0 + i / 4.0, (b0 + i / 4.0) * 2, 0.8f);
+        for (int i = 0; i < 4; ++i) s.place(Score::snare, b0 + 0.25 + i / 2.0, (b0 + 0.25 + i / 2.0) * 2, 0.6f);
+        for (int i = 0; i < 16; ++i) s.place(Score::hats, b0 + i / 8.0, (b0 + i / 8.0) * 2, 0.4f);
+        s.place(Score::bass, b0 + 0.5, (b0 + 0.5) * 2, 0.9f);
+    };
+    std::vector<float> tex(size_t(Score::kCols * 2 * Score::kRows * 4));
+    const auto turns = [&] {
+        float most = 0;
+        for (int r = 0; r < Score::kRows; ++r)
+            for (int c = 0; c < Score::kCols; ++c) most = std::max(most, tex[size_t((r * Score::kCols * 2 + c) * 4 + 3)]);
+        return most;
+    };
+    bool styles[Score::kStyles] = {};
+    for (uint32_t seed = 1; seed < 40; ++seed) {
+        Score s;
+        s.reset(seed, 0);
+        const int st = s.style();
+        if (styles[st]) continue;
+        styles[st] = true;
+        // A bar is 2 s here (bars × 2 = seconds). Page 0 written in at the start, played through; then again (page 1).
+        pattern(s, 0);
+        const size_t first = s.blocks();
+        CHECK(first >= 3, "style %d: %zu blocks for a bar of drums", st, first);
+        size_t peak_ripples = 0;
+        for (double t = 0; t < 4; t += 1 / 60.0) {
+            s.update(t / 2, t);
+            s.write(tex.data(), t);
+            peak_ripples = std::max(peak_ripples, s.ripples());
+        }
+        CHECK(peak_ripples > 0, "style %d: hits throw ripples", st);
+        pattern(s, 1);
+        CHECK(s.blocks() == first, "style %d: the same pattern, the same blocks (%zu then %zu)", st, first, s.blocks());
+        for (double t = 4; t < 8; t += 1 / 60.0) s.update(t / 2, t);
+        s.write(tex.data(), 8);
+        CHECK(turns() >= 1.5f, "style %d: blocks played again turned (%.2f quarter turns)", st, turns());
+        for (double t = 8; t < 12.5; t += 1 / 60.0) s.update(t / 2, t);  // a page with nothing played
+        CHECK(s.blocks() == 0 && s.ripples() == 0, "style %d: unplayed blocks fade (%zu left, %zu ripples)", st, s.blocks(), s.ripples());
+    }
+    for (int k = 0; k < Score::kStyles; ++k) CHECK(styles[k], "style %d picked by some seed", k);
+}
+
+// Score on screen (live: no map): lit, not washed out, and moving as the playhead sweeps and hits land.
+void score_scene() {
+    ComPtr<ID3D11Device> dev;
+    const D3D_FEATURE_LEVEL fl = D3D_FEATURE_LEVEL_10_0;
+    if (FAILED(D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, D3D11_CREATE_DEVICE_BGRA_SUPPORT, &fl, 1, D3D11_SDK_VERSION, &dev, nullptr, nullptr)))
+        return std::puts("FAIL: no WARP device"), void(++failures);
+    D3D11_TEXTURE2D_DESC td{160, 90, 1, 1, DXGI_FORMAT_B8G8R8A8_UNORM, {1, 0}, D3D11_USAGE_DEFAULT, D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE};
+    ComPtr<ID3D11Texture2D> screen;
+    dev->CreateTexture2D(&td, nullptr, &screen);
+    Config cfg;
+    cfg.start = Tier::low, cfg.auto_tier = false, cfg.auto_advance = 0;
+    DasVis dv(dev.Get(), cfg);
+    const auto names = dv.scene_names();
+    const size_t at_score = size_t(std::find(names.begin(), names.end(), "Score") - names.begin());
+    CHECK(at_score < names.size(), "Score is a scene");
+    if (at_score >= names.size()) return;
+    const auto music = drums(20, 128, true, true);
+    Features f;
+    std::vector<float> win(Features::kFft);
+    size_t pos = kHop;
+    Inputs in;
+    in.f = &f, in.song = "score-song";
+    const auto frame = [&] {
+        for (size_t k = 0; k < Features::kFft; ++k) win[k] = pos >= Features::kFft - k ? music[(pos - Features::kFft + k) % music.size()] : 0.f;
+        pos += kHop;
+        f.update(win.data(), 1 / 60.f, 128);
+        dv.render(in, screen.Get());
+    };
+    dv.lock(true);
+    dv.select(at_score);
+    for (int i = 0; i < 240; ++i) frame();
+    std::vector<uint8_t> a, b;
+    const Stats st = read(dev.Get(), screen.Get(), &a);
+    for (int i = 0; i < 20; ++i) frame();
+    read(dev.Get(), screen.Get(), &b);
+    std::printf("  Score: mean %.3f, moving %.4f\n", st.mean, diff(a, b));
+    CHECK(st.mean > 0.004 && st.mean < 0.5, "Score is drawn, not washed out: mean %.3f", st.mean);
+    CHECK(diff(a, b) > 0.001, "Score moves (%.4f)", diff(a, b));
+}
+
 void journey_worlds() {
     ComPtr<ID3D11Device> dev;
     const D3D_FEATURE_LEVEL fl = D3D_FEATURE_LEVEL_10_0;
@@ -1262,6 +1352,8 @@ int main(int argc, char** argv) {
     trails();
     genomes();
     journey_worlds();
+    score_grid();
+    score_scene();
     cover_shatter();
     video();
     spout();
