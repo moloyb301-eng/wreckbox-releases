@@ -1,11 +1,16 @@
 // Import tests: ports of the original csv_test / app_test cases (same fixtures), plus checks for the pieces of the Spotify
 // and YouTube sign-in that can run without anyone's developer keys (PKCE, the loopback redirect, response parsing).
 // Live catalogue lookups only run with WRECKBOX_NET_TESTS=1.
+#include <httplib.h>
+
 #include <algorithm>
+#include <atomic>
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
 #include <thread>
+#include <vector>
 
 #include "model/paths.h"
 #include "net/http_client.h"
@@ -256,7 +261,108 @@ static void playlist_sync() {
     fs::remove_all(root);
 }
 
+// The whole import against a stand-in for Spotify's API: paged lists that say their total, 40 ms a request, one
+// "slow down" answer. Everything must arrive, in Spotify's order, with no more than six requests in flight — and
+// much sooner than one request after another would take.
+static void spotify_import_in_parallel() {
+    httplib::Server api;
+    std::atomic<int> in_flight{0}, most{0}, requests{0}, meta_requests{0}, limited{0};
+    int port = 0;
+    struct Busy {
+        std::atomic<int>& n;
+        std::atomic<int>& most;
+        Busy(std::atomic<int>& n_, std::atomic<int>& most_) : n(n_), most(most_) {
+            const int now = ++n;
+            for (int m = most.load(); now > m && !most.compare_exchange_weak(m, now);) {}
+            std::this_thread::sleep_for(std::chrono::milliseconds(40));
+        }
+        ~Busy() { --n; }
+    };
+    // Playlist sizes: p0 … p11. p11 belongs to someone else (not imported); p10 is collaborative.
+    const std::vector<size_t> sizes{0, 1, 49, 50, 51, 100, 130, 260, 7, 75, 20, 33};
+    auto page = [&](const httplib::Request& req, const std::string& path, const std::string& prefix, size_t total, bool as_item) {
+        const size_t offset = req.has_param("offset") ? size_t(std::stoul(req.get_param_value("offset"))) : 0;
+        const size_t limit = size_t(std::stoul(req.get_param_value("limit")));
+        json items = json::array();
+        for (size_t i = offset; i < std::min(total, offset + limit); ++i) {
+            const json track = {{"type", "track"}, {"id", prefix + "-" + std::to_string(i)}, {"name", "Song " + std::to_string(i)},
+                                {"artists", {{{"name", "Artist"}}}}, {"duration_ms", 200000}};
+            items.push_back({{"added_at", "2026-01-01T00:00:00Z"}, {as_item ? "item" : "track", track}});
+        }
+        json j = {{"items", items}, {"total", total}, {"limit", limit}, {"offset", offset}, {"next", nullptr}};
+        if (offset + limit < total)
+            j["next"] = "http://127.0.0.1:" + std::to_string(port) + "/v1/" + path + "?offset=" + std::to_string(offset + limit) + "&limit=" + std::to_string(limit);
+        return j.dump();
+    };
+    api.Get("/v1/me/tracks", [&](const httplib::Request& req, httplib::Response& res) {
+        const Busy busy(in_flight, most);
+        ++requests;
+        if (req.has_param("offset") && req.get_param_value("offset") == "200" && limited++ == 0) {  // once: slow down
+            res.status = 429;
+            res.set_header("Retry-After", "1");
+            return;
+        }
+        res.set_content(page(req, "me/tracks", "liked", 430, false), "application/json");
+    });
+    api.Get("/v1/me/playlists", [&](const httplib::Request& req, httplib::Response& res) {
+        const Busy busy(in_flight, most);
+        ++requests;
+        const size_t offset = req.has_param("offset") ? size_t(std::stoul(req.get_param_value("offset"))) : 0;
+        json items = json::array();
+        for (size_t i = offset; i < std::min(sizes.size(), offset + 50); ++i)
+            items.push_back({{"id", "p" + std::to_string(i)}, {"name", "  Playlist " + std::to_string(i) + " "},
+                             {"collaborative", i == 10}, {"owner", {{"id", i == 11 || i == 10 ? "someone" : "me"}}}});
+        res.set_content(json{{"items", items}, {"total", sizes.size()}, {"limit", 50}, {"offset", offset}, {"next", nullptr}}.dump(), "application/json");
+    });
+    api.Get(R"(/v1/playlists/p(\d+)/items)", [&](const httplib::Request& req, httplib::Response& res) {
+        const Busy busy(in_flight, most);
+        ++requests;
+        const size_t n = size_t(std::stoul(req.matches[1]));
+        res.set_content(page(req, "playlists/p" + std::to_string(n) + "/items", "p" + std::to_string(n), sizes[n], true), "application/json");
+    });
+    api.Get(R"(/v1/playlists/p(\d+))", [&](const httplib::Request&, httplib::Response& res) {
+        ++meta_requests;
+        res.set_content(R"({"name":"asked again","collaborative":false})", "application/json");
+    });
+    port = api.bind_to_any_port("127.0.0.1");
+    std::thread serving([&] { api.listen_after_bind(); });
+    api.wait_until_ready();
+    wb::spotify::set_api_base("http://127.0.0.1:" + std::to_string(port) + "/v1/");
+
+    std::vector<std::string> lines;
+    const auto started = std::chrono::steady_clock::now();
+    const auto got = wb::spotify::fetch_all("token", "me", [&](const std::string& l) { lines.push_back(l); });
+    const double seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
+    api.stop();
+    serving.join();
+    wb::spotify::set_api_base("https://api.spotify.com/v1/");
+
+    auto in_order = [](const wb::SourcePlaylist& pl, const std::string& prefix, size_t n) {
+        if (pl.tracks.size() != n) return false;
+        for (size_t i = 0; i < n; ++i)
+            if (pl.tracks[i].spotify_id != prefix + "-" + std::to_string(i)) return false;
+        return true;
+    };
+    CHECK(got.size() == 12, "%zu playlists", got.size());  // Liked Songs + p0 … p10; p11 is someone else's
+    CHECK(!got.empty() && got[0].name == "Liked Songs" && in_order(got[0], "liked", 430), "%zu liked", got.empty() ? 0 : got[0].tracks.size());
+    for (size_t i = 0; i + 1 < got.size() && i < 11; ++i) {
+        const auto& pl = got[i + 1];
+        CHECK(pl.name == "Playlist " + std::to_string(i) && pl.id == "p" + std::to_string(i) && pl.collaborative == (i == 10), "%s", pl.name.c_str());
+        CHECK(in_order(pl, "p" + std::to_string(i), sizes[i]), "playlist %zu has %zu tracks", i, pl.tracks.size());
+    }
+    CHECK(most <= 6 && most >= 2, "%d requests at once", most.load());
+    CHECK(meta_requests == 0, "the list already names each playlist");
+    CHECK(limited >= 1, "the slow-down answer was served");
+    // One after another: every request's 40 ms, plus the second of waiting Spotify asked for.
+    const double serial = requests * 0.040 + 1.0;
+    // (After the slow-down answer only two go at a time, so this run is the cautious case, not the fastest one.)
+    CHECK(seconds < serial * 0.9, "%.2f s for %d requests (one at a time: %.2f s)", seconds, requests.load(), serial);
+    std::printf("spotify import: %d requests in %.2f s (one at a time: about %.2f s), up to %d at once\n", requests.load(), seconds, serial, most.load());
+    CHECK(!lines.empty() && lines.back().find("of 11 playlists") != std::string::npos, "%s", lines.empty() ? "" : lines.back().c_str());
+}
+
 int main() {
+    spotify_import_in_parallel();
     playlist_sync();
     csv_parser();
     csv_files();

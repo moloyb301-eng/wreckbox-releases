@@ -1,9 +1,15 @@
 #include "sources/spotify.h"
 
 #include <algorithm>
+#include <atomic>
+#include <cctype>
+#include <condition_variable>
 #include <cstdlib>
+#include <exception>
+#include <mutex>
 #include <stdexcept>
 #include <thread>
+#include <vector>
 
 #include "model/settings.h"
 #include "net/http_client.h"
@@ -50,13 +56,51 @@ std::string sign_in() {
     return token({{"grant_type", "authorization_code"}, {"code", cb->at("code")}, {"redirect_uri", kRedirect}, {"code_verifier", verifier}});
 }
 
+std::string g_api = "https://api.spotify.com/v1/";
+
+// An import is hundreds of small requests (a page of 50 songs each). They used to go one after another; now up to
+// six are in flight at once, over connections WinHTTP keeps open. When Spotify says "slow down" (429) every request
+// waits as long as it asks, and from then on only two go at a time.
+constexpr int kParallel = 6;
+std::mutex g_gate_m;
+std::condition_variable g_gate_cv;
+int g_in_flight = 0, g_limit = kParallel;
+std::chrono::steady_clock::time_point g_resume;  // after a 429: nobody asks before this
+
+struct Slot {
+    Slot() {
+        std::unique_lock lock(g_gate_m);
+        g_gate_cv.wait(lock, [] { return g_in_flight < g_limit; });
+        ++g_in_flight;
+    }
+    ~Slot() {
+        {
+            std::lock_guard lock(g_gate_m);
+            --g_in_flight;
+        }
+        g_gate_cv.notify_all();
+    }
+};
+
 json api_get(const std::string& tok, const std::string& path_or_url) {
-    const std::string url = path_or_url.rfind("http", 0) == 0 ? path_or_url : "https://api.spotify.com/v1/" + path_or_url;
-    for (int attempt = 0; attempt < 5; ++attempt) {
-        const auto res = http::get(url, {{"Authorization", "Bearer " + tok}});
-        if (res.status == 429) {  // rate limited: wait as long as Spotify asks
-            const int wait = std::max(1, std::atoi(res.header("retry-after").c_str()));
-            std::this_thread::sleep_for(std::chrono::seconds(res.header("retry-after").empty() ? 2 : wait));
+    const std::string url = path_or_url.rfind("http", 0) == 0 ? path_or_url : g_api + path_or_url;
+    for (int attempt = 0; attempt < 6; ++attempt) {
+        std::chrono::steady_clock::time_point resume;
+        {
+            std::lock_guard lock(g_gate_m);
+            resume = g_resume;
+        }
+        std::this_thread::sleep_until(resume);
+        http::Response res;
+        {
+            const Slot slot;
+            res = http::get(url, {{"Authorization", "Bearer " + tok}});
+        }
+        if (res.status == 429) {  // rate limited: everyone waits as long as Spotify asks
+            const int wait = res.header("retry-after").empty() ? 2 : std::max(1, std::atoi(res.header("retry-after").c_str()));
+            std::lock_guard lock(g_gate_m);
+            g_resume = std::max(g_resume, std::chrono::steady_clock::now() + std::chrono::seconds(wait));
+            g_limit = 2;
             continue;
         }
         if (res.status == 0) throw std::runtime_error(res.error);
@@ -66,13 +110,66 @@ json api_get(const std::string& tok, const std::string& path_or_url) {
     throw std::runtime_error("Spotify kept rate-limiting; try again in a minute.");
 }
 
+void take_items(const json& page, std::vector<json>& into) {
+    if (page.contains("items") && page["items"].is_array())
+        for (const auto& i : page["items"]) into.push_back(i);
+}
+
+// Runs fn(0) … fn(n-1) on up to `threads` threads; the first exception (if any) is rethrown when all have finished.
+void in_parallel(size_t n, unsigned threads, const std::function<void(size_t)>& fn) {
+    std::atomic<size_t> next{0};
+    std::exception_ptr failed;
+    std::mutex failed_m;
+    {
+        std::vector<std::jthread> pool;
+        for (unsigned t = 0; t < std::min<size_t>(threads, n); ++t)
+            pool.emplace_back([&] {
+                for (size_t i; (i = next++) < n;) {
+                    try {
+                        fn(i);
+                    } catch (...) {
+                        std::lock_guard lock(failed_m);
+                        if (!failed) failed = std::current_exception();
+                    }
+                }
+            });
+    }
+    if (failed) std::rethrow_exception(failed);
+}
+
+// "…?offset=50&limit=50" with another offset; "" if the address has no offset to replace.
+std::string with_offset(const std::string& url, size_t offset) {
+    const size_t at = url.find("offset=");
+    if (at == std::string::npos || (at > 0 && url[at - 1] != '?' && url[at - 1] != '&')) return "";
+    size_t end = at + 7;
+    while (end < url.size() && std::isdigit(static_cast<unsigned char>(url[end]))) ++end;
+    return url.substr(0, at + 7) + std::to_string(offset) + url.substr(end);
+}
+
+// Every item of a paged list, in order. The first page says how many there are and how the next page is addressed,
+// so the rest are fetched side by side instead of each waiting for the one before. If the list doesn't say (no total,
+// or an address without an offset), the pages are followed one at a time as before.
 std::vector<json> pages(const std::string& tok, const std::string& path) {
     std::vector<json> items;
-    std::string next = path;
+    const json first = api_get(tok, path);
+    take_items(first, items);
+    std::string next = first.contains("next") && first["next"].is_string() ? first["next"].get<std::string>() : "";
+    if (next.empty()) return items;
+
+    const size_t total = first.contains("total") && first["total"].is_number_unsigned() ? first["total"].get<size_t>() : 0;
+    const size_t limit = first.contains("limit") && first["limit"].is_number_unsigned() ? first["limit"].get<size_t>() : 0;
+    const size_t start = first.contains("offset") && first["offset"].is_number_unsigned() ? first["offset"].get<size_t>() + limit : limit;
+    if (total > start && limit > 0 && !with_offset(next, start).empty()) {
+        std::vector<size_t> offsets;
+        for (size_t o = start; o < total; o += limit) offsets.push_back(o);
+        std::vector<json> rest(offsets.size());
+        in_parallel(offsets.size(), kParallel, [&](size_t i) { rest[i] = api_get(tok, with_offset(next, offsets[i])); });
+        for (const auto& page : rest) take_items(page, items);
+        return items;
+    }
     while (!next.empty()) {
         const json page = api_get(tok, next);
-        if (page.contains("items") && page["items"].is_array())
-            for (const auto& i : page["items"]) items.push_back(i);
+        take_items(page, items);
         next = page.contains("next") && page["next"].is_string() ? page["next"].get<std::string>() : "";
     }
     return items;
@@ -146,13 +243,21 @@ std::optional<SourceTrack> search(const std::string& tok, const std::string& art
     return std::nullopt;
 }
 
-SourcePlaylist fetch_playlist(const std::string& tok, const std::optional<std::string>& id) {
+void set_api_base(const std::string& base) {
+    std::lock_guard lock(g_gate_m);
+    g_api = base;
+    g_limit = kParallel;
+    g_resume = {};
+}
+
+SourcePlaylist fetch_playlist(const std::string& tok, const std::optional<std::string>& id, const json& known) {
     SourcePlaylist pl{"Liked Songs", std::nullopt, false, {}};
     std::vector<json> items;
     if (!id) {
         items = pages(tok, "me/tracks?limit=50");
     } else {
-        const json meta = api_get(tok, "playlists/" + *id + "?fields=name,collaborative");
+        // The list of playlists already says each one's name and whether it's collaborative: no need to ask again.
+        const json meta = known.is_object() && known.contains("name") ? known : api_get(tok, "playlists/" + *id + "?fields=name,collaborative");
         pl.name = meta.value("name", "");
         pl.name.erase(0, pl.name.find_first_not_of(" \t"));
         pl.name.erase(pl.name.find_last_not_of(" \t") + 1);
@@ -169,25 +274,53 @@ SourcePlaylist fetch_playlist(const std::string& tok, const std::optional<std::s
     return pl;
 }
 
+std::vector<SourcePlaylist> fetch_all(const std::string& tok, const std::string& user, const std::function<void(const std::string&)>& log) {
+    log("Fetching Liked Songs and your playlists…");
+    // Liked Songs and the list of playlists don't depend on each other: both at once.
+    SourcePlaylist liked;
+    std::vector<json> listed;
+    in_parallel(2, 2, [&](size_t i) {
+        if (i == 0) liked = fetch_playlist(tok, std::nullopt);
+        else listed = pages(tok, "me/playlists?limit=50");
+    });
+    log("  " + std::to_string(liked.tracks.size()) + " liked songs");
+
+    std::vector<json> wanted;
+    for (const auto& p : listed) {
+        const json owner = p.value("owner", json::object());
+        const bool mine = owner.value("id", "") == user, collab = p.value("collaborative", false);
+        if (mine || collab) wanted.push_back(p);  // personal playlists only (Spotify blocks reading others' anyway)
+    }
+    // Four playlists at a time (their pages share the six requests in flight). Each lands in its own slot, so the
+    // library comes out in Spotify's order whichever finishes first.
+    std::vector<std::optional<SourcePlaylist>> got(wanted.size());
+    std::mutex log_m;
+    std::atomic<size_t> finished{0};
+    in_parallel(wanted.size(), 4, [&](size_t i) {
+        const json& p = wanted[i];
+        std::string line;
+        try {
+            got[i] = fetch_playlist(tok, p.value("id", ""), p);
+            line = "  " + got[i]->name + ": " + std::to_string(got[i]->tracks.size()) + " tracks";
+        } catch (const std::exception& e) {
+            line = "  skipped " + p.value("name", "") + ": " + e.what();
+        }
+        const size_t n = ++finished;
+        std::lock_guard lock(log_m);
+        log(line + " (" + std::to_string(n) + " of " + std::to_string(wanted.size()) + " playlists)");
+    });
+    std::vector<SourcePlaylist> out{std::move(liked)};
+    for (auto& pl : got)
+        if (pl) out.push_back(std::move(*pl));
+    return out;
+}
+
 Library run(const std::function<void(const std::string&)>& log) {
     const std::string tok = access_token();
     const json me = api_get(tok, "me");
     const std::string user = me.value("id", "");
     log("Signed in as " + (me.contains("display_name") && me["display_name"].is_string() ? me["display_name"].get<std::string>() : user));
-    log("Fetching Liked Songs…");
-    std::vector<SourcePlaylist> out{fetch_playlist(tok, std::nullopt)};
-    log("  " + std::to_string(out[0].tracks.size()) + " liked songs");
-    for (const auto& p : pages(tok, "me/playlists?limit=50")) {
-        const json owner = p.value("owner", json::object());
-        const bool mine = owner.value("id", "") == user, collab = p.value("collaborative", false);
-        if (!(mine || collab)) continue;  // personal playlists only (Spotify blocks reading others' anyway)
-        try {
-            out.push_back(fetch_playlist(tok, p.value("id", "")));
-            log("  " + out.back().name + ": " + std::to_string(out.back().tracks.size()) + " tracks");
-        } catch (const std::exception& e) {
-            log("  skipped " + p.value("name", "") + ": " + e.what());
-        }
-    }
+    const std::vector<SourcePlaylist> out = fetch_all(tok, user, log);
     Library lib = sources::save("spotify", user, out);
     log("Library: " + std::to_string(lib.tracks.size()) + " unique tracks from " + std::to_string(lib.playlists.size()) + " playlists");
     return lib;
