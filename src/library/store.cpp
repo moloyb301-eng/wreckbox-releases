@@ -13,6 +13,7 @@
 #include <thread>
 
 #include "engine/engine.h"
+#include "engine/scan_plan.h"
 #include "model/paths.h"
 #include "model/settings.h"
 #include "net/http_client.h"
@@ -644,10 +645,23 @@ FileAnalysis LibraryStore::reconcile_bpm(FileAnalysis a, const std::string& trac
     }
     if (!isrc || !a.bpm) return a;
     if (!ref) {
+        // Deezer allows 50 lookups in 5 seconds, and a scan asks from every core at once: they take turns, 8 a second.
+        {
+            static std::mutex pace_m;
+            static std::chrono::steady_clock::time_point next_lookup;
+            std::unique_lock pace(pace_m);
+            const auto at = std::max(next_lookup, std::chrono::steady_clock::now());
+            next_lookup = at + std::chrono::milliseconds(125);
+            pace.unlock();
+            std::this_thread::sleep_until(at);
+        }
         const auto res = http::get("https://api.deezer.com/track/isrc:" + http::url_encode(*isrc), {}, std::chrono::seconds(10));
         if (res.status == 0) return a;  // offline: keep the analyser's choice, try again next time
         const json j = json::parse(res.body, nullptr, false);
         if (j.is_discarded()) return a;
+        // Deezer reports problems inside a 200 answer. "No data" (800) means it doesn't know the track, which is
+        // worth remembering; anything else (quota, busy) is for now only, so it isn't remembered as "no BPM".
+        if (const auto e = j.find("error"); e != j.end() && !(e->is_object() && e->value("code", 0) == 800)) return a;
         ref = num(j, "bpm").value_or(0);
         std::lock_guard lock(m_);
         catalogue_bpm_[track_id] = *ref;
@@ -741,26 +755,43 @@ void LibraryStore::rescan() {
     // the outcome doesn't depend on timing.
     std::vector<std::optional<std::string>> matched(files.size());
     std::atomic<size_t> next{0}, done{0};
-    const unsigned workers = std::max(1u, std::thread::hardware_concurrency() - 1);
+    // How many at once, and how much decoded audio between them, comes from the machine as it is right now
+    // (engine/scan_plan.h): every core when plugged in, half of them in efficiency mode on battery.
+    const ScanPlan plan = plan_scan(detect_machine(), files.size());
+    MemoryBudget budget(plan.memory_budget_mb * 1024 * 1024);
+    using clock = std::chrono::steady_clock;
+    std::atomic<clock::rep> next_save{(clock::now() + std::chrono::seconds(10)).time_since_epoch().count()};
     {
         std::vector<std::jthread> pool;
-        for (unsigned w = 0; w < workers; ++w)
+        for (unsigned w = 0; w < plan.workers; ++w)
             pool.emplace_back([&] {
-                SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_BELOW_NORMAL);
-                for (size_t i; (i = next++) < files.size();) {
+                enter_background_worker(plan.eco);
+                for (size_t i; !stopping_ && (i = next++) < files.size();) {
                     const auto idx = matcher.match(facts(files[i]));
                     if (idx) matched[i] = lib->tracks[*idx].id;
+                    // A big file waits here until there's memory for its audio, so a folder of hour-long mixes
+                    // can't fill the PC's memory however many cores it has.
+                    std::error_code ec;
+                    const fs::path p = to_path(files[i]);
+                    const uint64_t held = budget.reserve(estimated_audio_bytes(p, uint64_t(fs::file_size(p, ec))), stopping_);
                     if (auto a = analyze_file(files[i], matched[i]); a && matched[i] && a->library_track_id != matched[i]) {
                         a->library_track_id = matched[i];
                         std::lock_guard lock(m_);
                         analysis_[files[i]] = *a;
                     }
+                    budget.release(held);
                     const size_t n = ++done;
-                    set_busy(std::format("Scanning & analysing {}/{}…", n, files.size()));
-                    if (n % 20 == 0) save_analysis();
+                    set_busy(std::format("Scanning & analysing {}/{} · {} at a time…", n, files.size(), plan.workers));
+                    // Every ten seconds, by whichever worker gets there first: an interrupted scan keeps what it
+                    // has, without rewriting the whole cache every few files.
+                    auto due = next_save.load();
+                    if (clock::now().time_since_epoch().count() >= due &&
+                        next_save.compare_exchange_strong(due, (clock::now() + std::chrono::seconds(10)).time_since_epoch().count()))
+                        save_analysis();
                 }
             });
     }
+    const bool stopped = stopping_;
 
     std::map<std::string, std::string> found;  // track id → first file (in scan order) that matched it
     for (size_t i = 0; i < files.size(); ++i)
@@ -796,7 +827,8 @@ void LibraryStore::rescan() {
                 ++gone;
             }
         }
-        log_locked("rescan", std::format("{} audio files read, {} newly matched, {} gone", files.size(), added, gone));
+        log_locked("rescan", std::format("{} audio files {}, {} newly matched, {} gone", files.size(),
+                                         stopped ? "found (stopped before all were read)" : "read", added, gone));
     }
     save_analysis();
     save();

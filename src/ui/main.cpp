@@ -347,6 +347,7 @@ struct App {
                 soulseek.stop_process();
                 watcher.reset();
                 account::shutdown();
+                store.stop_work();  // a rescan under way stops after the files it's on, instead of holding up the exit
                 jobs.stop();
                 PostQuitMessage(0);
                 return 0;

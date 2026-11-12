@@ -105,6 +105,8 @@ public:
     std::optional<FileAnalysis> analyze_file(const std::string& path, const std::optional<std::string>& track_id = std::nullopt);
     FileFacts facts(const std::string& path) const;
     void rescan();
+    // Quitting: a rescan under way stops after the files it's on (what it read is kept), so the app closes promptly.
+    void stop_work() { stopping_ = true; }
     // Deletes a song file (to the Recycle Bin unless `recycle` is false, for tests) and forgets it; a library track it was
     // the file of goes back to missing, or to ignored with `skip` (so the sync leaves it). Your own folders and WreckBox's
     // Tracks folder only; refuses WreckBox's own data. Returns "" or why it failed.
@@ -132,6 +134,7 @@ private:
     json remote_crate_ = json::object();
     std::optional<std::string> load_error_, busy_, focus_;
     bool state_unreadable_ = false;
+    std::atomic<bool> stopping_{false};
 };
 
 // Seconds-resolution ISO time of a file's last write, as the analysis cache stores it.

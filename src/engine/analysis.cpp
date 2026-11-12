@@ -53,8 +53,9 @@ std::string env_string(const char* name) {
 }
 
 // Calls on_frame(index, magnitudes[n/2]) for each Hann-windowed frame — the Rust stft(), one frame at a time.
+// Only bins first..last of each frame are worked out (the rest stay 0): tempo and key each read one band.
 template <class F>
-size_t stft(std::span<const float> x, size_t n, size_t hop, F&& on_frame) {
+size_t stft(std::span<const float> x, size_t n, size_t hop, size_t first, size_t last, F&& on_frame) {
     std::vector<float> w(n);
     for (size_t i = 0; i < n; ++i)
         w[i] = 0.5f - 0.5f * std::cos(2.0f * std::numbers::pi_v<float> * float(i) / float(n));
@@ -63,7 +64,7 @@ size_t stft(std::span<const float> x, size_t n, size_t hop, F&& on_frame) {
     size_t frames = 0;
     for (size_t start = 0; start + n <= x.size(); start += hop, ++frames) {
         for (size_t i = 0; i < n; ++i) buf[i] = x[start + i] * w[i];
-        fft.magnitudes(buf.data(), mag.data());
+        fft.magnitudes(buf.data(), mag.data(), first, last);
         on_frame(frames, mag);
     }
     return frames;
@@ -96,7 +97,9 @@ std::optional<Profile> pitch_profile(std::span<const float> x, uint32_t rate) {
     const size_t hi = std::min<size_t>(size_t(3500.0 / bin_hz), n / 2 - 2);
     Profile pcp{};
     std::vector<size_t> peaks;
-    stft(x, n, hop, [&](size_t, const std::vector<float>& frame) {
+    if (lo >= hi) return std::nullopt;  // nothing between fmin and 3.5 kHz (only with odd WB_KEY_* tuning values)
+    // A peak at bin b looks at b-1 and b+1, so the band read is lo-1 … hi.
+    stft(x, n, hop, lo - 1, hi + 1, [&](size_t, const std::vector<float>& frame) {
         Profile fp{};
         float peak_f = 0.0f;
         for (size_t b = lo; b < hi; ++b) peak_f = std::max(peak_f, frame[b]);
@@ -219,7 +222,7 @@ std::optional<Tempo> tempo(std::span<const float> x, uint32_t rate) {
     const size_t top = std::min(max_bin, n / 2);
     std::vector<double> full_env, low_env;
     std::vector<float> prev(n / 2), cur(n / 2);
-    stft(x, n, hop, [&](size_t t, const std::vector<float>& frame) {
+    stft(x, n, hop, 1, top, [&](size_t t, const std::vector<float>& frame) {
         for (size_t b = 1; b < top; ++b) cur[b] = std::log(1.0f + 100.0f * frame[b]);
         if (t == 0) {
             full_env.push_back(0.0);

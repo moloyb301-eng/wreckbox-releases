@@ -211,6 +211,8 @@ double decode_mono_stream(const std::filesystem::path& path, const std::function
 
 Audio decode_mono(const std::filesystem::path& path) {
     Audio a;
+    // Room for a typical track up front (6 minutes at the analysis rate), so the buffer rarely grows by copying itself.
+    a.samples.reserve(size_t(kAnalysisRate) * 360);
     a.duration = decode_mono_stream(path, [&](const float* s, size_t n) { a.samples.insert(a.samples.end(), s, s + n); });
     return a;
 }

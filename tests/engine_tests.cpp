@@ -9,8 +9,16 @@
 #include <string>
 #include <vector>
 
+#include <atomic>
+#include <chrono>
+#include <complex>
+#include <cstring>
+#include <thread>
+
 #include "engine/analysis.h"
 #include "engine/engine.h"
+#include "engine/fft.h"
+#include "engine/scan_plan.h"
 #include "engine/tags.h"
 
 namespace fs = std::filesystem;
@@ -134,6 +142,123 @@ static void errors_are_json() {
     CHECK(w.contains("error"), "%s", w.dump().c_str());
 }
 
+// The FFT as it was before it went four-at-a-time: std::complex, one butterfly and one bin at a time. Kept here as
+// the reference the fast one must match bit for bit (analysis results are tuned against it).
+static std::vector<float> reference_magnitudes(const std::vector<float>& in) {
+    const size_t n = in.size(), h = n / 2;
+    auto twiddle = [](size_t k, size_t len) {
+        const double a = -2.0 * std::numbers::pi * double(k) / double(len);
+        return std::complex<float>{float(std::cos(a)), float(std::sin(a))};
+    };
+    std::vector<size_t> rev(h);
+    for (size_t i = 1, j = 0; i < h; ++i) {
+        size_t bit = h >> 1;
+        for (; j & bit; bit >>= 1) j ^= bit;
+        j ^= bit;
+        rev[i] = j;
+    }
+    std::vector<std::complex<float>> buf(h);
+    for (size_t i = 0; i < h; ++i) buf[rev[i]] = {in[2 * i], in[2 * i + 1]};
+    for (size_t len = 2; len <= h; len <<= 1) {
+        const size_t half = len / 2;
+        for (size_t i = 0; i < h; i += len)
+            for (size_t k = 0; k < half; ++k) {
+                const std::complex<float> tw = twiddle(k, len);
+                std::complex<float>& a = buf[i + k];
+                std::complex<float>& b = buf[i + k + half];
+                const float tr = tw.real() * b.real() - tw.imag() * b.imag();
+                const float ti = tw.real() * b.imag() + tw.imag() * b.real();
+                b = {a.real() - tr, a.imag() - ti};
+                a = {a.real() + tr, a.imag() + ti};
+            }
+    }
+    std::vector<float> out(h);
+    for (size_t k = 0; k < h; ++k) {
+        const std::complex<float> z = buf[k], zc = std::conj(buf[k == 0 ? 0 : h - k]);
+        const std::complex<float> e = 0.5f * (z + zc);
+        const std::complex<float> d = z - zc;
+        const std::complex<float> o{0.5f * d.imag(), -0.5f * d.real()};
+        const std::complex<float> x = e + twiddle(k, n) * o;
+        out[k] = std::sqrt(x.real() * x.real() + x.imag() * x.imag());
+    }
+    return out;
+}
+
+static void fft_matches_the_reference_bit_for_bit() {
+    uint32_t seed = 0x2545F491u;
+    for (const size_t n : {size_t(1024), size_t(8192), size_t(16), size_t(8)}) {
+        std::vector<float> in(n);
+        for (size_t i = 0; i < n; ++i) {
+            seed = seed * 1664525u + 1013904223u;
+            in[i] = float(seed >> 8) / float(1u << 24) - 0.5f + 0.4f * std::sin(float(i) * 0.37f);
+        }
+        const auto want = reference_magnitudes(in);
+        wb::RealFft fft(n);
+        std::vector<float> got(n / 2, -1.0f);
+        fft.magnitudes(in.data(), got.data());
+        CHECK(std::memcmp(got.data(), want.data(), want.size() * sizeof(float)) == 0, "whole spectrum, n=%zu", n);
+        // A band only: the bins asked for match, the others are left alone.
+        for (const auto& [first, last] : {std::pair<size_t, size_t>{1, n / 2 - 3}, {5, 6}, {n / 8, n / 4 + 1}, {0, 1}}) {
+            if (first >= last || last > n / 2) continue;
+            std::vector<float> band(n / 2, -1.0f);
+            fft.magnitudes(in.data(), band.data(), first, last);
+            bool same = true, untouched = true;
+            for (size_t k = 0; k < n / 2; ++k) {
+                if (k >= first && k < last) same = same && std::memcmp(&band[k], &want[k], sizeof(float)) == 0;
+                else untouched = untouched && band[k] == -1.0f;
+            }
+            CHECK(same && untouched, "band %zu..%zu of n=%zu", first, last, n);
+        }
+    }
+}
+
+static void the_scan_plan_follows_cores_power_and_memory() {
+    auto machine = [](unsigned logical, unsigned physical, bool battery, bool saver, uint64_t free_mb) {
+        wb::Machine m;
+        m.logical = logical, m.physical = physical, m.on_battery = battery, m.battery_saver = saver, m.free_mb = free_mb;
+        return m;
+    };
+    // A plugged-in 8-core / 16-thread laptop with 8 GB free: 15 workers, 4 GB of audio between them.
+    auto p = wb::plan_scan(machine(16, 8, false, false, 8192), 5000);
+    CHECK(p.workers == 15 && p.memory_budget_mb == 4096 && !p.eco, "%u workers, %llu MB", p.workers, (unsigned long long)p.memory_budget_mb);
+    // On battery: half the cores, efficiency mode. Battery saver: a quarter.
+    p = wb::plan_scan(machine(16, 8, true, false, 8192), 5000);
+    CHECK(p.workers == 4 && p.eco);
+    p = wb::plan_scan(machine(16, 8, true, true, 8192), 5000);
+    CHECK(p.workers == 2 && p.eco);
+    // Never more workers than files, never fewer than one.
+    CHECK(wb::plan_scan(machine(16, 8, false, false, 8192), 3).workers == 3);
+    CHECK(wb::plan_scan(machine(1, 1, false, false, 8192), 100).workers == 1);
+    CHECK(wb::plan_scan(machine(2, 2, true, true, 8192), 100).workers == 1);
+    // Memory: half of what's free, within 256 MB … 8 GB; 1 GB when the system doesn't say.
+    CHECK(wb::plan_scan(machine(16, 8, false, false, 300), 10).memory_budget_mb == 256);
+    CHECK(wb::plan_scan(machine(16, 8, false, false, 64000), 10).memory_budget_mb == 8192);
+    CHECK(wb::plan_scan(machine(16, 8, false, false, 0), 10).memory_budget_mb == 1024);
+    // This PC can be asked.
+    const wb::Machine here = wb::detect_machine();
+    CHECK(here.logical >= 1 && here.physical >= 1 && here.physical <= here.logical && here.free_mb > 0);
+    // An hour of 320 kbit/s MP3 (144 MB) is estimated well above a 5-minute FLAC (30 MB).
+    CHECK(wb::estimated_audio_bytes(L"mix.mp3", 144ull << 20) > 500ull << 20);
+    CHECK(wb::estimated_audio_bytes(L"track.flac", 30ull << 20) < 60ull << 20);
+}
+
+static void the_memory_budget_holds_work_back_and_lets_it_go() {
+    wb::MemoryBudget budget(100);
+    const std::atomic<bool> never{false};
+    CHECK(budget.reserve(60, never) == 60);
+    // An oversized request is trimmed to the whole budget — and waits for the budget to be whole.
+    std::atomic<uint64_t> got{0};
+    std::thread waiter([&] { got = budget.reserve(500, never); });
+    std::this_thread::sleep_for(std::chrono::milliseconds(60));
+    CHECK(got == 0, "the big request should wait while 60 are held");
+    budget.release(60);
+    waiter.join();
+    CHECK(got == 100);
+    // A stopped scan doesn't wait.
+    const std::atomic<bool> stopped{true};
+    CHECK(budget.reserve(10, stopped) == 0);
+}
+
 int main() {
     camelot_codes();
     folding();
@@ -142,6 +267,9 @@ int main() {
     short_keys();
     wav_analyse_and_tag_round_trip();
     errors_are_json();
+    fft_matches_the_reference_bit_for_bit();
+    the_scan_plan_follows_cores_power_and_memory();
+    the_memory_budget_holds_work_back_and_lets_it_go();
     if (failures) {
         std::fprintf(stderr, "%d check(s) failed\n", failures);
         return 1;

@@ -24,6 +24,7 @@ find_path(DRLIBS_INCLUDE_DIR dr_wav.h REQUIRED)
 add_library(wbengine STATIC
   src/engine/decode.cpp
   src/engine/analysis.cpp
+  src/engine/scan_plan.cpp
   src/engine/tags.cpp
   src/engine/engine.cpp)
 target_include_directories(wbengine PUBLIC src PRIVATE ${DRLIBS_INCLUDE_DIR})
