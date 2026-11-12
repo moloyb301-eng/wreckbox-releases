@@ -73,6 +73,7 @@ add_library(wbplayer STATIC
   src/player/milkdrop.cpp
   src/player/vlc_engine.cpp
   src/player/player.cpp
+  src/player/play_log.cpp
   src/player/playlist.cpp
   src/player/visualizer.cpp)
 target_include_directories(wbplayer PUBLIC src PRIVATE ${MINIAUDIO_INCLUDE_DIR})

@@ -17,6 +17,7 @@
 #include <vector>
 
 #include "player/milkdrop.h"
+#include "player/play_log.h"
 #include "player/playlist.h"
 #include "player/queue.h"
 #include "player/visualizer.h"
@@ -609,8 +610,75 @@ static void beat_pulse() {
     CHECK(quiet.kicks() == 0 && quiet.envelope() == 0.f, "silence");
 }
 
+// The play log with a clock the test moves by hand: what counts as a play, what is written, and the totals.
+static void play_log() {
+    const fs::path dir = fs::temp_directory_path() / ("wreckbox-playlog-" + std::to_string(GetCurrentProcessId()));
+    fs::remove_all(dir);
+    auto now = std::chrono::steady_clock::time_point{};
+    auto wait = [&](double seconds) { now += std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double>(seconds)); };
+    {
+        PlayLog log(dir, [&] { return now; });
+        // A full listen, with a pause in the middle that doesn't count.
+        log.begin("ISRC1", "C:\\Music\\A - One.flac", "One", "A");
+        wait(100);
+        log.set_playing(false);
+        wait(500);  // paused
+        log.set_playing(true);
+        wait(80);
+        log.end("ended", 180);
+        // Skipped after 5 s of a 4-minute song: written, not counted.
+        log.begin("ISRC2", "C:\\Music\\B - Two.mp3", "Two", "B");
+        wait(5);
+        // …by starting the next one, which is a 20 s jingle heard to the end: half or more of a short track counts.
+        log.begin("file:C:\\Music\\jingle.wav", "C:\\Music\\jingle.wav", "jingle", "");
+        log.note_length(20);
+        wait(20);
+        log.end("ended", 0);  // the length reported earlier is used
+        // Clicked past in under a second: not a listen at all.
+        log.begin("ISRC3", "C:\\Music\\C - Three.mp3", "Three", "C");
+        wait(0.4);
+        log.end("skipped", 200);
+        // The first song again, 40 s and then the app closes (the log goes out of scope).
+        log.begin("ISRC1", "C:\\Music\\A - One.flac", "One", "A");
+        wait(40);
+    }
+    CHECK(PlayLog::counts(30, 0) && PlayLog::counts(10, 20) && !PlayLog::counts(29, 240) && !PlayLog::counts(5, 0) && !PlayLog::counts(0.5, 1));
+
+    std::vector<wb::json> lines;
+    {
+        std::ifstream in(dir / L"plays.jsonl");
+        for (std::string l; std::getline(in, l);)
+            if (!l.empty()) lines.push_back(wb::json::parse(l, nullptr, false));
+    }
+    CHECK(lines.size() == 4, "%zu lines", lines.size());
+    if (lines.size() == 4) {
+        CHECK(lines[0]["id"] == "ISRC1" && lines[0]["listenedSec"] == 180.0 && lines[0]["lengthSec"] == 180.0 && lines[0]["end"] == "ended" &&
+                  lines[0]["counted"] == true && lines[0]["title"] == "One" && lines[0]["artist"] == "A", "%s", lines[0].dump().c_str());
+        CHECK(lines[1]["id"] == "ISRC2" && lines[1]["listenedSec"] == 5.0 && lines[1]["end"] == "skipped" && lines[1]["counted"] == false &&
+                  lines[1]["lengthSec"].is_null(), "%s", lines[1].dump().c_str());
+        CHECK(lines[2]["listenedSec"] == 20.0 && lines[2]["lengthSec"] == 20.0 && lines[2]["counted"] == true, "%s", lines[2].dump().c_str());
+        CHECK(lines[3]["id"] == "ISRC1" && lines[3]["listenedSec"] == 40.0 && lines[3]["end"] == "closed" && lines[3]["counted"] == true, "%s",
+              lines[3].dump().c_str());
+        CHECK(lines[0]["at"].get<std::string>().size() == 20 && lines[0]["at"].get<std::string>().back() == 'Z');
+    }
+    wb::json totals;
+    {
+        std::ifstream totals_in(dir / L"play_counts.json");
+        totals = wb::json::parse(totals_in, nullptr, false);
+    }
+    CHECK(totals.is_object() && totals.size() == 3, "%s", totals.dump().c_str());
+    if (totals.is_object() && totals.contains("ISRC1")) {
+        CHECK(totals["ISRC1"]["plays"] == 2 && totals["ISRC1"]["listenedSec"] == 220.0 && totals["ISRC1"]["title"] == "One", "%s", totals["ISRC1"].dump().c_str());
+        CHECK(totals["ISRC2"]["plays"] == 0 && totals["ISRC2"]["listenedSec"] == 5.0 && !totals["ISRC2"].contains("lastPlayed"));
+        CHECK(totals["file:C:\\Music\\jingle.wav"]["plays"] == 1);
+    }
+    std::error_code ec;
+    fs::remove_all(dir, ec);
+}
+
 int main() {
     SetConsoleOutputCP(CP_UTF8);
+    play_log();
     pacing();
     visualizer();
     milkdrop();

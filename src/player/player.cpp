@@ -4,6 +4,7 @@
 #include <filesystem>
 
 #include "engine/engine.h"
+#include "model/paths.h"
 #include "model/settings.h"
 #include "player/playlist.h"
 
@@ -85,7 +86,8 @@ std::vector<Item> Player::collect(const std::vector<std::string>& inputs) {
     return out;
 }
 
-Player::Player(LibraryStore& store, std::function<void(std::function<void()>)> post) : store_(store), post_(std::move(post)) {
+Player::Player(LibraryStore& store, std::function<void(std::function<void()>)> post)
+    : store_(store), post_(std::move(post)), plays_(paths::root() / L"_stats") {
     const json& j = player_settings();
     volume_ = std::clamp(j.value("volume", 0.8f), 0.f, 1.f);
     muted_ = j.value("muted", false);
@@ -103,6 +105,7 @@ Player::Player(LibraryStore& store, std::function<void(std::function<void()>)> p
 
 Player::~Player() {
     *alive_ = false;
+    plays_.end("closed", double(length_ms()) / 1000.0);
     engine_.reset();  // stops libVLC's threads before the output goes away
     out_.reset();
 }
@@ -178,12 +181,19 @@ void Player::load_current(int64_t start_ms) {
         changed();
         return;
     }
+    // A new song (not the same one reopened for the normalizer): the one before it ends here — as skipped, unless it
+    // already ended by itself — and this one starts being counted (player/play_log.h).
+    const bool fresh = start_ms == 0;
+    if (fresh) plays_.end("skipped", double(length_ms()) / 1000.0);
     out_->pause(false);
     if (!engine_->open(it->location, normalize_, start_ms)) {
         error_ = "Can't play " + it->title + ".";
         playing_ = false;
     } else {
         playing_ = true;
+        if (fresh)
+            plays_.begin(it->track_id && !it->track_id->empty() ? *it->track_id : is_url(it->location) ? it->location : kFileIdPrefix + it->location,
+                         it->location, it->title, it->artist);
     }
     changed();
 }
@@ -191,6 +201,7 @@ void Player::load_current(int64_t start_ms) {
 void Player::on_event(Event e) {
     switch (e) {
         case Event::ended:
+            plays_.end("ended", double(length_ms()) / 1000.0);
             if (queue_.next()) load_current();
             else {
                 playing_ = false;
@@ -199,6 +210,7 @@ void Player::on_event(Event e) {
             break;
         case Event::error: {
             const Item* it = queue_.current();
+            plays_.end("error", double(length_ms()) / 1000.0);
             error_ = "Can't play " + (it ? it->title : std::string("this")) + " — VLC couldn't decode it.";
             // Keep going through a dropped folder rather than stopping at one odd file.
             if (queue_.next()) load_current();
@@ -209,6 +221,8 @@ void Player::on_event(Event e) {
         case Event::paused: playing_ = false; break;
         default: break;
     }
+    plays_.note_length(double(length_ms()) / 1000.0);
+    plays_.set_playing(playing_);
     changed();
 }
 
@@ -225,6 +239,7 @@ void Player::toggle() {
     } else {
         load_current();  // finished or stopped: start this track again
     }
+    plays_.set_playing(playing_);
     changed();
 }
 
@@ -248,6 +263,7 @@ void Player::seek(int64_t ms) {
 }
 
 void Player::stop() {
+    plays_.end("stopped", double(length_ms()) / 1000.0);
     if (engine_) engine_->stop();
     if (out_) out_->pause(true);
     queue_.clear();

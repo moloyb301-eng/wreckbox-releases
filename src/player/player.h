@@ -11,6 +11,7 @@
 
 #include "library/store.h"
 #include "player/audio_output.h"
+#include "player/play_log.h"
 #include "player/queue.h"
 #include "player/vlc_engine.h"
 
@@ -81,6 +82,7 @@ private:
 
     LibraryStore& store_;
     std::function<void(std::function<void()>)> post_;
+    PlayLog plays_;  // what was played and for how long, in <library>\_stats (player/play_log.h)
     std::unique_ptr<AudioOutput> out_;
     std::unique_ptr<VlcEngine> engine_;
     Queue queue_;
