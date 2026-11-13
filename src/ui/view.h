@@ -3,11 +3,13 @@
 #include <windows.h>
 #include <shellapi.h>
 
+#include <array>
 #include <map>
 #include <mutex>
 #include <optional>
 #include <set>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include <chrono>
@@ -51,6 +53,7 @@ inline constexpr UINT_PTR kRefreshTimer = 1, kPlayerTimer = 2, kTooltipTimer = 3
 inline constexpr UINT_PTR kTrimTimer = 4;  // releases idle memory pages once full screen has been torn down
 inline constexpr UINT_PTR kOccludedTimer = 5;  // the visualizer's window isn't on screen: is it back yet?
 inline constexpr UINT_PTR kWallTimer = 6;      // the live wallpaper's next frame (or a look at whether it may run)
+inline constexpr UINT_PTR kMotionTimer = 7;    // something on screen is still moving: the next frame
 
 // Hands the pages this process isn't using back to Windows (they return by themselves if needed). For moments when a lot
 // was just let go: minimized, or after the full-screen visualizer (the OpenGL driver's pages).
@@ -257,6 +260,26 @@ private:
     bool importing_ = false;
     mutable std::mutex status_m_;
     std::string status_;  // last progress / result line of an import, shared by the import buttons (as in the original app)
+
+    // Motion (view_motion.cpp): the moving backdrop, pages arriving, and how much of it this PC should do right now.
+    enum class Motion { off, reduced, full };  // off: nothing moves; reduced: things ease, the backdrop stands still
+    Motion motion_setting() const;             // Settings → Motion (full unless changed)
+    void set_motion(Motion m);
+    Motion motion_now() const;  // the setting, held to "reduced" on battery, in battery saver or over Remote Desktop
+    bool backdrop_moving() const;  // full motion, and this window is the one in front
+    void backdrop(float W, float H);
+    void schedule_motion();  // after a paint: another frame soon if anything is still moving
+    // Each visit to a page gets a number, so what's on it arrives afresh (Ui::enter keys include it).
+    uint64_t visit_ = 1;
+    uint64_t arrive(std::string_view what, uint64_t n = 0) const { return Ui::key(what, n * 1315423911ull + visit_); }
+    // The accent colours follow the cover of what's playing (and drift back to the app's own when nothing is).
+    std::string accent_for_;                  // the track the colours below were taken from
+    std::array<D2D1_COLOR_F, 3> accent_target_{theme::lilac, theme::light_blue, theme::peach};
+    void follow_cover();
+    double backdrop_time_ = 40;           // seconds the backdrop has been moving (it starts mid-drift, not all in a row)
+    bool backdrop_wants_frames_ = false;  // set by backdrop(): it is moving, so paint again soon
+    int flow_sel_ = 2;                    // Home's cover flow: which of the recent songs stands in front
+    float spin_ = 0;                      // the record's angle in degrees: it turns while music plays
 
     Page page_ = Page::home;
     std::optional<std::string> playlist_;

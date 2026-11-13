@@ -64,7 +64,18 @@ std::wstring band_label(float hz) {
 
 void View::player_bar(const Rect& r) {
     bar_top_ = r.t;
+    g_.shadow(r, 20, 18, 0.6f);
     ui_.glass(r, 20, false, true);
+    {
+        // While music plays, a line of light in the accent colours runs along the bar's top edge, breathing slowly.
+        const float live = ui_.anim(Ui::key("bar-live"), player_.playing() ? 1.f : 0.f, 3);
+        if (live > 0.01f) {
+            const float breath = 0.65f + 0.35f * std::sin(float(backdrop_time_) * 1.6f);
+            g_.fill_span(Rect{r.l + 24, r.t, r.r - 24, r.t + 1.5f}, {r.l, r.t}, {r.r, r.t},
+                         {with_alpha(light_blue, 0), with_alpha(light_blue, 0.9f * live * breath), with_alpha(lilac, live * breath),
+                          with_alpha(peach, 0.9f * live * breath), with_alpha(peach, 0)});
+        }
+    }
     const Rect in = r.inset(12, 8);
     const float cy = (in.t + in.b) / 2;
     const player::Item* cur = player_.current();
@@ -94,12 +105,25 @@ void View::player_bar(const Rect& r) {
 
     // Left: cover, what's playing, BPM and key.
     const Rect cover = Rect::xywh(in.l, cy - 22, 44, 44);
+    // While it plays, the record slides out from behind the cover and turns; paused, it slides back in.
+    const float out = ui_.anim(Ui::key("bar-record"), cur && player_.playing() ? 1.f : 0.f, 6);
+    if (out > 0.01f) {
+        const float rcx = cover.l + 22 + 20 * out, rcy = cy;
+        g_.fill_glow(rcx, rcy, 34, with_alpha(lilac, 0.22f * out));
+        g_.push_transform(D2D1::Matrix3x2F::Rotation(spin_, {rcx, rcy}));
+        ui_.logo(rcx - 20, rcy - 20, 40, false);
+        g_.pop_transform();
+    }
+    if (out > 0.01f) g_.shadow(cover, 8, 7 * out, 0.8f * out);
     if (row) {
-        ui_.artwork(row->track, cover, 8);
+        // The cover leans toward the pointer, like the cards on Home.
+        const auto lean = ui_.lean(cover.inset(-10));
+        ui_.artwork_3d(row->track, cover, 8, {ui_.anim(Ui::key("bar-tilt-x"), -lean.y * 14, 10), ui_.anim(Ui::key("bar-tilt-y"), lean.x * 14, 10)});
     } else {
         g_.fill_gradient(cover, 8, {with_alpha(lilac, 0.45f), with_alpha(light_blue, 0.2f)});
         g_.icon(cur && player::is_url(cur->location) ? icon::globe : icon::music, cover.l + 22, cover.t + 22, 16, argb(0x80FFFFFF));
     }
+    const float record_room = 22 * out;  // the text makes way for the record
     float text_r = info_r;
     if (row && info_r - in.l > 300) {  // room for the readouts, as in the original app's wide bar
         text_r = info_r - 104;
@@ -112,7 +136,7 @@ void View::player_bar(const Rect& r) {
         title = wide(d.title);
         sub = wide(d.subtitle);
     }
-    const float tx = cover.r + 10;
+    const float tx = cover.r + 10 + record_room;
     const bool err = !player_.error().empty();
     const float ty = cy - (err ? 24 : sub.empty() ? 9 : 17);
     g_.text(title, Rect{tx, ty, text_r - 4, ty + 18}, {Font::ui, 13.5f, 600, cur ? text : text2});

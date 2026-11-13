@@ -1,9 +1,15 @@
 // Immediate-mode UI on top of Gfx. Each paint draws the whole screen from current state and records clickable and
-// scrollable regions; mouse input is matched against the regions from the last paint. Nothing animates, so nothing
-// repaints unless input or data changed — idle CPU stays at zero.
+// scrollable regions; mouse input is matched against the regions from the last paint.
+//
+// Motion: things ease instead of jumping (a hover lights up, a card lifts, a page arrives). anim() and enter() hold
+// the in-between values from paint to paint; while any of them is still moving, animating() is true and the window
+// paints again a moment later. Once everything has settled nothing repaints — idle CPU is still zero, unless the
+// moving backdrop is on (View decides that: not on battery, not when the window is in the background).
 #pragma once
 #include <functional>
 #include <string>
+#include <string_view>
+#include <unordered_map>
 #include <vector>
 
 #include "model/model.h"
@@ -22,6 +28,25 @@ public:
     // MARK: Frame
     void begin_frame();
     float mx = -1, my = -1;  // mouse position in DIPs (-1 when outside the window)
+
+    // MARK: Motion
+    double now = 0;      // seconds, steady; the same for the whole paint
+    float dt = 0;        // seconds since the paint before (capped, so a long pause doesn't make things jump)
+    bool motion = true;  // false (Settings → Motion → off): everything is at its end value at once
+    // A name for something that moves: any text, plus a number to tell apart many of the same kind.
+    static uint64_t key(std::string_view name, uint64_t n = 0);
+    static uint64_t key(const Rect& r, uint64_t n = 0);  // for widgets with no better name than where they are
+    // `target`, approached smoothly (`speed`: higher is quicker; 16 settles in about a fifth of a second). The first
+    // time a key is seen it is at its target already.
+    float anim(uint64_t k, float target, float speed = 16);
+    // 0 → 1 once, from the first paint this key is seen, after `delay` seconds and over `duration` (eased out).
+    // For things arriving: give each item of a row a slightly later delay and they come in one after another.
+    float enter(uint64_t k, float delay = 0, float duration = 0.42f);
+    // True while something drawn in this paint hasn't settled: the window should paint again soon.
+    bool animating() const { return animating_; }
+    void keep_animating() { animating_ = true; }  // something outside anim()/enter() is moving (the backdrop, a spinner)
+    // A press on r since the last paint? (the moment a click landed, for a ripple or a pop)
+    float press(const Rect& r);  // 0–1, 1 right after a click inside r, fading over ~0.3 s
 
     // MARK: Regions
     bool hover(const Rect& r) const;  // mouse is over r and r isn't clipped away
@@ -49,6 +74,15 @@ public:
     // MARK: Widgets (original equivalents in the original source)
     enum class Pill { glass, primary, smart };
     void glass(const Rect& r, float radius = 24, bool smart = false, bool solid = false);
+    // A glass card that answers the pointer: it lifts, its edge lights up in the accent colours and a soft light
+    // follows the pointer across it. Returns how far it is lit (0–1), for the caller's own touches (a cover's tilt).
+    float card(const Rect& r, float radius, uint64_t k, bool interactive = true);
+    // How far the pointer is from r's centre, −1…1 each way (0,0 when it isn't over r): what a tilting card turns by.
+    D2D1_POINT_2F lean(const Rect& r) const;
+    // The same as artwork(), turned in space by `tilt` (degrees about the horizontal and vertical middles).
+    void artwork_3d(const LibraryTrack& t, const Rect& r, float radius, D2D1_POINT_2F tilt, float opacity = 1, float depth = 4);
+    // A ring that fills clockwise from the top to `value` (0–1), in the accent colours.
+    void ring(float cx, float cy, float radius, double value, float width = 5);
     float dot_label(const std::wstring& s, float x, float cy, D2D1_COLOR_F c = theme::text3, float size = 11);  // returns width
     float pill_width(const std::wstring& label, const wchar_t* icon = nullptr);
     float pill(float x, float y, const std::wstring& label, const wchar_t* icon, Pill style, std::function<void()> on_click);  // height 36
@@ -60,7 +94,7 @@ public:
     void status_dot(float cx, float cy, TrackStatus s, float size = 16);
     void artwork(const LibraryTrack& t, const Rect& r, float radius = 8, float opacity = 1);
     void logo(float x, float y, float size, bool with_tile = true);
-    void progress(const Rect& r, double value);
+    void progress(const Rect& r, double value, uint64_t k = 0);  // k: its name, if it should fill and follow smoothly
     // A round icon button; `on` draws it lit, `filled` white (the play button). Disabled without on_click.
     void icon_button(const Rect& r, const wchar_t* glyph, float size, std::function<void()> on_click, bool on = false, bool filled = false,
                      std::wstring tooltip = {});
@@ -84,6 +118,16 @@ private:
         std::function<void(float, float, bool)> slide;  // the slider being dragged
     };
     std::vector<Hit> hits_;
+    struct Moving {
+        float value = 0;
+        double born = 0;
+        unsigned seen = 0;  // the paint it was last asked for
+    };
+    std::unordered_map<uint64_t, Moving> moving_;
+    unsigned frame_ = 0;
+    bool animating_ = false;
+    float press_x_ = -1, press_y_ = -1;
+    double press_at_ = -10;
     struct Tip {
         Rect r;
         std::wstring text;

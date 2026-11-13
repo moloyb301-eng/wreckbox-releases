@@ -6,7 +6,9 @@
 #include <commctrl.h>
 
 #include <algorithm>
+#include <cmath>
 #include <format>
+#include <numeric>
 
 #include "../res/resource.h"
 
@@ -173,6 +175,7 @@ void View::paint() {
     log_memory();
     const float W = g_.width(), H = g_.height();
     ui_.begin_frame();
+    ui_.motion = motion_now() != Motion::off;
     if (fullscreen_) {
         visualizer_screen();
         web_sync();
@@ -183,8 +186,13 @@ void View::paint() {
         return;
     }
 
-    g_.fill(Rect{0, 0, W, H}, bg);
-    g_.fill_radial(Rect{0, 0, W, H}, {W * 0.95f, H * 0.05f}, std::min(W, H) * 1.3f, argb(0x29BB96DA), argb(0x00BB96DA));
+    backdrop(W, H);
+    // The record on the logo and in the player bar turns while music plays (33⅓ rpm), easing up to speed and down.
+    const float turning = ui_.anim(Ui::key("record-speed"), player_.playing() && motion_now() == Motion::full ? 1.f : 0.f, 2.5f);
+    if (turning > 0.001f) {
+        spin_ = std::fmod(spin_ + 200.f * turning * ui_.dt, 360.f);
+        backdrop_wants_frames_ = true;
+    }
 
     sidebar(Rect{10, 10, 252, H - 10});
     const auto focus = store_.focus();
@@ -195,7 +203,19 @@ void View::paint() {
     const float column_r = inspect && !overlay ? W - 340 : W, bar_h = 66;
     const bool banner = update_visible();
     if (banner) update_banner(Rect{252 + 22, 10, column_r - 10, 54});
-    page(Rect{252 + 22, banner ? 56.f : 0.f, column_r - 22, H - 10 - bar_h - 10});
+    {
+        // A page arrives: it fades in and settles upward into place.
+        const float in = ui_.enter(arrive("page"), 0, 0.30f);
+        if (in < 1) {
+            g_.push_opacity(in);
+            g_.push_transform(D2D1::Matrix3x2F::Translation(0, (1 - in) * 16));
+        }
+        page(Rect{252 + 22, banner ? 56.f : 0.f, column_r - 22, H - 10 - bar_h - 10});
+        if (in < 1) {
+            g_.pop_transform();
+            g_.pop_opacity();
+        }
+    }
     player_bar(Rect{252 + 22, H - 10 - bar_h, column_r - 10, H - 10});
     web_sync();
     if (inspect) inspector(Rect{W - 340, 10, W - 10, H - 10}, overlay);
@@ -212,13 +232,22 @@ void View::paint() {
     if (const UINT due = ui_.draw_tooltip()) SetTimer(hwnd_, kTooltipTimer, due + 10, nullptr);
     hide_unused_edits();
     update_timer();
+    schedule_motion();
 }
 
 // MARK: Sidebar
 
 void View::sidebar(const Rect& r) {
     ui_.glass(r);
-    ui_.logo(r.l + 18, r.t + 24, 34);
+    {
+        // The logo: its tile, and on it the record, which turns while music plays.
+        const Rect tile = Rect::xywh(r.l + 18, r.t + 24, 34, 34);
+        g_.fill_gradient(tile, 34 * 0.225f, {argb(0xFFF1ECE4), argb(0xFFDCD5CA)});
+        const float rs = 34 * 0.78f, rx = tile.l + (34 - rs) / 2, ry = tile.t + (34 - rs) / 2;
+        g_.push_transform(D2D1::Matrix3x2F::Rotation(spin_, {tile.l + 17, tile.t + 17}));
+        ui_.logo(rx, ry, rs, false);
+        g_.pop_transform();
+    }
     g_.text(L"WRECKBOX", Rect{r.l + 62, r.t + 24, r.r, r.t + 58}, {Font::dot, 17, 700, text, Align::left, 2});
 
     const float vh = video_status(Rect{r.l + 8, r.b - 52 - 40, r.r - 8, r.b - 52});  // a video being made: above "Report a bug"
@@ -233,13 +262,24 @@ void View::sidebar(const Rect& r) {
     }
     ui_.push_clip(area);
     float y = area.t - side_scroll_;
+    uint64_t n = 0;
     auto item = [&](Page p, const std::wstring& title, const wchar_t* glyph, std::optional<size_t> count,
                     std::optional<std::string> pl = std::nullopt) {
         const Rect ir{area.l, y, area.r, y + 34};
         const bool is_selected = page_ == p && playlist_ == pl;
-        if (is_selected) g_.fill_round(ir, 10, theme::selected);
-        else if (ui_.hover(ir)) g_.fill_round(ir, 10, theme::hover);
-        g_.icon(glyph, ir.l + 18, ir.t + 17, 15, is_selected ? text : text3);
+        const float lit = ui_.anim(Ui::key("side-item", n++), !is_selected && ui_.hover(ir) ? 1.f : 0.f, 18);
+        if (is_selected) {
+            // The marker glides from the item that was selected to this one, rather than jumping.
+            const float gy = ui_.anim(Ui::key("side-marker"), ir.t + side_scroll_, 20) - side_scroll_;
+            const Rect m{ir.l, gy, ir.r, gy + 34};
+            g_.fill_gradient(m, 10, {with_alpha(lilac, 0.26f), with_alpha(light_blue, 0.10f), argb(0x12FFFFFF)});
+            g_.stroke_gradient(m, 10, {with_alpha(lilac, 0.55f), argb(0x18FFFFFF)}, 1);
+            g_.fill_glow(m.l + 2, gy + 17, 26, with_alpha(lilac, 0.45f));
+            g_.fill_gradient(Rect{m.l, gy + 8, m.l + 3, gy + 26}, 1.5f, {light_blue, lilac, peach}, true);
+        } else if (lit > 0.01f) {
+            g_.fill_round(ir, 10, with_alpha(white, 0.06f * lit));
+        }
+        g_.icon(glyph, ir.l + 18 + 2 * lit, ir.t + 17, 15, is_selected ? lilac : with_alpha(white, 0.36f + 0.4f * lit));
         float right = ir.r - 10;
         if (count) {
             const std::wstring c = std::to_wstring(*count);
@@ -248,7 +288,8 @@ void View::sidebar(const Rect& r) {
             g_.text(c, Rect{right - cw, ir.t, right, ir.b}, st);
             right -= cw + 8;
         }
-        g_.text(title, Rect{ir.l + 36, ir.t, right, ir.b}, {Font::ui, 13.5f, is_selected ? 600 : 500, is_selected ? text : text2});
+        g_.text(title, Rect{ir.l + 36 + 2 * lit, ir.t, right, ir.b},
+                {Font::ui, 13.5f, is_selected ? 600 : 500, is_selected ? text : with_alpha(white, 0.60f + 0.34f * lit)});
         ui_.click(ir, [this, p, pl] { go(p, pl); });
         y += 36;
     };
@@ -422,68 +463,190 @@ void View::home(const Rect& r) {
     float y = top + header(Rect{r.l, top, r.r, r.b}, L"Home", L"Your crate",
                            std::format(L"{} tracks from {} Spotify playlists", total, lib_ ? lib_->playlists.size() : 0), library_actions(false));
 
-    // Stat tiles
-    const float gap = 12, tw = (r.w() - 3 * gap) / 4, th = 138;
-    auto stat = [&](int i, const std::wstring& label, const std::wstring& value, const std::wstring& detail, std::optional<double> progress) {
-        const Rect t = Rect::xywh(r.l + float(i) * (tw + gap), y, tw, th);
-        ui_.glass(t, 20);
-        ui_.dot_label(label, t.l + 18, t.t + 26);
-        g_.text(value, Rect{t.l + 18, t.t + 40, t.r - 18, t.t + 82}, {Font::dot, 34, 700, text});
-        float dy = t.t + 90;
-        if (progress) {
-            ui_.progress(Rect{t.l + 18, dy, t.r - 18, dy + 4}, *progress);
-            dy += 10;
+    // The top of the page: the cover flow on the left, four stat tiles (two by two) on the right.
+    const float gap = 12, hero_h = 300, fw = std::floor(r.w() * 0.58f);
+    const float tw = (r.w() - fw - 2 * gap) / 2, th = (hero_h - gap) / 2;
+    // Something arriving: it fades in and rises into place, `delay` seconds after the page did. Returns how far in it
+    // is; call landed() after drawing it.
+    auto arriving = [&](std::string_view what, uint64_t i, float delay) {
+        const float in = ui_.enter(arrive(what, i), delay, 0.5f);
+        if (in < 1) {
+            g_.push_opacity(in);
+            g_.push_transform(D2D1::Matrix3x2F::Translation(0, (1 - in) * 22));
         }
-        g_.text(detail, Rect{t.l + 18, dy, t.r - 18, dy + 18}, {Font::ui, 12, 400, text2});
+        return in;
     };
-    stat(0, L"Tracks", std::to_wstring(total), L"across all playlists", std::nullopt);
-    stat(1, L"In crate", std::to_wstring(n_downloaded_), total ? std::format(L"{}% of your library", (n_downloaded_ * 100 + total / 2) / total) : L"",
-         total ? std::optional(double(n_downloaded_) / double(total)) : std::optional(0.0));
-    stat(2, L"Missing", std::to_wstring(n_missing_), std::format(L"{} ignored", n_ignored_), std::nullopt);
-    stat(3, L"Analysed", std::to_wstring(n_analysed_), L"BPM · key · energy", std::nullopt);
-    y += th + 22;
+    auto landed = [&](float in) {
+        if (in < 1) {
+            g_.pop_transform();
+            g_.pop_opacity();
+        }
+    };
+    // A card rises a little toward the pointer when it's lit.
+    auto lift = [&](const Rect& c, float lit) {
+        g_.push_transform(D2D1::Matrix3x2F::Scale(1 + 0.02f * lit, 1 + 0.02f * lit, {(c.l + c.r) / 2, (c.t + c.b) / 2}) *
+                          D2D1::Matrix3x2F::Translation(0, -4 * lit));
+    };
 
-    // Recently added — as many as fit the width.
-    ui_.dot_label(L"Recently added", r.l, y + 7, text2, 12);
-    y += 26;
-    float x = r.l;
-    for (const auto& id : recent_) {
-        if (x + 160 > r.r) break;
-        const auto t = store_.track(id);
-        if (!t) continue;
-        const Rect card = Rect::xywh(x, y, 160, 210);
-        ui_.glass(card, 20);
-        if (ui_.hover(card)) g_.fill_round(card, 20, theme::hover);
-        ui_.artwork(*t, Rect::xywh(x + 10, y + 10, 140, 140), 16);
-        g_.text(wide(t->title), Rect{x + 10, y + 156, x + 150, y + 176}, {Font::ui, 13, 600, text});
-        g_.text(wide(t->artist()), Rect{x + 10, y + 176, x + 150, y + 194}, {Font::ui, 11.5f, 400, text2});
-        ui_.click(card, [this, id] { focus(id); });
-        x += 174;
+    auto stat = [&](int i, const std::wstring& label, size_t value, const std::wstring& detail, std::optional<double> share, D2D1_COLOR_F tint) {
+        const Rect t = Rect::xywh(r.l + fw + gap + float(i % 2) * (tw + gap), y + float(i / 2) * (th + gap), tw, th);
+        const float in = arriving("stat", uint64_t(i), 0.12f + 0.05f * float(i));
+        const float lit = ui_.anim(Ui::key("stat-lit", uint64_t(i)), ui_.hover(t) ? 1.f : 0.f, 14);
+        lift(t, lit);
+        ui_.card(t, 20, Ui::key("stat-card", uint64_t(i)));
+        // A light of the tile's own colour in its corner, brighter when lit.
+        ui_.push_clip(t.inset(1));
+        g_.fill_glow(t.r - 26, t.t + 18, 120, with_alpha(tint, 0.16f + 0.14f * lit));
+        ui_.pop_clip();
+        ui_.dot_label(label, t.l + 18, t.t + 26);
+        // The number counts up as the tile arrives.
+        const float counted = ui_.enter(arrive("stat-count", uint64_t(i)), 0.1f + 0.05f * float(i), 0.9f);
+        g_.text(std::to_wstring(size_t(std::llround(double(value) * double(counted)))), Rect{t.l + 18, t.t + 40, t.r - 18, t.t + 82},
+                {Font::dot, 34, 700, text});
+        if (share) {
+            // How much of the library it is, as a ring that fills.
+            const float filled = ui_.enter(arrive("stat-ring", uint64_t(i)), 0.25f, 1.1f);
+            ui_.ring(t.r - 44, t.t + 62, 22, *share * double(filled), 5);
+            g_.text(std::format(L"{}%", std::lround(*share * 100)), Rect{t.r - 66, t.t + 52, t.r - 22, t.t + 72}, {Font::dot, 11, 700, text2, Align::center});
+        }
+        g_.text(detail, Rect{t.l + 18, t.t + 96, t.r - 18, t.t + 114}, {Font::ui, 12, 400, text2});
+        g_.pop_transform();
+        landed(in);
+    };
+    const double of_library = total ? 1.0 / double(total) : 0;
+    stat(0, L"Tracks", total, L"across all playlists", std::nullopt, light_blue);
+    stat(1, L"In crate", n_downloaded_, total ? std::format(L"{}% of your library", (n_downloaded_ * 100 + total / 2) / total) : L"",
+         std::optional(double(n_downloaded_) * of_library), lilac);
+    stat(2, L"Missing", n_missing_, std::format(L"{} ignored", n_ignored_), std::nullopt, peach);
+    stat(3, L"Analysed", n_analysed_, L"BPM · key · energy", std::optional(double(n_analysed_) * of_library), light_blue);
+
+    // The cover flow: the songs added most recently, as cards standing in a row in space. The one in the middle faces
+    // you; the others turn away to each side and overlap, like records in a crate. Click one to bring it forward.
+    {
+        const Rect flow{r.l, y, r.l + fw, y + hero_h};
+        const float in = arriving("flow", 0, 0.04f);
+        ui_.glass(flow, 24);
+        ui_.dot_label(L"Recently added", flow.l + 20, flow.t + 24, text2, 12);
+        std::vector<LibraryTrack> items;
+        for (const auto& id : recent_) {
+            if (items.size() == 15) break;
+            if (auto t = store_.track(id)) items.push_back(std::move(*t));
+        }
+        const int n = int(items.size());
+        if (n) {
+            flow_sel_ = std::clamp(flow_sel_, 0, n - 1);
+            const float pos = ui_.anim(Ui::key("flow-pos"), float(flow_sel_), 8);
+            const float fcx = (flow.l + flow.r) / 2, fcy = flow.t + 128, size = 164;
+            ui_.push_clip(flow.inset(1));
+            g_.fill_glow(fcx, fcy + size * 0.66f, size * 1.7f, with_alpha(lilac, 0.20f));  // light on the floor under the middle one
+            std::vector<int> order(size_t(n), 0);
+            std::iota(order.begin(), order.end(), 0);
+            std::sort(order.begin(), order.end(), [&](int a, int b) { return std::abs(float(a) - pos) > std::abs(float(b) - pos); });  // far ones first
+            for (const int i : order) {
+                const float d = float(i) - pos, a = std::abs(d);
+                if (a > 5.2f) continue;
+                const float fore = 1 - std::min(a, 1.f);                      // 1 in the middle, 0 from the first neighbour out
+                const float off = a < 1 ? a * 132 : 132 + (a - 1) * 54;       // the neighbours stand close together
+                const float s = size * (0.84f + 0.16f * fore), cx = fcx + (d < 0 ? -off : off);
+                const Rect c = Rect::xywh(cx - s / 2, fcy - s / 2, s, s);
+                D2D1_POINT_2F tilt{0, std::clamp(d, -1.f, 1.f) * 62};
+                if (fore > 0.6f) {  // the one in front also leans toward the pointer
+                    const auto lean = ui_.lean(c);
+                    tilt.x += ui_.anim(Ui::key("flow-lean-x"), -lean.y * 11, 10) * fore;
+                    tilt.y += ui_.anim(Ui::key("flow-lean-y"), lean.x * 11, 10) * fore;
+                    g_.shadow(c.inset(10), 14, 26 * fore, 0.85f * fore);
+                }
+                const float seen = std::clamp(5.2f - a, 0.f, 1.f) * (0.50f + 0.50f * fore);
+                ui_.artwork_3d(items[size_t(i)], c, 14, tilt, seen, 2.6f);
+                if (fore > 0.6f) {
+                    if (ui_.hover(c)) {  // a light crosses the front cover with the pointer
+                        ui_.push_clip(c);
+                        g_.fill_glow(ui_.mx, ui_.my, 120, with_alpha(white, 0.14f));
+                        ui_.pop_clip();
+                    }
+                    ui_.click(c, [this, id = items[size_t(i)].id] { focus(id); });
+                } else {
+                    ui_.click(Rect::xywh(cx - s * 0.30f, c.t, s * 0.60f, s), [this, i] { flow_sel_ = i; });
+                }
+            }
+            ui_.pop_clip();
+
+            // Under it: the song in front (its name changes with a quick fade), a play button if it's on this
+            // computer, the way to the next and the one before, and where you are in the row.
+            const LibraryTrack& front = items[size_t(flow_sel_)];
+            const float named = ui_.enter(arrive("flow-name", uint64_t(flow_sel_) + 1), 0, 0.28f);
+            g_.push_opacity(named);
+            g_.text(wide(front.title), Rect{flow.l + 70, fcy + size / 2 + 12, flow.r - 70, fcy + size / 2 + 34}, {Font::ui, 15.5f, 600, text, Align::center});
+            g_.text(wide(front.artist()), Rect{flow.l + 70, fcy + size / 2 + 34, flow.r - 70, fcy + size / 2 + 52}, {Font::ui, 12, 400, text2, Align::center});
+            g_.pop_opacity();
+            if (player_.can_play(front.id)) {
+                const Rect pb = Rect::xywh(fcx + size / 2 - 48, fcy + size / 2 - 48, 38, 38);
+                ui_.icon_button(pb, icon::play, 14, [this, id = front.id] { play_track(id); }, false, true, L"Play");
+            }
+            ui_.icon_button(Rect::xywh(flow.l + 16, fcy - 18, 36, 36), icon::chevron_left, 13,
+                            flow_sel_ > 0 ? std::function<void()>([this] { --flow_sel_; }) : nullptr, false, false, L"Newer");
+            ui_.icon_button(Rect::xywh(flow.r - 52, fcy - 18, 36, 36), icon::chevron_right, 13,
+                            flow_sel_ < n - 1 ? std::function<void()>([this] { ++flow_sel_; }) : nullptr, false, false, L"Older");
+            const float dots_w = float(n) * 10 - 4, dy = flow.b - 18;
+            const float mark = ui_.anim(Ui::key("flow-dot"), float(flow_sel_), 10);
+            for (int i = 0; i < n; ++i) g_.fill_circle(fcx - dots_w / 2 + 3 + float(i) * 10, dy, 2, with_alpha(white, 0.18f));
+            g_.fill_round(Rect::xywh(fcx - dots_w / 2 + mark * 10 - 3, dy - 3, 12, 6), 3, lilac);
+        } else {
+            g_.text(L"Songs you add will stand here.", flow, {Font::ui, 13, 400, text3, Align::center});
+        }
+        landed(in);
     }
-    y += 210 + 22;
+    y += hero_h + 22;
 
-    // Playlists
+    // Playlists: each card carries a small fan of its covers, which opens when the card is lit.
     ui_.dot_label(L"Playlists", r.l, y + 7, text2, 12);
     y += 26;
-    x = r.l;
+    float x = r.l;
     if (lib_) {
+        const float cw = 262, ch = 88;
+        uint64_t i = 0;
         for (const auto& p : lib_->playlists) {
-            if (x + 196 > r.r + 1) {
+            if (x + cw > r.r + 1) {
                 x = r.l;
-                y += 86;
+                y += ch + 14;
             }
-            const Rect card = Rect::xywh(x, y, 196, 72);
-            ui_.glass(card, 20);
-            if (ui_.hover(card)) g_.fill_round(card, 20, theme::hover);
-            g_.text(wide(p.name), Rect{x + 12, y + 10, x + 184, y + 30}, {Font::ui, 14, 600, text});
+            const Rect card = Rect::xywh(x, y, cw, ch);
+            const float in = arriving("playlist", i, 0.26f + 0.035f * float(std::min<uint64_t>(i, 12)));
+            const float lit = ui_.anim(Ui::key("playlist-lit", i), ui_.hover(card) ? 1.f : 0.f, 14);
+            lift(card, lit);
+            ui_.card(card, 20, Ui::key("playlist-card", i));
+            // Up to three covers from the playlist, fanned like cards in a hand.
+            {
+                std::vector<LibraryTrack> covers;
+                for (const auto& id : p.track_ids) {
+                    if (covers.size() == 3) break;
+                    if (auto t = store_.track(id)) covers.push_back(std::move(*t));
+                }
+                const float px0 = x + 44, py0 = y + ch / 2 + 2;
+                for (int j = int(covers.size()) - 1; j >= 0; --j) {
+                    const float spread = float(j) * (6 + 5 * lit);
+                    g_.push_transform(D2D1::Matrix3x2F::Rotation(spread * 1.6f, {px0, py0 + 34}) * D2D1::Matrix3x2F::Translation(spread * 0.9f, 0));
+                    const Rect c = Rect::xywh(px0 - 24, py0 - 26, 48, 48);
+                    g_.shadow(c, 8, 5, 0.6f);
+                    ui_.artwork(covers[size_t(j)], c, 8, j == 0 ? 1.f : 0.85f - 0.15f * float(j));
+                    g_.pop_transform();
+                }
+                if (covers.empty()) g_.icon(p.collaborative ? icon::people : icon::music, px0, py0, 20, text3);
+            }
+            const float tl = x + 108;
+            g_.text(wide(p.name), Rect{tl, y + 14, x + cw - 14 - 18 * lit, y + 34}, {Font::ui, 14, 600, text});
+            if (lit > 0.01f) g_.icon(icon::arrow_right, x + cw - 22 - 6 * (1 - lit), y + 24, 12, with_alpha(lilac, lit));  // "open": slides in
             const size_t n = p.track_ids.size(), have = store_.downloaded_in(p);
-            g_.text(n == 1 ? L"1 track" : std::format(L"{} tracks", n), Rect{x + 12, y + 34, x + 120, y + 50}, {Font::ui, 11.5f, 400, text2});
-            g_.text(std::format(L"{}/{}", have, n), Rect{x + 100, y + 34, x + 184, y + 50}, {Font::dot, 11, 700, text3, Align::right});
-            ui_.progress(Rect{x + 12, y + 57, x + 184, y + 60}, n ? double(have) / double(n) : 0);
+            g_.text(n == 1 ? L"1 track" : std::format(L"{} tracks", n), Rect{tl, y + 38, tl + 90, y + 54}, {Font::ui, 11.5f, 400, text2});
+            g_.text(std::format(L"{}/{}", have, n), Rect{tl + 40, y + 38, x + cw - 14, y + 54}, {Font::dot, 11, 700, text3, Align::right});
+            ui_.progress(Rect{tl, y + 66, x + cw - 14, y + 69}, n ? double(have) / double(n) : 0, arrive("playlist-bar", i));
+            g_.pop_transform();
+            landed(in);
             ui_.click(card, [this, name = p.name] { go(Page::playlist, name); });
-            x += 210;
+            x += cw + 14;
+            ++i;
         }
-        y += 72;
+        y += ch;
     }
     y += 30;
     ui_.pop_clip();
@@ -499,6 +662,7 @@ void View::go(Page p, std::optional<std::string> playlist) {
     page_ = p;
     playlist_ = std::move(playlist);
     if (!same_list) {
+        ++visit_;  // what's on the new page arrives afresh
         // A new list starts fresh, like the original TrackListView getting a new key.
         SetWindowTextW(search_, L"");
         search_text_.clear();

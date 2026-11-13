@@ -27,11 +27,11 @@
 
 <div align="center">
 
-[![Download zip](https://img.shields.io/badge/WreckBox%200.7.6-win--native--x64.zip%20%C2%B7%2070%20MB-EFAF86?style=for-the-badge&logo=windows&logoColor=08080A&labelColor=08080A)](https://raw.githubusercontent.com/moloyb301-eng/wreckbox-releases/windows-native/downloads/WreckBox-0.7.6-win-native-x64.zip)
+[![Download zip](https://img.shields.io/badge/WreckBox%200.7.7-win--native--x64.zip%20%C2%B7%2070%20MB-EFAF86?style=for-the-badge&logo=windows&logoColor=08080A&labelColor=08080A)](https://raw.githubusercontent.com/moloyb301-eng/wreckbox-releases/windows-native/downloads/WreckBox-0.7.7-win-native-x64.zip)
 
 </div>
 
-The latest build (0.7.6). **DasVis** gets two new scenes: *Journey*, generated worlds of cells, organelles and tunnels that are built from a new recipe every time, and *Score*, the song drawn as a sequencer grid whose blocks light, turn and ripple as they play. A new **Web player** page plays Spotify and YouTube Music inside WreckBox. DasVis also runs smoother, with lyrics on time. Every scene leaves MilkDrop-style trails that zoom, swirl and fold into kaleidoscopes, and a song looks different every time it plays. DasVis has 15 scenes that follow each song's build-ups and drops, take their colours from the album cover, and run on old PCs too. Choose DasVis, MilkDrop or the Winamp bars in Settings → *Visualizer*, and try the live wallpaper, synced lyrics, the phone VJ deck and video export.
+The latest build (0.7.7). A redesigned look: moving glass, a cover flow on Home, covers that turn in space, a backdrop that takes the colours of what's playing, and a Motion setting. Faster scans and Spotify import, and a play log. Before it (0.7.6): **DasVis** gets two new scenes: *Journey*, generated worlds of cells, organelles and tunnels that are built from a new recipe every time, and *Score*, the song drawn as a sequencer grid whose blocks light, turn and ripple as they play. A new **Web player** page plays Spotify and YouTube Music inside WreckBox. DasVis also runs smoother, with lyrics on time. Every scene leaves MilkDrop-style trails that zoom, swirl and fold into kaleidoscopes, and a song looks different every time it plays. DasVis has 15 scenes that follow each song's build-ups and drops, take their colours from the album cover, and run on old PCs too. Choose DasVis, MilkDrop or the Winamp bars in Settings → *Visualizer*, and try the live wallpaper, synced lyrics, the phone VJ deck and video export.
 
 ### ⚡ One command
 
@@ -39,7 +39,7 @@ Press **Win + R**, type `cmd`, press Enter, then paste this (the copy button is 
 Enter. It downloads WreckBox, unzips it into `%LOCALAPPDATA%\Programs\WreckBox` and starts it. Run it again to update.
 
 ```cmd
-curl -fL -o "%TEMP%\WreckBox.zip" https://raw.githubusercontent.com/moloyb301-eng/wreckbox-releases/windows-native/downloads/WreckBox-0.7.6-win-native-x64.zip && (if not exist "%LOCALAPPDATA%\Programs\WreckBox" mkdir "%LOCALAPPDATA%\Programs\WreckBox") && tar -xf "%TEMP%\WreckBox.zip" -C "%LOCALAPPDATA%\Programs\WreckBox" && del "%TEMP%\WreckBox.zip" && start "" "%LOCALAPPDATA%\Programs\WreckBox\wreckbox.exe"
+curl -fL -o "%TEMP%\WreckBox.zip" https://raw.githubusercontent.com/moloyb301-eng/wreckbox-releases/windows-native/downloads/WreckBox-0.7.7-win-native-x64.zip && (if not exist "%LOCALAPPDATA%\Programs\WreckBox" mkdir "%LOCALAPPDATA%\Programs\WreckBox") && tar -xf "%TEMP%\WreckBox.zip" -C "%LOCALAPPDATA%\Programs\WreckBox" && del "%TEMP%\WreckBox.zip" && start "" "%LOCALAPPDATA%\Programs\WreckBox\wreckbox.exe"
 ```
 
 Close WreckBox before updating. The command uses `curl` and `tar`, which come with Windows 10 and 11.

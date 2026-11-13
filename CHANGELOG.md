@@ -13,7 +13,20 @@ After 0.7.0, each release goes up by one patch number: 0.7.1, 0.7.2, and so on u
 
 Day-to-day work goes on `main`; bigger features on a branch (`feature/<name>`), merged when the tests pass.
 
+## 0.7.7 — 2026-11-13
+
+- **A new look, with motion.** The app's glass is lit from above, and everything eases instead of jumping: pages arrive, cards lift and light up under the pointer, buttons give when pressed, the sidebar's marker glides to the page you choose, bars and rings fill, and the numbers on Home count up.
+- **Home has a cover flow**: the songs added most recently stand in a row in space, the one in front facing you and leaning toward the pointer. Playlist cards carry a small fan of their covers.
+- **Covers turn in space** (3D, with perspective) in the cover flow and the player bar.
+- **A living backdrop**: soft lights that drift and take the colours of the cover of what's playing, rising motes, and a great record lying in the corner whose glints turn with the music. The logo's record turns while music plays, and a record slides out from behind the cover in the player bar.
+- **Settings → Motion**: Full, Reduced (things ease, the backdrop stands still, so nothing runs at rest) or Off. On battery, in battery saver, over Remote Desktop, and while another window is in front, Full behaves as Reduced.
+- **Faster analysis**: the FFT runs four values at a time (same results to the last bit): tempo 238 → 142 ms and key 167 → 99 ms per track on the test PC. Scans use every core when plugged in and half of them on battery, with a memory limit for long mixes, and quitting during a scan stops it promptly.
+- **Faster Spotify import**: pages and playlists are fetched side by side (up to six requests at once), and it backs off when Spotify asks it to slow down.
+- **Play log**: every listen is recorded in `Music\WreckBox\_stats` (`plays.jsonl` and `play_counts.json`): when, for how long, and how it ended.
+- Deezer BPM lookups are paced, and an error reply is no longer remembered as "no BPM" for a song.
+
 ## Unreleased
+
 
 - **Journey, DasVis's generated worlds**: a new scene that's different every time. Algorithms build a world from a
   random recipe (cells, organelles or a tunnel, seen through twists, kaleidoscopes, folds, fluid flows, spirals,

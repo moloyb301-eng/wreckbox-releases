@@ -263,6 +263,9 @@ struct App {
                 return 0;
             }
             case WM_MOUSELEAVE:
+                // WRECKBOX_TEST_POINTER=1 (automated UI checks): a pointer position posted to a window that isn't under the real
+                // pointer stays put, so what lights up under it can be captured.
+                if (static const bool pinned = GetEnvironmentVariableW(L"WRECKBOX_TEST_POINTER", nullptr, 0) > 0; pinned) return tracking_leave = false, 0;
                 tracking_leave = false;
                 ui->mx = ui->my = -1;
                 last_hit = -2;

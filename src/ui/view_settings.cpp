@@ -344,6 +344,18 @@ void View::settings_page(const Rect& r) {
         }
     });
 
+    section(L"Motion", false, [&] {
+        const Motion m = motion_setting();
+        para(L"How much the app moves. Full: things ease into place, covers turn in space, and the backdrop drifts and takes the "
+             L"colours of what's playing. Reduced: things still ease, but the backdrop stands still, so the app does nothing "
+             L"at rest. Off: nothing moves at all.");
+        buttons({{L"Full", icon::sparkle, m == Motion::full ? Ui::Pill::primary : Ui::Pill::glass, [this] { set_motion(Motion::full); }},
+                 {L"Reduced", icon::sparkle, m == Motion::reduced ? Ui::Pill::primary : Ui::Pill::glass, [this] { set_motion(Motion::reduced); }},
+                 {L"Off", icon::block, m == Motion::off ? Ui::Pill::primary : Ui::Pill::glass, [this] { set_motion(Motion::off); }}});
+        para(L"On battery, in battery saver or over Remote Desktop, Full behaves as Reduced. The backdrop also rests while "
+             L"another window is in front.", 12, text3);
+    });
+
     section(L"Visualizer", false, [&] {
         const VisOptions vo = saved_vis();
         // One option changed in the saved visualizer settings (the rest as they are), and in the running ones.

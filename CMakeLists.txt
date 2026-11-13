@@ -4,7 +4,7 @@ cmake_minimum_required(VERSION 3.21)
 set(VCPKG_TARGET_TRIPLET x64-windows-static CACHE STRING "")
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
-project(wreckbox VERSION 0.7.6 LANGUAGES CXX)
+project(wreckbox VERSION 0.7.7 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -105,6 +105,7 @@ add_executable(wreckbox WIN32
   src/ui/artwork.cpp
   src/ui/ui.cpp
   src/ui/view.cpp
+  src/ui/view_motion.cpp
   src/ui/view_tracks.cpp
   src/ui/view_settings.cpp
   src/ui/view_phone.cpp

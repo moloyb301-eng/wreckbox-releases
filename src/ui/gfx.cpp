@@ -3,6 +3,7 @@
 #include <dxgi1_6.h>
 
 #include <algorithm>
+#include <cmath>
 #include <format>
 #include <iterator>
 #include <vector>
@@ -149,6 +150,9 @@ void Gfx::drop_target() {
     bitmaps_.clear();
     dashes_.clear();
     radial_.Reset();
+    glows_.clear();
+    rounded_.clear();
+    transforms_.clear();
     stream_.Reset();
     layer_.Reset();
     brush_.Reset();
@@ -317,11 +321,116 @@ void Gfx::fill_radial(const Rect& r, D2D1_POINT_2F center, float radius, D2D1_CO
 }
 
 void Gfx::push_opacity(float a) {
-    if (!layer_) target_->CreateLayer(nullptr, &layer_);
+    // No layer object: the device context makes its own, so fades can nest (a page fading in with a card fading in it).
     target_->PushLayer(D2D1::LayerParameters(D2D1::InfiniteRect(), nullptr, D2D1_ANTIALIAS_MODE_PER_PRIMITIVE, D2D1::IdentityMatrix(), a),
-                       layer_.Get());
+                       nullptr);
 }
 void Gfx::pop_opacity() { target_->PopLayer(); }
+
+// MARK: Motion and depth
+
+void Gfx::push_transform(const D2D1_MATRIX_3X2_F& m) {
+    D2D1_MATRIX_3X2_F cur;
+    target_->GetTransform(&cur);
+    transforms_.push_back(cur);
+    target_->SetTransform(*D2D1::Matrix3x2F::ReinterpretBaseType(&m) * *D2D1::Matrix3x2F::ReinterpretBaseType(&cur));
+}
+
+void Gfx::pop_transform() {
+    if (transforms_.empty()) return;
+    target_->SetTransform(transforms_.back());
+    transforms_.pop_back();
+}
+
+void Gfx::fill_glow(float cx, float cy, float radius, D2D1_COLOR_F c) {
+    if (radius <= 0 || c.a <= 0) return;
+    auto q = [](float v) { return uint32_t(std::clamp(v, 0.f, 1.f) * 31.f + 0.5f); };  // 5 bits a channel: colours that drift share brushes
+    const uint32_t key = q(c.r) << 21 | q(c.g) << 16 | q(c.b) << 11 | uint32_t(std::clamp(c.a, 0.f, 1.f) * 255.f + 0.5f);
+    if (glows_.size() > 96) glows_.clear();
+    auto& b = glows_[key];
+    if (!b) {
+        // Three stops, so the light falls off like a glow rather than a cone.
+        const D2D1_GRADIENT_STOP stops[] = {{0, c}, {0.5f, {c.r, c.g, c.b, c.a * 0.35f}}, {1, {c.r, c.g, c.b, 0}}};
+        ComPtr<ID2D1GradientStopCollection> coll;
+        rt_->CreateGradientStopCollection(stops, 3, &coll);
+        rt_->CreateRadialGradientBrush(D2D1::RadialGradientBrushProperties({cx, cy}, {0, 0}, radius, radius), coll.Get(), &b);
+        if (!b) return;
+    }
+    b->SetCenter({cx, cy});
+    b->SetRadiusX(radius);
+    b->SetRadiusY(radius);
+    target_->FillRectangle({cx - radius, cy - radius, cx + radius, cy + radius}, b.Get());
+}
+
+void Gfx::stroke_gradient(const Rect& r, float radius, std::initializer_list<D2D1_COLOR_F> colors, float width, bool vertical) {
+    ID2D1LinearGradientBrush* b = gradient(colors);
+    b->SetStartPoint({r.l, r.t});
+    b->SetEndPoint(vertical ? D2D1_POINT_2F{r.l, r.b} : D2D1_POINT_2F{r.r, r.t});
+    const Rect in = r.inset(width / 2, width / 2);
+    target_->DrawRoundedRectangle(D2D1::RoundedRect(in.d2d(), radius, radius), b, width);
+}
+
+void Gfx::arc(float cx, float cy, float radius, float start_deg, float sweep_deg, D2D1_COLOR_F c, float width) {
+    if (sweep_deg <= 0.05f) return;
+    brush_->SetColor(c);
+    auto& round = dashes_[-1];  // the round-capped style, kept with the dash styles
+    if (!round)
+        d2d_->CreateStrokeStyle(D2D1::StrokeStyleProperties(D2D1_CAP_STYLE_ROUND, D2D1_CAP_STYLE_ROUND, D2D1_CAP_STYLE_ROUND), nullptr, 0, &round);
+    if (sweep_deg >= 359.9f) return target_->DrawEllipse(D2D1::Ellipse({cx, cy}, radius, radius), brush_.Get(), width);
+    const float kRad = 3.14159265f / 180.f;
+    auto at = [&](float deg) { return D2D1_POINT_2F{cx + radius * std::sin(deg * kRad), cy - radius * std::cos(deg * kRad)}; };
+    ComPtr<ID2D1PathGeometry> path;
+    ComPtr<ID2D1GeometrySink> sink;
+    if (FAILED(d2d_->CreatePathGeometry(&path)) || FAILED(path->Open(&sink))) return;
+    sink->BeginFigure(at(start_deg), D2D1_FIGURE_BEGIN_HOLLOW);
+    sink->AddArc(D2D1::ArcSegment(at(start_deg + sweep_deg), {radius, radius}, 0, D2D1_SWEEP_DIRECTION_CLOCKWISE,
+                                  sweep_deg > 180 ? D2D1_ARC_SIZE_LARGE : D2D1_ARC_SIZE_SMALL));
+    sink->EndFigure(D2D1_FIGURE_END_OPEN);
+    sink->Close();
+    target_->DrawGeometry(path.Get(), brush_.Get(), width, round.Get());
+}
+
+void Gfx::shadow(const Rect& r, float radius, float size, float strength) {
+    // Rings of fading black, each a little further out: cheap, and soft enough at these sizes.
+    const int rings = 6;
+    for (int i = 0; i < rings; ++i) {
+        const float k = float(i + 1) / float(rings), grow = size * k;
+        brush_->SetColor({0, 0, 0, strength * (1 - k) * (1 - k) * 0.5f});
+        const Rect o{r.l - grow, r.t - grow * 0.6f, r.r + grow, r.b + grow * 1.3f};  // the light is above: more shadow below
+        target_->DrawRoundedRectangle(D2D1::RoundedRect(o.d2d(), radius + grow, radius + grow), brush_.Get(), size / float(rings) + 1);
+    }
+}
+
+void Gfx::image_3d(ID2D1Bitmap* bmp, const Rect& r, float radius, float tilt_x_deg, float tilt_y_deg, float opacity, float depth) {
+    if (target_.Get() != rt_.Get() || (std::abs(tilt_x_deg) < 0.05f && std::abs(tilt_y_deg) < 0.05f)) return image(bmp, r, radius, opacity);
+    Rounded* slot = nullptr;
+    for (auto& s : rounded_)
+        if (s.source.Get() == bmp && s.w == r.w() && s.h == r.h() && s.radius == radius) slot = &s;
+    if (!slot) {
+        ComPtr<ID2D1BitmapRenderTarget> off;
+        if (FAILED(rt_->CreateCompatibleRenderTarget(D2D1::SizeF(r.w(), r.h()), &off))) return image(bmp, r, radius, opacity);
+        auto saved = target_;
+        target_ = off;
+        off->BeginDraw();
+        off->Clear(D2D1::ColorF(0, 0, 0, 0));
+        image(bmp, Rect{0, 0, r.w(), r.h()}, radius, 1);
+        off->EndDraw();
+        target_ = saved;
+        if (rounded_.size() >= 28) rounded_.erase(rounded_.begin());
+        rounded_.push_back({});
+        slot = &rounded_.back();
+        slot->source = bmp;
+        off->GetBitmap(&slot->shaped);
+        slot->w = r.w(), slot->h = r.h(), slot->radius = radius;
+        if (!slot->shaped) return image(bmp, r, radius, opacity);
+    }
+    // About the card's own centre: there, turn, see it with perspective, and back.
+    const float cx = (r.l + r.r) / 2, cy = (r.t + r.b) / 2;
+    const D2D1::Matrix4x4F m = D2D1::Matrix4x4F::Translation(-cx, -cy, 0) * D2D1::Matrix4x4F::RotationY(tilt_y_deg) *
+                               D2D1::Matrix4x4F::RotationX(tilt_x_deg) * D2D1::Matrix4x4F::PerspectiveProjection(r.w() * depth) *
+                               D2D1::Matrix4x4F::Translation(cx, cy, 0);
+    rt_->DrawBitmap(slot->shaped.Get(), r.d2d(), opacity, D2D1_INTERPOLATION_MODE_LINEAR, nullptr, &m);
+}
 
 void Gfx::upload_stream(const uint8_t* bgra, int w, int h) {
     if (!rt_ || w <= 0 || h <= 0) return;

@@ -117,6 +117,23 @@ public:
     void push_clip(const Rect& r);
     void pop_clip();
 
+    // MARK: Motion and depth
+    // Everything drawn until pop_transform() is moved / scaled / turned by `m`, on top of any transform already pushed.
+    void push_transform(const D2D1_MATRIX_3X2_F& m);
+    void pop_transform();
+    // A soft light: `c` at the centre fading to nothing at `radius`. Brushes are kept per colour (a few dozen at most).
+    void fill_glow(float cx, float cy, float radius, D2D1_COLOR_F c);
+    // A rounded outline whose colour runs through `colors`, left to right (or top to bottom).
+    void stroke_gradient(const Rect& r, float radius, std::initializer_list<D2D1_COLOR_F> colors, float width = 1, bool vertical = false);
+    // Part of a circle's outline, round-ended: from `start_deg` (0 = top, clockwise) for `sweep_deg`.
+    void arc(float cx, float cy, float radius, float start_deg, float sweep_deg, D2D1_COLOR_F c, float width);
+    // A soft shadow under a rounded rect: `size` DIPs wide, `strength` 0–1 at its darkest.
+    void shadow(const Rect& r, float radius, float size, float strength);
+    // A picture as a card in space: turned `tilt_x_deg` about its horizontal middle and `tilt_y_deg` about its vertical
+    // one, with perspective. Its rounded shape is made once (per picture and size) and reused while it turns.
+    // `depth`: how far the eye is, in card widths — smaller is a stronger perspective.
+    void image_3d(ID2D1Bitmap* bmp, const Rect& r, float radius, float tilt_x_deg, float tilt_y_deg, float opacity = 1, float depth = 4);
+
     // Draws something expensive (e.g. the pixel logo) once into a cached bitmap of `w`×`h` DIPs, then reuses it.
     void cached(const std::wstring& key, const Rect& r, const std::function<void(Gfx&)>& draw);
 
@@ -169,6 +186,13 @@ private:
     ComPtr<ID2D1RadialGradientBrush> radial_;
     ComPtr<ID2D1Bitmap> stream_;
     ComPtr<ID2D1Layer> layer_;
+    std::vector<D2D1_MATRIX_3X2_F> transforms_;
+    std::unordered_map<uint32_t, ComPtr<ID2D1RadialGradientBrush>> glows_;
+    struct Rounded {  // image_3d: a cover already cut to its rounded shape
+        ComPtr<ID2D1Bitmap> source, shaped;
+        float w = 0, h = 0, radius = 0;
+    };
+    std::vector<Rounded> rounded_;
     UINT stream_w_ = 0, stream_h_ = 0;
 };
 
