@@ -78,6 +78,7 @@ private:
     void set_active(const LibraryTrack& track, std::optional<std::string> started);  // active.json: on / off the list
     // active.json: what's happening to it (state, source, bytes, speed); written at most twice a second unless `now`.
     void update_active(const std::string& id, const json& fields, bool now);
+    void write_active();  // active.json now if it can be written (never throws); called with active_m_ held
     void mark(const LibraryTrack& track, const std::string& status, const json& extra = json::object());
     std::pair<std::vector<Candidate>, json> find(const LibraryTrack& track);
     std::vector<UserResult> search(const std::string& query);

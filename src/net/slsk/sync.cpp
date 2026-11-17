@@ -319,14 +319,25 @@ bool Runner::cancelled(const std::string& id, const std::string& since) {
     return it != cancel_at_.end() && it->second >= since;  // ISO seconds: same second counts
 }
 
+// active.json is a progress report for the Download queue page. Writing it can fail for a moment — on Windows a file
+// that someone is reading can't be replaced — and that must never stop a download: set_active also runs from a
+// destructor, where a throw ends the process. A report that couldn't be written is simply written next time.
+void Runner::write_active() {
+    try {
+        paths::write_atomic(work_dir() / L"active.json", active_.dump());
+        active_written_ = std::chrono::steady_clock::now();
+    } catch (const std::exception&) {
+        active_written_ = {};  // try again at the next update, however soon
+    }
+}
+
 void Runner::set_active(const LibraryTrack& track, std::optional<std::string> started) {
     std::lock_guard lock(active_m_);
     if (started) active_[track.id] = {{"started", *started}, {"name", track.file_name}, {"state", "searching"}};
     else active_.erase(track.id);
     std::error_code ec;
     fs::create_directories(work_dir(), ec);
-    paths::write_atomic(work_dir() / L"active.json", active_.dump());
-    active_written_ = std::chrono::steady_clock::now();
+    write_active();
 }
 
 void Runner::update_active(const std::string& id, const json& fields, bool now) {
@@ -334,8 +345,7 @@ void Runner::update_active(const std::string& id, const json& fields, bool now) 
     if (!active_.contains(id)) return;
     for (const auto& [k, v] : fields.items()) active_[id][k] = v;
     if (!now && std::chrono::steady_clock::now() - active_written_ < std::chrono::milliseconds(500)) return;
-    paths::write_atomic(work_dir() / L"active.json", active_.dump());
-    active_written_ = std::chrono::steady_clock::now();
+    write_active();
 }
 
 std::optional<fs::path> Runner::download(const LibraryTrack& track, const Candidate& c, const std::string& since) {

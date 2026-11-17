@@ -38,6 +38,13 @@ static std::string read_all(const fs::path& p) {
     return {std::istreambuf_iterator<char>(f), {}};
 }
 
+// A JSON file another thread rewrites as it goes (active.json): read at the wrong moment it can't be opened, which
+// reads as nothing. Not yet, rather than a parse error that ends the test.
+static json read_json_now(const fs::path& p) {
+    json j = json::parse(read_all(p), nullptr, false);
+    return j.is_discarded() ? json::object() : j;
+}
+
 static wb::LibraryTrack make_track(const std::string& id, const std::string& artist, const std::string& title, const std::string& added, int64_t ms = 200000) {
     wb::LibraryTrack t;
     t.id = id;
@@ -255,14 +262,14 @@ int main() {
         std::thread pass([&] { counts = r.run_pass(); });
         bool listed = false;
         for (int i = 0; i < 300 && !listed; ++i) {
-            listed = fs::exists(active) && json::parse(read_all(active)).contains("h");
+            listed = fs::exists(active) && read_json_now(active).contains("h");
             std::this_thread::sleep_for(10ms);
         }
         CHECK(listed, "active.json lists the song being downloaded");
         // It reports the transfer as it goes: the source, bytes and size (written about twice a second).
         json a;
         for (int i = 0; i < 300; ++i) {
-            a = json::parse(read_all(active)).value("h", json::object());
+            a = read_json_now(active).value("h", json::object());
             if (a.value("state", "") == "downloading" && a.value("received", 0) > 0) break;
             std::this_thread::sleep_for(10ms);
         }
