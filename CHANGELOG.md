@@ -13,6 +13,28 @@ After 0.7.0, each release goes up by one patch number: 0.7.1, 0.7.2, and so on u
 
 Day-to-day work goes on `main`; bigger features on a branch (`feature/<name>`), merged when the tests pass.
 
+## 0.7.8 — 2026-11-17
+
+- **The shelf replaces the sidebar.** The first screen is a wall of record crates standing on planks: one for All
+  tracks, In my crate, Missing, Ignored, My folders and Recently added, and one for each playlist, each holding the
+  covers of its first songs and showing how many of its songs you have. Point at a crate and its front record lifts
+  out and leans toward the pointer; click it and the view moves into the crate while its songs come forward as the
+  list. Arrow keys and Enter work on the shelf too.
+- **A top bar** in place of the sidebar: the logo (back to the shelf), where you are (*Shelf › Dhanji Da*), a search
+  pill, and buttons for the Web player, the Download queue (with how many songs are waiting), Soulseek sync, Sync to
+  phone, Settings and Report a bug. Pages use the whole width of the window.
+- **Ctrl+K finds anything**: pages, playlists, songs (by title, artist or album) and actions such as Rescan, Open
+  files, Open URL, Report a bug, the full-screen visualizer and the Motion setting. Type, then Enter.
+- **Back** goes to the page before: Esc or Backspace (when nothing else is open), Alt+Left, or the mouse's back button.
+- **Recently added**: a page with the 50 songs added most recently.
+- A playlist's page shows a small fan of its covers beside the title.
+- **The player floats** as an island at the foot of the window.
+- **A calmer backdrop**: the soft lights stay (still in the colours of what's playing), the motes and the great record
+  are gone, and the lights only drift while music plays, so the app is back to no CPU at rest even on Full motion.
+- Notes that must be read are brighter, and status lines use plain commas.
+- Fixed: the built-in Soulseek sync could close WreckBox if its progress file was being read at the moment it was
+  rewritten. A progress report that can't be written now just waits for the next one.
+
 ## 0.7.7 — 2026-11-13
 
 - **A new look, with motion.** The app's glass is lit from above, and everything eases instead of jumping: pages arrive, cards lift and light up under the pointer, buttons give when pressed, the sidebar's marker glides to the page you choose, bars and rings fill, and the numbers on Home count up.

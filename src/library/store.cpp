@@ -781,7 +781,7 @@ void LibraryStore::rescan() {
                     }
                     budget.release(held);
                     const size_t n = ++done;
-                    set_busy(std::format("Scanning & analysing {}/{} · {} at a time…", n, files.size(), plan.workers));
+                    set_busy(std::format("Scanning & analysing {} of {}, {} at a time…", n, files.size(), plan.workers));
                     // Every ten seconds, by whichever worker gets there first: an interrupted scan keeps what it
                     // has, without rewriting the whole cache every few files.
                     auto due = next_save.load();

@@ -101,7 +101,7 @@ void View::want(const std::vector<std::string>& ids, bool on) {
             const std::wstring songs = n == 1 ? L"1 song" : std::format(L"{} songs", n);
             if (!on && stopping) show_toast(stopping == 1 && n == 1 ? L"Download cancelled" : songs + std::format(L" won't download ({} stopped mid-download)", stopping));
             else if (!on) show_toast(songs + L" won't download");
-            else if (!can_run) show_toast(L"Picked " + songs + L" · add your Soulseek login in Settings to download");
+            else if (!can_run) show_toast(L"Picked " + songs + L". Add your Soulseek login in Settings to download.");
             else if (!why->empty()) show_toast(widen(*why));
             else show_toast(L"Downloading " + songs);
         });
@@ -124,7 +124,7 @@ void View::pick_playlist(const std::string& name, bool on) {
             dirty_ = true;
             show_toast(!on       ? widen(name) + L" won't download any more"
                        : can_run ? L"Downloading " + widen(name)
-                                 : L"Picked " + widen(name) + L" · add your Soulseek login in Settings to download");
+                                 : L"Picked " + widen(name) + L". Add your Soulseek login in Settings to download.");
         });
 }
 
@@ -161,7 +161,7 @@ void View::delete_songs(const std::vector<std::string>& ids) {
             const auto& [done, err] = *result;
             if (done == 0) show_toast(widen(err));
             else if (total == 1) show_toast(L"Moved to the Recycle Bin: " + title);
-            else show_toast(std::format(L"Moved {} songs ({}) to the Recycle Bin", done, size_text(bytes)) + (err.empty() ? L"" : L" · " + widen(err)));
+            else show_toast(std::format(L"Moved {} songs ({}) to the Recycle Bin", done, size_text(bytes)) + (err.empty() ? L"" : L". " + widen(err)));
         });
 }
 
@@ -177,8 +177,8 @@ void View::soulseek_page(const Rect& r) {
     const bool running = slsk_->running();
     if (running) SetTimer(hwnd_, kRefreshTimer, 1000, nullptr);  // keeps "downloading now" current
     const std::wstring toggle = running ? L"Stop" : L"Start sync";
-    float y = r.t + header(r, L"Tools", L"Soulseek sync",
-                           running ? L"Running — checks your playlists again every 30 minutes" : L"Stopped",
+    float y = r.t + header(r, L"Soulseek sync",
+                           running ? L"Running, and checking your playlists again every 30 minutes" : L"Stopped",
                            {{ui_.pill_width(toggle, running ? icon::close : icon::play), [this, toggle, running](float x, float py) {
                                  ui_.pill(x, py, toggle, running ? icon::close : icon::play, running ? Ui::Pill::glass : Ui::Pill::smart, [this, running] {
                                      if (running) {
@@ -208,21 +208,21 @@ void View::soulseek_page(const Rect& r) {
         free_disk_ = ec ? 0 : space.available;
         slsk_smaller_ = slsk_->prefer_smaller();
     }
-    g_.text(std::format(L"WreckBox's songs use {} · {} free on this drive", size_text(downloads_bytes_), size_text(free_disk_)),
+    g_.text(std::format(L"WreckBox's songs use {}, and this drive has {} free", size_text(downloads_bytes_), size_text(free_disk_)),
             Rect{r.l, y, r.r, y + 20}, {Font::ui, 13, 400, text2});
     y += 30;
 
     // What downloads, and in what quality.
     const auto state = store_.state_copy();
     float x = r.l;
-    x += ui_.dot_label(L"Download", x, y + 15, text3, 10) + 10;
+    x += ui_.dot_label(L"Download", x, y + 15, text2, 10) + 10;
     for (const auto& [label, only] : {std::pair{L"Only what I pick", true}, std::pair{L"Everything missing", false}})
         x += ui_.chip(x, y, label, std::nullopt, state.priority_only == only, false, [this, only = only, prios = state.download_priority] {
                  store_.set_download_priority(prios, only);
                  jobs_.run([this] { slsk_->write_queue(); });
              }) + 6;
     x += 18;
-    x += ui_.dot_label(L"Quality", x, y + 15, text3, 10) + 10;
+    x += ui_.dot_label(L"Quality", x, y + 15, text2, 10) + 10;
     for (const auto& [label, smaller] : {std::pair{L"Best (FLAC first)", false}, std::pair{L"Smaller (MP3 320 first)", true}})
         x += ui_.chip(x, y, label, std::nullopt, slsk_smaller_.value_or(false) == smaller, false, [this, smaller = smaller] {
                  slsk_smaller_ = smaller;
@@ -277,7 +277,7 @@ void View::soulseek_page(const Rect& r) {
     if (entries.empty())
         g_.text(wanted_tab ? L"Nothing to download. Pick songs or playlists with Download (right-click a song, or a playlist's Download button)."
                            : L"Nothing here.",
-                area.inset(20, 0), {Font::ui, 13, 400, text3, Align::center});
+                area.inset(20, 0), {Font::ui, 13, 400, text2, Align::center});
     else {
         const float before = slsk_scroll_;
         ui_.scroll_area(area, slsk_scroll_, float(entries.size()) * row_h + 2 * pad);
@@ -319,9 +319,10 @@ void View::soulseek_page(const Rect& r) {
                 });
                 btn(icon::sync, L"Retry", [this, id] { jobs_.run([this, id] { slsk_->retry({id}); }); });
             }
-            std::wstring sub = widen(t->artist());
+            // The artist, then what happened in brackets: "Dhanji, RASLA (FLAC, 2 tries)". Artists already have commas.
+            std::wstring details;
             const auto add = [&](const std::string& s) {
-                if (!s.empty()) sub += L" · " + widen(s);
+                if (!s.empty()) details += (details.empty() ? L"" : L", ") + widen(s);
             };
             if (rec) {
                 add(rec->reason.value_or(""));
@@ -332,18 +333,20 @@ void View::soulseek_page(const Rect& r) {
             }
             if (const auto a = active.find(id); wanted_tab && a != active.end())
                 add(a->second.state == "downloading" && a->second.size
-                        ? std::format("downloading now · {}%", int(100 * a->second.received / a->second.size))
+                        ? std::format("{}% downloaded", int(100 * a->second.received / a->second.size))
                         : "downloading now");
             else if (wanted_tab && i == active.size()) add("next");
             if (slsk_->retry_pending(id)) add("retry queued");
+            const std::wstring artist = widen(t->artist());
+            const std::wstring sub = details.empty() ? artist : artist.empty() ? details : artist + L" (" + details + L")";
             g_.text(widen(t->title), Rect{row.l + 60, cy - 20, right - 6, cy}, {Font::ui, 13.5f, 600, text});
-            g_.text(sub, Rect{row.l + 60, cy, right - 6, cy + 20}, {Font::ui, 11.5f, 400, text3});
+            g_.text(sub, Rect{row.l + 60, cy, right - 6, cy + 20}, {Font::ui, 11.5f, 400, text2});
         }
         ui_.pop_clip();
     }
 
     ui_.glass(logbox);
-    ui_.dot_label(L"Log", logbox.l + 16, logbox.t + 22, text3);
+    ui_.dot_label(L"Log", logbox.l + 16, logbox.t + 22, text2);
     const Rect lines = Rect{logbox.l + 14, logbox.t + 40, logbox.r - 8, logbox.b - 10};
     ui_.push_clip(lines);
     float ly = lines.t;
@@ -415,11 +418,11 @@ void View::queue_page(const Rect& r) {
 
     ui_.push_clip(Rect{r.l - 22, r.t, r.r + 22, r.b});
     float y = r.t - queue_scroll_;
-    const std::wstring sub = !running         ? std::format(L"Stopped · {} waiting", wanted.size())
-                             : active.empty() ? std::format(L"Running · {} waiting", wanted.size())
-                                              : std::format(L"Downloading {} · {} waiting", active.size(), wanted.size());
+    const std::wstring sub = !running         ? std::format(L"Stopped, {} waiting", wanted.size())
+                             : active.empty() ? std::format(L"Running, {} waiting", wanted.size())
+                                              : std::format(L"Downloading {}, {} waiting", active.size(), wanted.size());
     const std::wstring toggle = running ? L"Stop" : L"Start sync";
-    y += header(Rect{r.l, y, r.r, r.b}, L"Tools", L"Download queue", sub,
+    y += header(Rect{r.l, y, r.r, r.b}, L"Download queue", sub,
                 {{ui_.pill_width(toggle, running ? icon::close : icon::play), [this, toggle, running](float x, float py) {
                       ui_.pill(x, py, toggle, running ? icon::close : icon::play, running ? Ui::Pill::glass : Ui::Pill::smart, [this, running] {
                           if (running) slsk_->stop(), slsk_message("");
@@ -450,7 +453,7 @@ void View::queue_page(const Rect& r) {
         ui_.click(row, [this, id] { store_.set_focus(id); }, [this, id] { row_menu(id); });  // before its buttons, which win
         float lx = row.l + 12;
         if (pos) {
-            g_.text(std::to_wstring(pos), Rect{lx, row.t, lx + 26, row.b}, {Font::dot, 13, 700, text3, Align::center});
+            g_.text(std::to_wstring(pos), Rect{lx, row.t, lx + 26, row.b}, {Font::dot, 13, 700, text2, Align::center});
             lx += 32;
         }
         ui_.artwork(*t, Rect::xywh(lx, row.t + 10, 44, 44), 8);
@@ -471,13 +474,13 @@ void View::queue_page(const Rect& r) {
         }
         // What's happening, and how far along.
         std::wstring status;
-        auto color = text3;
+        auto color = text2;
         double frac = -1;
         if (a) {
             color = lilac;
             if (a->state == "downloading" && a->size) {
                 frac = std::min(1.0, double(a->received) / double(a->size));
-                status = std::format(L"{}% · {} of {}", int(frac * 100), size_text(a->received), size_text(a->size)) + (a->speed ? L" · " + speed_text(a->speed) : L"");
+                status = std::format(L"{} of {} ({}%)", size_text(a->received), size_text(a->size), int(frac * 100)) + (a->speed ? L" at " + speed_text(a->speed) : L"");
             } else if (a->state == "waiting") {
                 frac = 0;
                 status = L"Waiting for " + widen(a->user) + L" to start sending";
@@ -489,11 +492,13 @@ void View::queue_page(const Rect& r) {
             for (auto& c : fmt) c = char(std::toupper(static_cast<unsigned char>(c)));
             if (rec->status == "done") {
                 frac = 1, color = lilac;
-                status = L"Downloaded · " + widen(fmt) + (rec->bitrate ? std::format(L" {}", *rec->bitrate) : L"") +
-                         (rec->size_bytes ? L" · " + size_text(rec->size_bytes) : L"") + L" · " + ago(rec->last_try);
+                // "Downloaded 2 min ago (FLAC 1411, 30 MB)"
+                std::wstring got = widen(fmt) + (rec->bitrate ? std::format(L" {}", *rec->bitrate) : L"");
+                if (rec->size_bytes) got += (got.empty() ? L"" : L", ") + size_text(rec->size_bytes);
+                status = L"Downloaded " + ago(rec->last_try) + (got.empty() ? L"" : L" (" + got + L")");
             } else {
-                color = peach;
-                status = (rec->status == "not_found" ? L"Not found" : L"Failed") + (rec->reason ? L" · " + widen(*rec->reason) : L"") + L" · " + ago(rec->last_try);
+                color = peach;  // "Not found 2 min ago: no results"
+                status = (rec->status == "not_found" ? L"Not found " : L"Failed ") + ago(rec->last_try) + (rec->reason ? L": " + widen(*rec->reason) : L"");
             }
         } else {
             status = pos == 1 && running ? L"Next" : L"Waiting";
@@ -507,7 +512,7 @@ void View::queue_page(const Rect& r) {
         y += 70;
     };
     auto section = [&](const std::wstring& label) {
-        ui_.dot_label(label, r.l + 2, y + 10, text3, 10);
+        ui_.dot_label(label, r.l + 2, y + 10, text2, 10);
         y += 26;
     };
     if (!active.empty()) {
@@ -516,10 +521,10 @@ void View::queue_page(const Rect& r) {
             if (store_.track(id)) song_row(id, &a, nullptr, 0);
         y += 12;
     }
-    section(std::format(L"Up next · {}", wanted.size()));
+    section(std::format(L"Up next ({})", wanted.size()));
     if (wanted.empty()) {
         g_.text(L"Nothing waiting. Pick songs with Download (details panel or right-click), or a whole playlist below.",
-                Rect{r.l + 2, y, r.l + width, y + 20}, {Font::ui, 13, 400, text3});
+                Rect{r.l + 2, y, r.l + width, y + 20}, {Font::ui, 13, 400, text2});
         y += 34;
     }
     constexpr size_t kShown = 40;  // the rest wait their turn below
@@ -528,7 +533,7 @@ void View::queue_page(const Rect& r) {
         song_row(wanted[i], nullptr, rec == records.end() || rec->second.status == "done" ? nullptr : &rec->second, i + 1);
     }
     if (wanted.size() > kShown) {
-        g_.text(std::format(L"+ {} more, in this order", wanted.size() - kShown), Rect{r.l + 2, y, r.l + width, y + 20}, {Font::ui, 12.5f, 400, text3});
+        g_.text(std::format(L"{} more after these, in this order", wanted.size() - kShown), Rect{r.l + 2, y, r.l + width, y + 20}, {Font::ui, 12.5f, 400, text2});
         y += 30;
     }
     if (!recent.empty()) {
@@ -577,23 +582,23 @@ void View::queue_page(const Rect& r) {
         const std::string name = prios[i].substr(prios[i].find(':') + 1);
         g_.text(std::to_wstring(i + 1), Rect{row.l + 12, row.t, row.l + 38, row.b}, {Font::dot, 16, 700, lilac});
         g_.text(widen(name), Rect{row.l + 44, row.t + 8, row.r - 120, row.t + 28}, {Font::ui, 13.5f, 600, text});
-        g_.text(std::format(L"{} missing", missing_in(name)), Rect{row.l + 44, row.t + 28, row.r - 120, row.t + 46}, {Font::ui, 11, 400, text3});
+        g_.text(std::format(L"{} missing", missing_in(name)), Rect{row.l + 44, row.t + 28, row.r - 120, row.t + 46}, {Font::ui, 11, 400, text2});
         float bx = row.r - 8;
-        const auto btn = [&](const wchar_t* glyph, bool enabled, std::function<void()> fn) {
+        const auto btn = [&](const wchar_t* glyph, const wchar_t* tip, bool enabled, std::function<void()> fn) {
             bx -= 32;
-            ui_.icon_button(Rect::xywh(bx, row.t + 10, 32, 32), glyph, 13, enabled ? std::move(fn) : std::function<void()>{});
+            ui_.icon_button(Rect::xywh(bx, row.t + 10, 32, 32), glyph, 13, enabled ? std::move(fn) : std::function<void()>{}, false, false, tip);
         };
-        btn(icon::close, true, [prios, i, set] {
+        btn(icon::close, L"Remove from this list", true, [prios, i, set] {
             auto p = prios;
             p.erase(p.begin() + std::ptrdiff_t(i));
             set(p);
         });
-        btn(icon::down, i + 1 < prios.size(), [prios, i, set] {
+        btn(icon::down, L"Move down", i + 1 < prios.size(), [prios, i, set] {
             auto p = prios;
             std::swap(p[i], p[i + 1]);
             set(p);
         });
-        btn(icon::up, i > 0, [prios, i, set] {
+        btn(icon::up, L"Move up", i > 0, [prios, i, set] {
             auto p = prios;
             std::swap(p[i], p[i - 1]);
             set(p);
@@ -625,7 +630,7 @@ void View::queue_page(const Rect& r) {
     const bool everything = !state.priority_only;
     g_.text(L"Then everything else", Rect{x, py, panel.r - 160, py + 22}, {Font::ui, 13.5f, 600, text});
     g_.text(L"Off: download only what you pick (these playlists, and songs you chose)", Rect{x, py + 22, panel.r - 160, py + 40},
-            {Font::ui, 11.5f, 400, text3});
+            {Font::ui, 11.5f, 400, text2});
     const std::wstring label = everything ? L"On" : L"Off";
     ui_.chip(panel.r - pad - ui_.chip_width(label) - (everything ? 12 : 0), py + 4, label, std::nullopt, everything, false, [prios, everything, set] { set(prios, everything); });
     y = panel.b + 30;

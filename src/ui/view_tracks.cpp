@@ -2,7 +2,11 @@
 #include <shlobj.h>
 
 #include <algorithm>
+#include <cmath>
 #include <format>
+#include <iterator>
+#include <numbers>
+#include <unordered_set>
 
 #include "library/matcher.h"
 #include "model/paths.h"
@@ -52,6 +56,7 @@ bool in_tracks(const std::string& path) {
 void View::refresh() {
     dirty_ = false;
     refreshed_at_ = GetTickCount64();
+    ++refreshes_;
     lib_ = store_.library();
     n_downloaded_ = store_.count(TrackStatus::downloaded);
     n_missing_ = store_.count(TrackStatus::missing);
@@ -66,20 +71,20 @@ void View::refresh() {
     wanted_ids_.clear();
     if (slsk_)
         for (auto& id : slsk_->wanted()) wanted_ids_.insert(std::move(id));
-    n_priority_ = wanted_ids_.size();  // the sidebar's Download queue count: songs waiting
+    n_priority_ = wanted_ids_.size();  // the badge on the top bar's Download queue button: songs waiting
 
-    recent_.clear();
+    recent_.clear();  // newest first: the Recently added page, and the first few are its crate's covers
     if (lib_) {
         std::vector<const LibraryTrack*> ts;
         for (const auto& t : lib_->tracks) ts.push_back(&t);
-        const size_t n = std::min<size_t>(16, ts.size());
+        const size_t n = std::min<size_t>(50, ts.size());
         std::partial_sort(ts.begin(), ts.begin() + std::ptrdiff_t(n), ts.end(),
                           [](const auto* a, const auto* b) { return a->first_added.value_or("") > b->first_added.value_or(""); });
         for (size_t i = 0; i < n; ++i) recent_.push_back(ts[i]->id);
     }
 
     ids_.clear();
-    if (!lib_ || page_ == Page::home) return;
+    if (!lib_ || page_ == Page::shelf) return;
     if (page_ == Page::playlist && playlist_) {
         const auto& s = Settings::current();
         const std::string key = *playlist_ + "|" + lib_->built_at + "|" + s.spotify_client_id + "|" + s.google_client_id;
@@ -117,9 +122,21 @@ void View::refresh() {
                 }
     }
     const ListFilter filter = list_filter();
-    ids_ = store_.row_ids(filter, playlist_, narrow(search_text_));
-    list_total_ = store_.row_ids(filter, playlist_).size();
-    list_crate_ = filter == ListFilter::all || filter == ListFilter::downloaded ? store_.row_ids(ListFilter::downloaded, playlist_).size() : 0;
+    if (page_ == Page::recent) {
+        // Newest first, as recent_ has them: the search box only narrows that order.
+        const auto found = store_.row_ids(ListFilter::all, std::nullopt, narrow(search_text_));
+        const std::unordered_set<std::string> hit(found.begin(), found.end());
+        std::copy_if(recent_.begin(), recent_.end(), std::back_inserter(ids_), [&](const std::string& id) { return hit.contains(id); });
+        list_total_ = recent_.size();
+        list_crate_ = size_t(std::count_if(recent_.begin(), recent_.end(), [&](const std::string& id) {
+            const auto st = state.tracks.find(id);
+            return st != state.tracks.end() && st->second.status == TrackStatus::downloaded;
+        }));
+    } else {
+        ids_ = store_.row_ids(filter, playlist_, narrow(search_text_));
+        list_total_ = store_.row_ids(filter, playlist_).size();
+        list_crate_ = filter == ListFilter::all || filter == ListFilter::downloaded ? store_.row_ids(ListFilter::downloaded, playlist_).size() : 0;
+    }
     n_flac_.reset();
     if (!mix_.active() && sort_ == Sort::none) return;
 
@@ -177,6 +194,7 @@ void View::track_page(const Rect& r) {
         case Page::missing: title = L"Missing"; break;
         case Page::ignored: title = L"Ignored"; break;
         case Page::on_pc: title = L"My folders"; break;
+        case Page::recent: title = L"Recently added"; break;
         default: title = playlist_ ? wide(*playlist_) : L"All tracks";
     }
     auto actions = library_actions(page_ == Page::downloaded);
@@ -190,7 +208,7 @@ void View::track_page(const Rect& r) {
                                                }});
         // Download playlist: its missing songs download, now and as it grows. Free up space: its downloads go to the
         // Recycle Bin (asks first), except songs another pick still wants.
-        const std::wstring dl = !pl_picked_ ? L"Download playlist" : pl_left_ ? std::format(L"Downloading · {} left", pl_left_) : L"Downloading · all here";
+        const std::wstring dl = !pl_picked_ ? L"Download playlist" : pl_left_ ? std::format(L"Downloading, {} left", pl_left_) : L"Downloading, all here";
         actions.insert(actions.begin(), Action{ui_.pill_width(dl, icon::download), [this, dl](float x, float y) {
                                                    ui_.pill(x, y, dl, icon::download, pl_picked_ ? Ui::Pill::smart : Ui::Pill::glass,
                                                             [this] { pick_playlist(*playlist_, !pl_picked_); });
@@ -210,8 +228,12 @@ void View::track_page(const Rect& r) {
                                                             });
                                                }});
     }
-    std::wstring subtitle = std::format(L"{} tracks · {} in your crate", list_total_, list_crate_);
-    if (is_playlist) subtitle += L" · " + size_text(pl_bytes_) + L" on this PC";
+    std::wstring subtitle = std::format(L"{} tracks, {} in your crate", list_total_, list_crate_);
+    if (is_playlist) subtitle += L", " + size_text(pl_bytes_) + L" on this PC";
+    if (page_ == Page::recent)
+        subtitle = list_total_ == 0 ? L"No songs added yet"
+                   : list_total_ == 1 ? L"The song added most recently"
+                                      : std::format(L"The {} songs added most recently", list_total_);
     if (page_ == Page::on_pc) {
         // My folders counts its FLAC files (once per refresh: it reads every row) and names the folders it shows.
         if (!n_flac_) {
@@ -226,7 +248,7 @@ void View::track_page(const Rect& r) {
             if (p == paths::tracks()) continue;  // WreckBox's downloads: never listed here
             where += (where.empty() ? L"" : L", ") + (p.has_filename() ? p.filename().wstring() : p.wstring());
         }
-        subtitle = std::format(L"{} songs already on this PC · {} FLAC · from {} (not WreckBox downloads)", list_total_, *n_flac_, where);
+        subtitle = std::format(L"{} songs already on this PC, {} of them FLAC, in {} (not WreckBox downloads)", list_total_, *n_flac_, where);
         const bool can = !store_.busy();
         actions.insert(actions.begin(), Action{ui_.pill_width(L"Add folder…", icon::add), [this, can](float x, float y) {
                                                    ui_.pill(x, y, L"Add folder…", icon::add, Ui::Pill::glass,
@@ -238,16 +260,52 @@ void View::track_page(const Rect& r) {
                                                                 : std::function<void()>{});
                                                }});
     }
-    float h = header(r, playlist_ ? L"Playlist" : L"Library", title, subtitle, actions);
-    // The last sync's result, or why this playlist can't sync.
+    // The open crate's covers stand left of the title (where the shelf's zoom lands), and the header's words beside them.
+    const Rect stack = cover_stack(r);
+    crate_landing_ = stack;
+    const bool fan = stack.w() > 0;
+    const float text_l = fan ? stack.r + 18 : r.l;
+    float h = header(Rect{text_l, r.t, r.r, r.b}, title, subtitle, actions);
+    if (fan) h = std::max(h, std::round(stack.b - r.t) + 14);  // the same as without it, unless the fan grows past the words
+    // The last sync's result, or why this playlist can't sync: a line under the subtitle.
     if (is_playlist && (!sync_message_.empty() || sync_unavailable_)) {
         const bool msg = !sync_message_.empty(), failed = sync_message_.rfind("Sync failed", 0) == 0;
-        g_.text(widen(msg ? sync_message_ : *sync_unavailable_), Rect{r.l, r.t + h - 8, r.r, r.t + h + 12},
-                {Font::ui, 12, msg ? 600 : 400, failed ? peach : msg ? lilac : text3});
+        g_.text(widen(msg ? sync_message_ : *sync_unavailable_), Rect{text_l, r.t + h - 8, r.r, r.t + h + 12},
+                {Font::ui, 12, msg ? 600 : 400, failed ? peach : msg ? lilac : text2});
         h += 18;
     }
     h += filters(Rect{r.l, r.t + h, r.r, r.t + h + 38});
     list(Rect{r.l, r.t + h + 12, r.r, r.b});
+}
+
+Rect View::cover_stack(const Rect& r) {
+    if (stack_for_ != here() || stack_at_ != refreshes_) {
+        stack_covers_ = crate_covers(page_, playlist_, 3);
+        stack_for_ = here();
+        stack_at_ = refreshes_;
+    }
+    const size_t n = std::min<size_t>(stack_covers_.size(), 3);
+    if (!n) return {};
+    // A square turned by a degrees reaches side/2 · (cos a + sin a) from its centre, each way.
+    auto reach = [](size_t k) {
+        const float a = std::abs(kStackTurn[k]) * std::numbers::pi_v<float> / 180;
+        return kStackCover / 2 * (std::cos(a) + std::sin(a));
+    };
+    const float cx = r.l + reach(0), cy = r.t + kStackCentre;  // the front cover's centre: the fan starts at the page's edge
+    Rect box{r.l, cy, r.l, cy};
+    for (size_t k = 0; k < n; ++k) {
+        const float x = cx + kStackShift[k], e = reach(k);
+        box = {std::min(box.l, x - e), std::min(box.t, cy - e), std::max(box.r, x + e), std::max(box.b, cy + e)};
+    }
+    const Rect cover = Rect::xywh(cx - kStackCover / 2, cy - kStackCover / 2, kStackCover, kStackCover);
+    for (size_t k = n; k-- > 0;) {  // the back one first
+        g_.push_transform(D2D1::Matrix3x2F::Rotation(kStackTurn[k], {cx, cy}) * D2D1::Matrix3x2F::Translation(kStackShift[k], 0));
+        g_.shadow(cover, 8, 8, 0.5f);
+        g_.fill_round(cover, 8, bg_raised);  // a song with no cover (yet) gets a see-through stand-in: the one behind mustn't show
+        ui_.artwork(stack_covers_[k], cover, 8, 1);
+        g_.pop_transform();
+    }
+    return box;
 }
 
 void View::sync_playlist() {
@@ -278,8 +336,8 @@ void View::sync_playlist() {
                 return;
             }
             if (!r.name.empty() && r.name != pl.name) playlist_ = r.name;  // renamed at the source
-            sync_message_ = r.added == 0 && r.removed == 0 ? "Synced — already up to date."
-                                                           : "Synced — " + std::to_string(r.added) + " new, " + std::to_string(r.removed) + " removed.";
+            sync_message_ = r.added == 0 && r.removed == 0 ? "Synced: already up to date."
+                                                           : "Synced: " + std::to_string(r.added) + " new, " + std::to_string(r.removed) + " removed.";
             dirty_ = true;
         });
 }
@@ -295,7 +353,7 @@ float View::filters(const Rect& r) {
 
     float x = box.r + 10;
     const float cy = r.t + 19;
-    x += ui_.dot_label(L"BPM", x, cy, text3, 10) + 8;
+    x += ui_.dot_label(L"BPM", x, cy, text2, 10) + 8;
     static const std::tuple<const wchar_t*, const wchar_t*, const wchar_t*> presets[] = {
         {L"< 100", L"", L"99"}, {L"100–120", L"100", L"120"}, {L"120–130", L"120", L"130"}, {L"130–145", L"130", L"145"}, {L"145+", L"145", L""}};
     auto changed = [this] {
@@ -324,7 +382,7 @@ float View::filters(const Rect& r) {
     // The file type chips (and Clear) go on a second line when they don't fit beside the rest.
     float t = r.t;
     if (x + 60 + ui_.chip_width(L"FLAC") + ui_.chip_width(L"Not FLAC") + (mix_.active() ? 70 : 0) > r.r) x = r.l, t += 46;
-    x += ui_.dot_label(L"Type", x + 4, t + 19, text3, 10) + 12;
+    x += ui_.dot_label(L"Type", x + 4, t + 19, text2, 10) + 12;
     for (const auto& [label, f] : {std::pair{L"FLAC", Format::flac}, std::pair{L"Not FLAC", Format::not_flac}}) {
         const bool on = mix_.format == f;
         x += ui_.chip(x, t + 4, label, std::nullopt, on, false, [this, on, f = f, changed] {
@@ -353,7 +411,7 @@ void View::list(const Rect& r) {
     auto head = [&](const wchar_t* label, Sort k, float x0, float x1) {
         const bool on = sort_ == k;
         const Rect hr{x0, hy, x1, hb - 4};
-        const float w = ui_.dot_label(label, x0, (hr.t + hr.b) / 2, on || ui_.hover(hr) ? text : text3, 10);
+        const float w = ui_.dot_label(label, x0, (hr.t + hr.b) / 2, on || ui_.hover(hr) ? text : text2, 10);
         if (on) g_.icon(asc_ ? icon::up : icon::down, x0 + w + 9, (hr.t + hr.b) / 2, 9, text);
         ui_.click(hr, [this, k, on] {
             if (!on) sort_ = k, asc_ = true;
@@ -372,28 +430,58 @@ void View::list(const Rect& r) {
 
     const Rect area{r.l, hb + 1, r.r, r.b - 1};
     list_view_h_ = area.h();
+    constexpr float row_h = 54, pad = 6;
+    // A song picked in the palette: its row a third of the way down, once this paint's rows are the page's own (a
+    // refresh put off while the store is busy would leave the page before's).
+    if (!reveal_id_.empty() && !dirty_) {
+        if (const auto at = std::find(ids_.begin(), ids_.end(), reveal_id_); at != ids_.end())
+            list_scroll_ = std::max(0.f, pad + float(at - ids_.begin()) * row_h - list_view_h_ / 3);
+        reveal_id_.clear();
+    }
     if (ids_.empty()) {
+        if (!dirty_) rows_arrive_ = false;  // nothing to arrive: songs that turn up later just appear
         const bool filtered = !search_text_.empty() || mix_.active();
         g_.text(filtered               ? L"No tracks match."
                 : page_ == Page::on_pc ? L"No songs found in your folders yet. Use Add folder… to pick where your music is."
                                        : L"Nothing here yet.",
-                area, {Font::ui, 13, 400, text3, Align::center});
+                area, {Font::ui, 13, 400, text2, Align::center});
         return;
     }
-    constexpr float row_h = 54, pad = 6;
     const float content = float(ids_.size()) * row_h + 2 * pad + (selected_.empty() ? 0 : 64);  // room under the selection bar
     const float before = list_scroll_;
     ui_.scroll_area(area, list_scroll_, content);
     if (list_scroll_ != before) InvalidateRect(hwnd_, nullptr, FALSE);
+    // Out of a crate, the first rows tip forward one after another: the songs coming out of it. Only the list as it
+    // opened: a scroll, search, filter or sort since ends it, and so does motion that isn't full.
+    if (rows_arrive_ && (list_scroll_ > 0 || !search_text_.empty() || mix_.active() || sort_ != Sort::none || motion_now() != Motion::full))
+        rows_arrive_ = false;
+    bool arriving = false;
     ui_.push_clip(area);
     // Virtualised: only the rows in view are fetched and drawn.
     const size_t first = size_t(std::max(0.f, (list_scroll_ - pad) / row_h));
     const size_t last = std::min(ids_.size(), first + size_t(area.h() / row_h) + 2);
     for (size_t i = first; i < last; ++i) {
         const float y = area.t + pad + float(i) * row_h - list_scroll_;
-        if (const auto tr = store_.row(ids_[i])) row(*tr, Rect{area.l + pad, y, area.r - pad - 8, y + row_h});
+        const auto tr = store_.row(ids_[i]);
+        if (!tr) continue;
+        const Rect rr{area.l + pad, y, area.r - pad - 8, y + row_h};
+        // Unscrolled while arriving, so the first rows on screen are the list's first. Every row in view arrives (on a tall
+        // window the later ones would otherwise sit there before the first had come), the stagger stopping after eight.
+        const float in = rows_arrive_ ? ui_.enter(arrive("row", i), 0.10f + 0.03f * float(std::min<size_t>(i, 8)), 0.18f) : 1;
+        if (in < 1) {
+            // Drawn only: the row's clicks and hover are its full place, as usual. It tips forward a little, from its top.
+            arriving = true;
+            g_.push_opacity(in);
+            g_.push_transform(D2D1::Matrix3x2F::Scale(1, 0.8f + 0.2f * in, {rr.l, rr.t}));
+        }
+        row(*tr, rr);
+        if (in < 1) {
+            g_.pop_transform();
+            g_.pop_opacity();
+        }
     }
     ui_.pop_clip();
+    if (rows_arrive_ && !arriving) rows_arrive_ = false;  // all landed: it doesn't play again on this visit
     if (!selected_.empty()) selection_bar(area);
 }
 
@@ -507,8 +595,8 @@ void View::row(const TrackRow& tr, const Rect& r) {
     if (const std::string type = tr.format(); !type.empty())  // FLAC in lilac; any other type in peach, so it's easy to spot
         g_.text(wide(type), Rect{x_type, cy - 10, x_type + kType - 8, cy + 10}, {Font::dot, 12, 700, tr.is_flac() ? lilac : peach});
     if (tr.file && tr.status() == TrackStatus::downloaded)
-        g_.text(size_text(tr.file->size_bytes), Rect{x_size, cy - 10, x_size + kSize - 10, cy + 10}, {Font::dot, 12, 700, text3, Align::right});
-    g_.text(wide(tr.duration_text()), Rect{x_dur, cy - 10, x_dur + kDuration, cy + 10}, {Font::dot, 12, 700, text3, Align::right});
+        g_.text(size_text(tr.file->size_bytes), Rect{x_size, cy - 10, x_size + kSize - 10, cy + 10}, {Font::dot, 12, 700, text2, Align::right});
+    g_.text(wide(tr.duration_text()), Rect{x_dur, cy - 10, x_dur + kDuration, cy + 10}, {Font::dot, 12, 700, text2, Align::right});
     ui_.status_dot(right - 8, cy, tr.status());
     ui_.click(r, [this, id = tr.id()] { select(id); }, [this, id = tr.id()] { row_menu(id); });
     if (playable) ui_.click(cover, [this, id = tr.id()] { play_track(id); }, [this, id = tr.id()] { row_menu(id); });
@@ -533,7 +621,7 @@ void View::inspector(const Rect& r, bool floating) {
                   : slsk_ && slsk_->active().contains(tr->id()) ? L"Downloading now"
                   : wanted_ids_.contains(tr->id())          ? L"Wanted"
                                                             : L"Missing",
-                  in.l, y + 14);
+                  in.l, y + 14, text2);
     const Rect close = Rect::xywh(in.r - 30, y, 30, 28);
     if (ui_.hover(close)) g_.fill_round(close, 8, theme::hover);
     g_.icon(icon::close, (close.l + close.r) / 2, (close.t + close.b) / 2, 13, text2);
@@ -545,10 +633,10 @@ void View::inspector(const Rect& r, bool floating) {
     y += art + 16;
     y += g_.paragraph(wide(tr->track.title), Rect{in.l, y, in.r, y}, {Font::ui, 22, 600, text});
     y += g_.paragraph(wide(tr->track.artist()), Rect{in.l, y, in.r, y}, {Font::ui, 15, 400, text2});
-    std::wstring meta;
-    for (const auto& part : {tr->track.album, tr->track.year})
-        if (part) meta += (meta.empty() ? L"" : L" · ") + wide(*part);
-    y += g_.paragraph(meta, Rect{in.l, y, in.r, y}, {Font::ui, 12, 400, text3}) + 14;
+    // The album, and its year after it in brackets: "Starboy (2016)".
+    std::wstring meta = tr->track.album ? wide(*tr->track.album) : L"";
+    if (tr->track.year) meta += meta.empty() ? wide(*tr->track.year) : L" (" + wide(*tr->track.year) + L")";
+    y += g_.paragraph(meta, Rect{in.l, y, in.r, y}, {Font::ui, 12, 400, text2}) + 14;
 
     // Readouts
     const auto& fa = tr->file;
@@ -556,42 +644,43 @@ void View::inspector(const Rect& r, bool floating) {
     auto readout = [&](int i, const wchar_t* label) {
         const Rect b = Rect::xywh(in.l + float(i) * (rw + 8), y, rw, rh);
         ui_.glass(b, 16);
-        ui_.dot_label(label, b.l + 12, b.t + 18, text3, 10);
+        ui_.dot_label(label, b.l + 12, b.t + 18, text2, 10);
         return b;
     };
     {
         const Rect b = readout(0, L"BPM");
         ui_.bpm_readout(b.l + 12, b.t + 50, tr->bpm(), fa && fa->bpm_unsure(), 28);
         if (fa && fa->bpm_alternate)
-            g_.text(std::format(L"or {}", std::lround(*fa->bpm_alternate)), Rect{b.l + 12, b.t + 68, b.r, b.t + 84}, {Font::dot, 11, 700, text3});
+            g_.text(std::format(L"or {}", std::lround(*fa->bpm_alternate)), Rect{b.l + 12, b.t + 68, b.r, b.t + 84}, {Font::dot, 11, 700, text2});
     }
     {
         const Rect b = readout(1, L"Key");
         ui_.key_badge(b.l + 12, b.t + 50, tr->camelot(), fa && fa->key_unsure(), true);
-        g_.text(fa && fa->key ? wide(*fa->key) : L"", Rect{b.l + 12, b.t + 70, b.r - 4, b.t + 86}, {Font::ui, 11, 400, text3});
+        g_.text(fa && fa->key ? wide(*fa->key) : L"", Rect{b.l + 12, b.t + 70, b.r - 4, b.t + 86}, {Font::ui, 11, 400, text2});
     }
     {
         const Rect b = readout(2, L"Energy");
         ui_.energy_meter(b.l + 12, b.t + 62, tr->energy(), 22);
         g_.text(tr->energy() ? std::format(L"{}%", std::lround(*tr->energy() * 100)) : L"–", Rect{b.l + 12, b.t + 68, b.r, b.t + 84},
-                {Font::dot, 11, 700, text3});
+                {Font::dot, 11, 700, tr->energy() ? text2 : text3});  // the dash for no value stays faint
     }
     y += rh + 8;
     std::wstring note;
-    if (!fa) note = tr->status() == TrackStatus::downloaded ? L"Not analysed yet — run Rescan & analyse." : L"Not on this device yet.";
+    if (!fa) note = tr->status() == TrackStatus::downloaded ? L"Not analysed yet. Run Rescan & analyse." : L"Not on this device yet.";
     else {
-        note = std::format(L"Full-track analysis · tempo confidence {}%", std::lround(fa->bpm_confidence.value_or(0) * 100));
-        if (fa->key_agreement) note += std::format(L" · key {}/3 methods agree", *fa->key_agreement);
+        note = std::format(L"Full-track analysis: tempo confidence {}%", std::lround(fa->bpm_confidence.value_or(0) * 100));
+        if (fa->key_agreement) note += std::format(L", {} of 3 key methods agree", *fa->key_agreement);
+        note += L".";
     }
     if (const std::string type = tr->format(); !type.empty()) {
-        note = wide(type) + (tr->is_flac() ? L" (lossless)" : L"") + (fa ? std::format(L" · {:.1f} MB · ", double(fa->size_bytes) / 1048576.0) : L" · ") + note;
-        if (is_file && !fa->library_track_id) note += L" · Not in your library";
+        note = wide(type) + (tr->is_flac() ? L" (lossless)" : L"") + (fa ? std::format(L", {:.1f} MB. ", double(fa->size_bytes) / 1048576.0) : L". ") + note;
+        if (is_file && !fa->library_track_id) note += L" Not in your library.";
     }
-    y += g_.paragraph(note, Rect{in.l, y, in.r, y}, {Font::ui, 11.5f, 400, text3}) + 14;
+    y += g_.paragraph(note, Rect{in.l, y, in.r, y}, {Font::ui, 11.5f, 400, text2}) + 14;
 
     // Playlists
     if (!tr->track.playlists.empty()) {
-        ui_.dot_label(L"Playlists", in.l, y + 7);
+        ui_.dot_label(L"Playlists", in.l, y + 7, text2);
         y += 22;
         float x = in.l;
         for (const auto& pl : tr->track.playlists) {
@@ -663,13 +752,13 @@ void View::inspector(const Rect& r, bool floating) {
         }
     }
     if (x > in.l) y += 34;
-    if (path) y += 8 + g_.paragraph(wide(*path), Rect{in.l, y + 8, in.r, y + 8}, {Font::ui, 11, 400, text3});
+    if (path) y += 8 + g_.paragraph(wide(*path), Rect{in.l, y + 8, in.r, y + 8}, {Font::ui, 11, 400, text2});
     if (path && tr->status() == TrackStatus::downloaded) {  // tucked away, and asks twice
         const bool asking = confirm_delete_ == tr->id();
         const std::wstring label = asking ? L"Move it to the Recycle Bin? Click again" : L"Delete from PC";
-        const TextStyle st{Font::ui, 11.5f, 600, text3};
+        const TextStyle st{Font::ui, 11.5f, 600, text2};
         const Rect link{in.l, y + 14, in.l + g_.measure(label, st) + 4, y + 32};
-        g_.text(label, link, {st.font, st.size, st.weight, asking || ui_.hover(link) ? peach : text3});
+        g_.text(label, link, {st.font, st.size, st.weight, asking || ui_.hover(link) ? peach : text2});
         ui_.click(link, [this, i = tr->id(), asking] {
             if (asking) delete_songs({i});
             else confirm_delete_ = i;

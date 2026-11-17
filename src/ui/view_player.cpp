@@ -1,5 +1,5 @@
-// The player bar, the
-// equalizer pop-over, Open files / folder / URL, drag & drop, media keys and the repaint ticks while playing.
+// The player island floating under the page, the equalizer pop-over, Open files / folder / URL, drag & drop, media keys
+// and the repaint ticks while playing.
 #include <windows.h>
 #include <shellapi.h>
 #include <shobjidl.h>
@@ -64,19 +64,14 @@ std::wstring band_label(float hz) {
 
 void View::player_bar(const Rect& r) {
     bar_top_ = r.t;
-    g_.shadow(r, 20, 18, 0.6f);
-    ui_.glass(r, 20, false, true);
-    {
-        // While music plays, a line of light in the accent colours runs along the bar's top edge, breathing slowly.
-        const float live = ui_.anim(Ui::key("bar-live"), player_.playing() ? 1.f : 0.f, 3);
-        if (live > 0.01f) {
-            const float breath = 0.65f + 0.35f * std::sin(float(backdrop_time_) * 1.6f);
-            g_.fill_span(Rect{r.l + 24, r.t, r.r - 24, r.t + 1.5f}, {r.l, r.t}, {r.r, r.t},
-                         {with_alpha(light_blue, 0), with_alpha(light_blue, 0.9f * live * breath), with_alpha(lilac, live * breath),
-                          with_alpha(peach, 0.9f * live * breath), with_alpha(peach, 0)});
-        }
-    }
-    const Rect in = r.inset(12, 8);
+    // An island: round at both ends, lifted off the page by a soft shadow, and opaque (the solid glass of the pop-overs),
+    // so it reads as one object standing in front rather than a strip of the page.
+    const float round = r.h() / 2;
+    g_.shadow(r, round, 24, 0.75f);
+    ui_.glass(r, round, false, true);
+    // What stands at each end is centred in that end's half circle (the cover on the left, the Open button on the
+    // right), so the round ends sit evenly around them.
+    const Rect in{r.l + round - 22, r.t + 8, r.r - round + 16, r.b - 8};
     const float cy = (in.t + in.b) / 2;
     const player::Item* cur = player_.current();
     const auto row = cur && cur->track_id ? store_.row(*cur->track_id) : std::nullopt;
@@ -88,7 +83,7 @@ void View::player_bar(const Rect& r) {
         ui_.icon_button(Rect::xywh(x, cy - 16, 32, 32), glyph, 14, std::move(fn), on, false, std::move(tip));
         x -= 4;
     };
-    button(icon::add, L"Open files, a folder or a radio URL (Ctrl+O)", [this] { open_menu(); });
+    button(icon::add, L"Open files (Ctrl+O), a folder or a radio URL", [this] { open_menu(); });
     button(icon::visualizer, L"Visualizer, full screen (F11)", [this] { set_fullscreen(true); });
     button(icon::equalizer, L"Equalizer and volume normalizer", [this] { eq_open_ = !eq_open_; },
            eq_open_ || player_.equalizer().enabled || player_.normalize());
@@ -97,28 +92,32 @@ void View::player_bar(const Rect& r) {
     volume(vol);
     const float right_l = vol.l - 12;
 
-    // Middle: previous / play / next, then the seek bar (original: info 3 : seek 4 around the controls).
+    // Middle: previous / play / next, then the seek bar (original: info 3 : seek 4 around the controls). The island is
+    // never wider than 1040, so the seek bar stops growing at 280 (a 180-DIP slider) and what's playing gets the rest:
+    // on windows wider than about 1030 that is enough for the BPM and key below.
     const float controls_w = 124, avail = std::max(0.f, right_l - in.l - controls_w - 24);
-    const float info_r = in.l + avail * 3 / 7, ctl = info_r + 12;
+    const float info_r = in.l + avail - std::min(avail * 4 / 7, 280.f), ctl = info_r + 12;
     transport(Rect::xywh(ctl, cy - 20, controls_w, 40));
     seek_bar(Rect{ctl + controls_w + 12, cy - 10, right_l, cy + 10});
 
     // Left: cover, what's playing, BPM and key.
     const Rect cover = Rect::xywh(in.l, cy - 22, 44, 44);
-    // While it plays, the record slides out from behind the cover and turns; paused, it slides back in.
-    const float out = ui_.anim(Ui::key("bar-record"), cur && player_.playing() ? 1.f : 0.f, 6);
+    // With a song loaded, its record stands out from behind the cover, turning while it plays (paint() turns spin_). It
+    // slides out when a song first loads and back in when the player stops, not on every pause: play / pause is the most
+    // frequent thing done here (often with Space), and the words beside it shouldn't shift each time. It slides only
+    // under full motion and from the mouse; otherwise it is simply there.
+    const float want_out = cur ? 1.f : 0.f;
+    const float out = motion_now() == Motion::full && !keyboard_nav_ ? ui_.anim(Ui::key("bar-record"), want_out, 14) : want_out;
     if (out > 0.01f) {
         const float rcx = cover.l + 22 + 20 * out, rcy = cy;
-        g_.fill_glow(rcx, rcy, 34, with_alpha(lilac, 0.22f * out));
         g_.push_transform(D2D1::Matrix3x2F::Rotation(spin_, {rcx, rcy}));
         ui_.logo(rcx - 20, rcy - 20, 40, false);
         g_.pop_transform();
+        g_.shadow(cover, 8, 7 * out, 0.8f * out);
     }
-    if (out > 0.01f) g_.shadow(cover, 8, 7 * out, 0.8f * out);
+    // Flat: the island is quiet, and nothing in it moves under the pointer.
     if (row) {
-        // The cover leans toward the pointer, like the cards on Home.
-        const auto lean = ui_.lean(cover.inset(-10));
-        ui_.artwork_3d(row->track, cover, 8, {ui_.anim(Ui::key("bar-tilt-x"), -lean.y * 14, 10), ui_.anim(Ui::key("bar-tilt-y"), lean.x * 14, 10)});
+        ui_.artwork(row->track, cover, 8);
     } else {
         g_.fill_gradient(cover, 8, {with_alpha(lilac, 0.45f), with_alpha(light_blue, 0.2f)});
         g_.icon(cur && player::is_url(cur->location) ? icon::globe : icon::music, cover.l + 22, cover.t + 22, 16, argb(0x80FFFFFF));
@@ -139,10 +138,36 @@ void View::player_bar(const Rect& r) {
     const float tx = cover.r + 10 + record_room;
     const bool err = !player_.error().empty();
     const float ty = cy - (err ? 24 : sub.empty() ? 9 : 17);
-    g_.text(title, Rect{tx, ty, text_r - 4, ty + 18}, {Font::ui, 13.5f, 600, cur ? text : text2});
-    g_.text(sub, Rect{tx, ty + 18, text_r - 4, ty + 34}, {Font::ui, 11.5f, 400, text2});
+    const TextStyle title_st{Font::ui, 13.5f, 600, cur ? text : text2}, sub_st{Font::ui, 11.5f, 400, text2};
+    if (row) {
+        // A library song's cover and words are a way to it. Under the pointer the words get the top bar steps' quiet
+        // light; a click shows the song in its list.
+        const Rect info{in.l, in.t, text_r, in.b};
+        const float lit = ui_.anim(Ui::key("bar-song"), ui_.hover(info) ? 1.f : 0.f, 16);
+        if (lit > 0.01f) {
+            const float words = std::max(g_.measure(title, title_st), g_.measure(sub, sub_st));
+            const Rect under{tx - 8, ty - 4, std::min(text_r, tx + words + 10), ty + (err ? 49.f : sub.empty() ? 18.f : 34.f) + 4};
+            g_.fill_round(under, std::min(under.h() / 2, 21.f), with_alpha(white, 0.06f * lit));
+        }
+        ui_.click(info, [this, id = row->id()] {
+            // Its row in the list on screen. From a page that doesn't list it (the shelf, the tools, a crate it isn't
+            // in), All tracks, with its search and filters cleared first in case they hide it.
+            const bool list_page = page_ == Page::all || page_ == Page::downloaded || page_ == Page::missing || page_ == Page::ignored ||
+                                   page_ == Page::on_pc || page_ == Page::recent || page_ == Page::playlist;
+            if (!list_page || std::find(ids_.begin(), ids_.end(), id) == ids_.end()) {
+                if (page_ == Page::all) {
+                    SetWindowTextW(search_, L"");  // → search_changed()
+                    mix_ = {};
+                }
+                go(Page::all);
+            }
+            focus(id);
+            reveal_id_ = id;  // the list scrolls to it once its rows are known
+        });
+    }
+    g_.text(title, Rect{tx, ty, text_r - 4, ty + 18}, title_st);
+    g_.text(sub, Rect{tx, ty + 18, text_r - 4, ty + 34}, sub_st);
     if (err) g_.text(wide(player_.error()), Rect{tx, ty + 34, text_r - 4, ty + 49}, {Font::ui, 11, 600, peach});
-    if (row) ui_.click(Rect{in.l, in.t, text_r, in.b}, [this, id = row->id()] { focus(id); });
 }
 
 // MARK: Shared by the bar and the full-screen panel
@@ -291,11 +316,13 @@ void View::open_menu() {
     GetCursorPos(&pt);
     const int cmd = TrackPopupMenu(m, TPM_RETURNCMD | TPM_RIGHTBUTTON | TPM_BOTTOMALIGN, pt.x, pt.y, 0, hwnd_, nullptr);
     DestroyMenu(m);
-    if (cmd == 1 || cmd == 2) play_paths(pick(hwnd_, cmd == 2));
+    if (cmd == 1 || cmd == 2) open_files(cmd == 2);
     if (cmd == 3) url_open_ = true;
     if (cmd == 4) player_.stop();
     InvalidateRect(hwnd_, nullptr, FALSE);
 }
+
+void View::open_files(bool folder) { play_paths(pick(hwnd_, folder)); }
 
 void View::url_dialog() {
     const float W = g_.width(), H = g_.height();
@@ -398,7 +425,7 @@ bool View::player_key(WPARAM vk) {
         eq_open_ = false;
         return true;
     }
-    if (ctrl && vk == 'O') return play_paths(pick(hwnd_, false)), true;
+    if (ctrl && vk == 'O') return open_files(false), true;
     if (ctrl && vk == 'U') {
         url_open_ = true;
         return true;

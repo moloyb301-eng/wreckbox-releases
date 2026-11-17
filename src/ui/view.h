@@ -1,4 +1,5 @@
-// The desktop screens: sidebar | page | inspector.
+// The desktop screens: a top bar, the page under it (the shelf of crates, or a crate's track list), the inspector on
+// the right.
 #pragma once
 #include <windows.h>
 #include <shellapi.h>
@@ -31,6 +32,7 @@
 #include "player/visualizer.h"
 #include "ui/das_window.h"
 #include "ui/jobs.h"
+#include "ui/nav.h"
 #include "ui/ui.h"
 #include "ui/web_player.h"
 
@@ -49,6 +51,7 @@ inline constexpr int kSearchBox = 1;           // control id of the search box; 
 inline constexpr int kUrlBox = 201;            // Open URL…
 inline constexpr int kBugTitle = 401, kBugBody = 402;  // Report a bug
 inline constexpr int kSlskQuery = 403;                  // Soulseek: custom search words
+inline constexpr int kPaletteBox = 404;                 // the command palette (Ctrl+K)
 inline constexpr UINT_PTR kRefreshTimer = 1, kPlayerTimer = 2, kTooltipTimer = 3;
 inline constexpr UINT_PTR kTrimTimer = 4;  // releases idle memory pages once full screen has been torn down
 inline constexpr UINT_PTR kOccludedTimer = 5;  // the visualizer's window isn't on screen: is it back yet?
@@ -106,9 +109,19 @@ public:
     HBRUSH edit_colors(HDC dc, HWND box);  // WM_CTLCOLOREDIT
     void dpi_changed();          // new font for the text boxes
     void tab(int from_id, bool back);  // Tab / Shift+Tab inside a text box
+    bool back();                 // to the page before (Esc, Backspace, Alt+Left, the mouse's back button); false: nowhere to go
+    void palette_changed();      // EN_CHANGE from the command palette's box (view_palette.cpp)
+    bool pointer_frames() const { return pointer_frames_; }  // repaint on every pointer move (see pointer_frames_)
 
 private:
-    enum class Page { home, web, all, downloaded, missing, ignored, on_pc, playlist, queue, soulseek, phone, settings };
+    // shelf: the wall of crates (the first screen). recent: the songs added most recently, as a list.
+    enum class Page { shelf, web, all, downloaded, missing, ignored, on_pc, recent, playlist, queue, soulseek, phone, settings };
+    // A place in the app: a page, and for Page::playlist which one.
+    struct Where {
+        Page page = Page::shelf;
+        std::optional<std::string> playlist;
+        bool operator==(const Where&) const = default;
+    };
     enum class Sort { none, title, artist, bpm, key, energy, type, size };
     enum class Format { any, flac, not_flac };  // not_flac: has a file, of another type
     struct Mix {
@@ -126,13 +139,11 @@ private:
     };
 
     // Sections
-    void sidebar(const Rect& r);
-    float header(const Rect& r, const std::wstring& eyebrow, const std::wstring& title, const std::wstring& subtitle,
+    float header(const Rect& r, const std::wstring& title, const std::wstring& subtitle,
                  const std::vector<Action>& actions = {});  // returns the height used
     std::vector<Action> library_actions(bool write_tags);
     void page(const Rect& r);
     void welcome(const Rect& r);
-    void home(const Rect& r);
     void web_page(const Rect& r);  // Spotify's and YouTube Music's web players (ui/web_player.h)
     void web_sync();               // each paint: one thing plays at a time, the app's mute, hidden off its page
     void placeholder(const Rect& r, const std::wstring& title, const std::wstring& subtitle, const std::wstring& phase);
@@ -272,22 +283,40 @@ private:
     // Each visit to a page gets a number, so what's on it arrives afresh (Ui::enter keys include it).
     uint64_t visit_ = 1;
     uint64_t arrive(std::string_view what, uint64_t n = 0) const { return Ui::key(what, n * 1315423911ull + visit_); }
-    // The accent colours follow the cover of what's playing (and drift back to the app's own when nothing is).
+    // The accent colours follow the cover of the song in the player, playing or paused (and drift back to the app's own
+    // when the player stops).
     std::string accent_for_;                  // the track the colours below were taken from
     std::array<D2D1_COLOR_F, 3> accent_target_{theme::lilac, theme::light_blue, theme::peach};
     void follow_cover();
     double backdrop_time_ = 40;           // seconds the backdrop has been moving (it starts mid-drift, not all in a row)
     bool backdrop_wants_frames_ = false;  // set by backdrop(): it is moving, so paint again soon
-    int flow_sel_ = 2;                    // Home's cover flow: which of the recent songs stands in front
     float spin_ = 0;                      // the record's angle in degrees: it turns while music plays
+    double spin_at_ = -1;                 // ui_.now at the paint that last turned it (-1: standing still)
 
-    Page page_ = Page::home;
+    Page page_ = Page::shelf;
+    Where here() const { return {page_, playlist_}; }
+    History<Where> history_;  // where Back leads (ui/nav.h)
+    // The way between the shelf and a crate's page (shared by view_shelf.cpp and view_tracks.cpp).
+    Rect crate_landing_{};      // where the open crate's cover stack sits in the page header (track_page writes it each paint)
+    bool rows_arrive_ = false;  // this visit came out of a crate with the pointer: its first rows tip forward
+    // The last thing the user did was a key, not the mouse: what the keyboard has chosen shows its ring (like a browser's
+    // :focus-visible). Set by key(), cleared by mouse_down().
+    bool keyboard_nav_ = false;
+    // Something drawn this paint follows the pointer within one region (a crate leaning toward it): the window then
+    // repaints on every pointer move, not only when the region under the pointer changes. Reset at each paint.
+    bool pointer_frames_ = false;
+    std::string reveal_id_;     // a song the list should scroll to once its rows are known (the palette sets it; the list clears it)
+    // Each part's own members and state, included into the class here (one file per part).
+#include "ui/view_chrome.inc"
+#include "ui/view_shelf.inc"
+#include "ui/view_palette.inc"
+#include "ui/view_tracks.inc"
     std::optional<std::string> playlist_;
     std::wstring search_text_;
     Mix mix_;
     Sort sort_ = Sort::none;
     bool asc_ = true;
-    float list_scroll_ = 0, home_scroll_ = 0, side_scroll_ = 0, insp_scroll_ = 0;
+    float list_scroll_ = 0, insp_scroll_ = 0;
     float list_view_h_ = 0;  // height of the visible list area (for keyboard scrolling)
 
     // Derived from the store, rebuilt by refresh().
@@ -308,7 +337,7 @@ private:
     std::string sync_message_;
     void sync_playlist();
 
-    // Player (view_player.cpp): the bar under the page, the equalizer pop-over, Open, drag & drop.
+    // Player (view_player.cpp): the island under the page, the equalizer pop-over, Open, drag & drop.
     void player_bar(const Rect& r);
     void transport(const Rect& r);  // previous / play / next, shared with the full-screen panel
     void seek_bar(const Rect& r);
@@ -446,7 +475,7 @@ private:
     bool wled_busy_ = false;
     std::chrono::steady_clock::time_point wled_at_;  // the last frame sent
     void das_lights();
-    // Video export (dasvis/video.h): one at a time, on its own thread; the sidebar shows how far it's got.
+    // Video export (dasvis/video.h): one at a time, on its own thread; a chip in the top bar shows how far it's got.
     struct VideoJob {
         std::thread thread;
         std::atomic<double> progress{0};
@@ -461,7 +490,7 @@ private:
     std::unique_ptr<VideoJob> video_;
     std::unique_ptr<dasvis::SpoutSender> spout_;  // Spout output on (right-click → DasVis), for this full-screen visit
     void export_video(const std::string& id, int preset);  // preset: 0 720p30, 1 1080p60, 2 1440p60, 3 4K60
-    float video_status(const Rect& r);                     // the sidebar's line while one runs: its height
+    float video_status(const Rect& r);                     // the top bar's chip while one runs, at r's right end: its width (0: none)
     void das_request_map(const player::Item& item, double bpm);
     void das_prepare_next();     // the next song in the queue, so its map is ready when it starts
     void das_dev_view(float W);

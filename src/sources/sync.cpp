@@ -14,7 +14,7 @@ namespace wb::sync {
 
 std::optional<std::string> unavailable(const LibraryPlaylist& pl) {
     const auto loc = sources::locate(pl);
-    if (!loc) return "This playlist isn't in any import source — import it again from Settings to enable Sync.";
+    if (!loc) return "This playlist isn't in any import source. Import it again from Settings to enable Sync.";
     const auto& s = Settings::current();
     if (loc->kind == "spotify") {
         if (s.spotify_client_id.empty()) return "Add your Spotify client ID in Settings to sync this playlist.";

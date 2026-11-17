@@ -63,6 +63,9 @@ public:
     // A slider over r (0–1). `on_change(value, done)` fires on press and while dragging (done = false), then once on
     // release (done = true). Vertical sliders run bottom (0) to top (1); the fill starts at `origin` (0.5 = centred).
     void slider(const Rect& r, float value, std::function<void(float, bool)> on_change, bool vertical = false, float origin = 0);
+    // While on, what is drawn is only for show (the shelf fading out behind an opening crate): click(), slider(), tip()
+    // and scroll_area() record nothing and hover() is false, so it can't take input. begin_frame() turns it off.
+    void set_inert(bool on) { inert_ = on; }
 
     // MARK: Input (window procedure)
     bool mouse_down(float x, float y, bool right);  // true if a region took it (or a scrollbar drag started)
@@ -126,6 +129,7 @@ private:
     std::unordered_map<uint64_t, Moving> moving_;
     unsigned frame_ = 0;
     bool animating_ = false;
+    bool inert_ = false;  // set_inert()
     float press_x_ = -1, press_y_ = -1;
     double press_at_ = -10;
     struct Tip {

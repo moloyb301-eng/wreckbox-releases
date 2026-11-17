@@ -320,6 +320,32 @@ void Gfx::fill_radial(const Rect& r, D2D1_POINT_2F center, float radius, D2D1_CO
     target_->FillRectangle(r.d2d(), radial_.Get());
 }
 
+void Gfx::fill_quad(const D2D1_POINT_2F corners[4], std::initializer_list<D2D1_COLOR_F> colors, bool vertical) {
+    if (colors.size() == 0) return;
+    // A fresh path each call: the corners move with the pointer from frame to frame, and four lines are cheap to build.
+    ComPtr<ID2D1PathGeometry> path;
+    ComPtr<ID2D1GeometrySink> sink;
+    if (FAILED(d2d_->CreatePathGeometry(&path)) || FAILED(path->Open(&sink))) return;
+    sink->BeginFigure(corners[0], D2D1_FIGURE_BEGIN_FILLED);
+    sink->AddLines(corners + 1, 3);
+    sink->EndFigure(D2D1_FIGURE_END_CLOSED);
+    if (FAILED(sink->Close())) return;
+    if (colors.size() == 1) {
+        brush_->SetColor(*colors.begin());
+        target_->FillGeometry(path.Get(), brush_.Get());
+        return;
+    }
+    float l = corners[0].x, t = corners[0].y, r = l, b = t;
+    for (int i = 1; i < 4; ++i) {
+        l = std::min(l, corners[i].x), r = std::max(r, corners[i].x);
+        t = std::min(t, corners[i].y), b = std::max(b, corners[i].y);
+    }
+    ID2D1LinearGradientBrush* g = gradient(colors);
+    g->SetStartPoint({l, t});
+    g->SetEndPoint(vertical ? D2D1_POINT_2F{l, b} : D2D1_POINT_2F{r, t});
+    target_->FillGeometry(path.Get(), g);
+}
+
 void Gfx::push_opacity(float a) {
     // No layer object: the device context makes its own, so fades can nest (a page fading in with a card fading in it).
     target_->PushLayer(D2D1::LayerParameters(D2D1::InfiniteRect(), nullptr, D2D1_ANTIALIAS_MODE_PER_PRIMITIVE, D2D1::IdentityMatrix(), a),
@@ -659,5 +685,32 @@ void Gfx::icon(const wchar_t* glyph, float cx, float cy, float size, D2D1_COLOR_
 
 void Gfx::push_clip(const Rect& r) { target_->PushAxisAlignedClip(r.d2d(), D2D1_ANTIALIAS_MODE_ALIASED); }
 void Gfx::pop_clip() { target_->PopAxisAlignedClip(); }
+
+void Gfx::push_fade(const Rect& r, float top, float bottom) {
+    // One layer per faded edge, each masked by a gradient from clear to opaque (clamped beyond its ends). The masks have
+    // colours of their own that nothing else draws with, so no drawing inside the layers repositions their cached brushes
+    // before the layers are composited (only their alpha counts).
+    constexpr D2D1_COLOR_F on{0.0123f, 0, 0, 1}, off{0.0123f, 0, 0, 0};
+    int n = 0;
+    auto layer = [&](ID2D1LinearGradientBrush* b, D2D1_POINT_2F from, D2D1_POINT_2F to) {
+        if (!b) return;
+        b->SetStartPoint(from);
+        b->SetEndPoint(to);
+        target_->PushLayer(D2D1::LayerParameters(r.d2d(), nullptr, D2D1_ANTIALIAS_MODE_PER_PRIMITIVE, D2D1::IdentityMatrix(), 1, b), nullptr);
+        ++n;
+    };
+    if (top > 0.5f) layer(gradient({off, on}), {r.l, r.t}, {r.l, r.t + top});
+    if (bottom > 0.5f) layer(gradient({on, off}), {r.l, r.b - bottom}, {r.l, r.b});
+    if (n == 0) target_->PushAxisAlignedClip(r.d2d(), D2D1_ANTIALIAS_MODE_ALIASED);  // nothing to fade: still cut off outside r
+    fades_.push_back(n);
+}
+
+void Gfx::pop_fade() {
+    if (fades_.empty()) return;
+    const int n = fades_.back();
+    fades_.pop_back();
+    if (n == 0) target_->PopAxisAlignedClip();
+    for (int i = 0; i < n; ++i) target_->PopLayer();
+}
 
 }  // namespace wb::ui

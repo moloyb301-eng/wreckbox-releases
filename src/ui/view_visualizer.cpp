@@ -910,17 +910,22 @@ float View::video_status(const Rect& r) {
         }
         return 0;
     }
-    const float p = float(video_->progress.load());
-    g_.fill_round(r.inset(0, 4), 10, theme::hover);
-    g_.fill_round(Rect{r.l + 10, r.b - 10, r.l + 10 + (r.w() - 20) * p, r.b - 7}, 2, lilac);
-    g_.icon(icon::video, r.l + 18, r.t + 18, 14, lilac);
-    g_.text(std::format(L"Video {:.0f} %", p * 100), Rect{r.l + 36, r.t + 6, r.r - 70, r.t + 30}, {Font::ui, 13, 500, text});
-    const Rect cancel{r.r - 68, r.t + 6, r.r - 6, r.t + 30};
-    g_.text(L"Cancel", cancel, {Font::ui, 12.5f, 600, ui_.hover(cancel) ? text : text3, Align::center});
-    ui_.click(cancel, [this] {
+    // A pill in the top bar, right-aligned in r: the video icon, how far it's got (in words and as a line under them),
+    // and a round button that cancels it. Its width is set by "Video 100 %", so it doesn't twitch as the number climbs.
+    const float p = float(std::clamp(video_->progress.load(), 0.0, 1.0));
+    const TextStyle st{Font::ui, 12.5f, 600, text};
+    const float label_w = g_.measure(L"Video 100 %", st), h = std::min(32.f, r.h()), w = 34 + label_w + 4 + h;
+    const Rect chip{r.r - w, (r.t + r.b - h) / 2, r.r, (r.t + r.b + h) / 2};
+    const float cy = (chip.t + chip.b) / 2;
+    g_.fill_round(chip, h / 2, glass_fill);
+    g_.stroke_round(chip, h / 2, with_alpha(white, 0.10f));  // the search pill's edge: the two read as a pair
+    g_.icon(icon::video, chip.l + 19, cy, 13, lilac);
+    g_.text(std::format(L"Video {:.0f} %", p * 100), Rect{chip.l + 34, cy - 12, chip.l + 34 + label_w + 2, cy + 6}, st);
+    ui_.progress(Rect{chip.l + 34, cy + 8, chip.l + 34 + label_w, cy + 10}, p);
+    ui_.icon_button(Rect{chip.r - h, chip.t, chip.r, chip.b}, icon::close, 10, [this] {
         if (video_) video_->cancel = true;
-    });
-    return r.h();
+    }, false, false, L"Cancel");
+    return w;
 }
 
 void View::das_lights() {

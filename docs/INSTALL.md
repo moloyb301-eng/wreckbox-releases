@@ -45,7 +45,7 @@ version over the old folder; your library and settings stay. *Settings → About
 
 ## Found a bug?
 
-**Report a bug** (bottom of the sidebar) sends a description, a screenshot of the app and recent activity. No music files
+**Report a bug** (the bug button at the right end of the top bar) sends a description, a screenshot of the app and recent activity. No music files
 or passwords.
 
 ## Licences

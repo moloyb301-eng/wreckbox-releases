@@ -108,7 +108,7 @@ void View::settings_page(const Rect& r) {
     const std::string status = this->status();
     ui_.push_clip(Rect{r.l - 22, r.t, r.r + 22, r.b});
     float y = r.t - settings_scroll_;
-    y += header(Rect{r.l, y, r.l + width, r.b}, L"Settings", L"Setup", L"");
+    y += header(Rect{r.l, y, r.l + width, r.b}, L"Settings", L"");  // the name the top bar and the palette give it
 
     // Every section is laid out twice: once to measure its height (draw = false), then for real on a panel that size.
     bool draw = false;
@@ -222,13 +222,13 @@ void View::settings_page(const Rect& r) {
         status_line();
         para(L"Each song is looked up in free music catalogues (MusicBrainz, Deezer) for its ISRC and cover. The first import of a big "
              L"library takes a while — about one song per second.",
-             11.5f, text3);
+             11.5f);
     });
 
-    section(L"Spotify — direct (optional, needs Spotify Premium)", false, [&] {
+    section(L"Spotify direct import (optional, needs Spotify Premium)", false, [&] {
         para(L"Advanced: import straight from your Spotify account instead of CSV. Spotify requires the key's owner to have Premium; one "
              L"key can be shared with up to 5 people (add their Spotify emails under the app's \"User Management\").",
-             12.5f, text3);
+             12.5f);
         para(L"Spotify only lets each developer app have a few users, so everyone uses their own free key. It takes about two minutes:");
         step(1, L"Open the Spotify developer dashboard and log in with your Spotify account.");
         step(2, L"Create an app (any name, e.g. \"My WreckBox\"). Tick \"Web API\".");
@@ -246,7 +246,7 @@ void View::settings_page(const Rect& r) {
         status_line();
     });
 
-    section(L"YouTube — direct (optional)", false, [&] {
+    section(L"YouTube direct import (optional)", false, [&] {
         para(L"Bring in your YouTube and YouTube Music playlists and liked music. Songs that are also on Spotify merge into one entry. "
              L"This imports the playlists only — not audio.");
         step(1, L"In Google Cloud Console create a project, then enable \"YouTube Data API v3\".");
@@ -274,7 +274,7 @@ void View::settings_page(const Rect& r) {
                 para(native ? (forced ? L"Sync runs with WreckBox's built-in Soulseek client (the Python component isn't installed). It downloads; it doesn't share your files yet."
                                       : L"Sync runs with WreckBox's built-in Soulseek client (beta). It downloads; it doesn't share your files yet.")
                             : L"Sync runs with the bundled Python component, which also shares your Tracks folder. The built-in client (beta) is the same sync without Python.",
-                     12, text3);
+                     12);
                 if (!forced)
                     buttons({{native ? L"Use the Python component" : L"Use the built-in client (beta)", icon::sync, Ui::Pill::glass,
                               [this, native] { soulseek::Sync::set_use_native(!native); }}});
@@ -353,7 +353,7 @@ void View::settings_page(const Rect& r) {
                  {L"Reduced", icon::sparkle, m == Motion::reduced ? Ui::Pill::primary : Ui::Pill::glass, [this] { set_motion(Motion::reduced); }},
                  {L"Off", icon::block, m == Motion::off ? Ui::Pill::primary : Ui::Pill::glass, [this] { set_motion(Motion::off); }}});
         para(L"On battery, in battery saver or over Remote Desktop, Full behaves as Reduced. The backdrop also rests while "
-             L"another window is in front.", 12, text3);
+             L"another window is in front.", 12);
     });
 
     section(L"Visualizer", false, [&] {
@@ -434,19 +434,19 @@ void View::settings_page(const Rect& r) {
     });
 
     section(L"Bug reports", false, [&] {
-        para(L"Shown on reports you send, so the developer can follow up. Send one with Report a bug at the bottom of the sidebar.");
+        para(L"Shown on reports you send, so the developer can follow up. Send one with Report a bug, the bug button at the right end of the top bar.");
         field(kReporterName, L"Your name", s.reporter_name);
         field(kReporterContact, L"Email or contact (optional)", s.reporter_contact);
     });
 
     section(L"About", false, [&] {
-        para(std::format(L"WreckBox {} (native Windows build) · engine {}", widen(WB_VERSION), widen(engine_version())));
-        para(L"Library folder: " + paths::root().wstring(), 12, text3);
-        para(L"Settings file: " + paths::settings_file().wstring(), 12, text3);
+        para(std::format(L"WreckBox {} (native Windows build), engine {}", widen(WB_VERSION), widen(engine_version())));
+        para(L"Library folder: " + paths::root().wstring(), 12);
+        para(L"Settings file: " + paths::settings_file().wstring(), 12);
         para(L"Plays music with VLC's engine (libVLC " + widen(player::VlcEngine::version()) +
                  L", LGPL 2.1+; some plugins GPL 2+). The licences and a link to VLC's source code are in the licenses "
                  L"folder next to WreckBox.",
-             12, text3);
+             12);
         const std::string update_note = update_msg();
         buttons({{update_busy_ ? L"Checking…" : L"Check for updates", icon::sync, Ui::Pill::glass,
                   update_busy_ ? std::function<void()>{} : [this] { check_updates(); }}});

@@ -27,11 +27,11 @@
 
 <div align="center">
 
-[![Download zip](https://img.shields.io/badge/WreckBox%200.7.7-win--native--x64.zip%20%C2%B7%2070%20MB-EFAF86?style=for-the-badge&logo=windows&logoColor=08080A&labelColor=08080A)](https://raw.githubusercontent.com/moloyb301-eng/wreckbox-releases/windows-native/downloads/WreckBox-0.7.7-win-native-x64.zip)
+[![Download zip](https://img.shields.io/badge/WreckBox%200.7.8-win--native--x64.zip%20%C2%B7%2072%20MB-EFAF86?style=for-the-badge&logo=windows&logoColor=08080A&labelColor=08080A)](https://raw.githubusercontent.com/moloyb301-eng/wreckbox-releases/windows-native/downloads/WreckBox-0.7.8-win-native-x64.zip)
 
 </div>
 
-The latest build (0.7.7). A redesigned look: moving glass, a cover flow on Home, covers that turn in space, a backdrop that takes the colours of what's playing, and a Motion setting. Faster scans and Spotify import, and a play log. Before it (0.7.6): **DasVis** gets two new scenes: *Journey*, generated worlds of cells, organelles and tunnels that are built from a new recipe every time, and *Score*, the song drawn as a sequencer grid whose blocks light, turn and ripple as they play. A new **Web player** page plays Spotify and YouTube Music inside WreckBox. DasVis also runs smoother, with lyrics on time. Every scene leaves MilkDrop-style trails that zoom, swirl and fold into kaleidoscopes, and a song looks different every time it plays. DasVis has 15 scenes that follow each song's build-ups and drops, take their colours from the album cover, and run on old PCs too. Choose DasVis, MilkDrop or the Winamp bars in Settings → *Visualizer*, and try the live wallpaper, synced lyrics, the phone VJ deck and video export.
+The latest build (0.7.8). **The shelf**: the sidebar is gone, and the first screen is a wall of record crates, one for each playlist and library view, that you open with a click; a top bar shows where you are, **Ctrl+K** finds any page, playlist, song or action, and the player floats at the foot of the window. Before it (0.7.7): moving glass, covers that turn in space, a backdrop in the colours of what's playing, a Motion setting, faster scans and Spotify import, and a play log. Before that (0.7.6): **DasVis** gets two new scenes: *Journey*, generated worlds of cells, organelles and tunnels that are built from a new recipe every time, and *Score*, the song drawn as a sequencer grid whose blocks light, turn and ripple as they play. A new **Web player** page plays Spotify and YouTube Music inside WreckBox. DasVis also runs smoother, with lyrics on time. Every scene leaves MilkDrop-style trails that zoom, swirl and fold into kaleidoscopes, and a song looks different every time it plays. DasVis has 15 scenes that follow each song's build-ups and drops, take their colours from the album cover, and run on old PCs too. Choose DasVis, MilkDrop or the Winamp bars in Settings → *Visualizer*, and try the live wallpaper, synced lyrics, the phone VJ deck and video export.
 
 ### ⚡ One command
 
@@ -39,7 +39,7 @@ Press **Win + R**, type `cmd`, press Enter, then paste this (the copy button is 
 Enter. It downloads WreckBox, unzips it into `%LOCALAPPDATA%\Programs\WreckBox` and starts it. Run it again to update.
 
 ```cmd
-curl -fL -o "%TEMP%\WreckBox.zip" https://raw.githubusercontent.com/moloyb301-eng/wreckbox-releases/windows-native/downloads/WreckBox-0.7.7-win-native-x64.zip && (if not exist "%LOCALAPPDATA%\Programs\WreckBox" mkdir "%LOCALAPPDATA%\Programs\WreckBox") && tar -xf "%TEMP%\WreckBox.zip" -C "%LOCALAPPDATA%\Programs\WreckBox" && del "%TEMP%\WreckBox.zip" && start "" "%LOCALAPPDATA%\Programs\WreckBox\wreckbox.exe"
+curl -fL -o "%TEMP%\WreckBox.zip" https://raw.githubusercontent.com/moloyb301-eng/wreckbox-releases/windows-native/downloads/WreckBox-0.7.8-win-native-x64.zip && (if not exist "%LOCALAPPDATA%\Programs\WreckBox" mkdir "%LOCALAPPDATA%\Programs\WreckBox") && tar -xf "%TEMP%\WreckBox.zip" -C "%LOCALAPPDATA%\Programs\WreckBox" && del "%TEMP%\WreckBox.zip" && start "" "%LOCALAPPDATA%\Programs\WreckBox\wreckbox.exe"
 ```
 
 Close WreckBox before updating. The command uses `curl` and `tar`, which come with Windows 10 and 11.
@@ -74,7 +74,7 @@ Close WreckBox before updating. The command uses `curl` and `tar`, which come wi
 | 📁 | **My folders** | The songs already on your PC, in the folders you pick. WreckBox's own downloads are left out |
 | ⬇️ | **Downloads organiser** | Watches your Downloads folder and files new songs into the library |
 | ▶️ | **Player** | 18+ formats, internet radio and `.m3u` / `.pls` links, files from outside the library, media keys |
-| 🌐 | **Web player** | Spotify and YouTube Music inside WreckBox (sidebar → *Web player*). Playing in WreckBox pauses them, and they pause WreckBox; they follow its mute |
+| 🌐 | **Web player** | Spotify and YouTube Music inside WreckBox (the globe button in the top bar). Playing in WreckBox pauses them, and they pause WreckBox; they follow its mute |
 | 🎛️ | **Equalizer & normalizer** | 10-band EQ with presets and preamp, plus a volume normalizer |
 | 🌈 | **MilkDrop visualizer** | Full-screen MilkDrop presets (9,795 of them) with a player bar: song, transport, seek, volume, EQ and "Up next" |
 | ✨ | **DasVis visualizer** | WreckBox's own, and the default: 15 HDR scenes that follow the song's build-ups and drops, with MilkDrop-style trails, zooms and kaleidoscopes that move with the kick, bass and tempo, and a new look every time a song plays. Light enough for old PCs (about 5 % of one core), and you can write your own scenes |
@@ -97,7 +97,7 @@ Close WreckBox before updating. The command uses `curl` and `tar`, which come wi
 filters work together with search and sorting. *Not FLAC* shows the songs in another format, which are the ones worth
 replacing.
 
-**My folders** (sidebar, under Library) lists the songs already on your PC: your `Downloads` and `Music` folders, plus
+**My folders** (a crate on the shelf) lists the songs already on your PC: your `Downloads` and `Music` folders, plus
 any folder you add with **Add folder…**. The header names the folders. A song that matches your library shows the
 library's names and cover. The details panel shows the type and size, and says "Not in your library" when it isn't.
 *Write tags* is hidden there, so your own files keep their tags. A file WreckBox can't analyse doesn't appear.
@@ -130,7 +130,7 @@ Measured on the developer's PC:
 | Startup | ~0.12 s to the first paint |
 | CPU when idle | 0 %: the window only redraws when something changes |
 | Playing | ~1.4 % of one core with the player bar; ~42 % with the full-screen MilkDrop visualizer at 720p, 60 fps |
-| Download | 71 MB zip, including VLC's engine, the MilkDrop presets and the Soulseek helper |
+| Download | 72 MB zip, including VLC's engine, the MilkDrop presets and the Soulseek helper |
 
 </details>
 
@@ -157,10 +157,13 @@ Measured on the developer's PC:
 
 | Key | What it does |
 |---|---|
+| Ctrl+K | Find a page, playlist, song or action |
+| ← → ↑ ↓, Enter | On the shelf: choose a crate, open it |
 | ↑ / ↓ | Move through the list |
 | Enter | Play the selected track |
 | Space | Play / pause |
-| Esc | Close the details panel |
+| Esc | Close the details panel; with nothing to close, back to the page before |
+| Backspace, Alt+←, mouse back button | Back to the page before |
 | Ctrl+F | Search |
 | Ctrl+O | Open files |
 | Ctrl+U | Open a URL (radio, `.m3u` or `.pls`) |
@@ -267,7 +270,7 @@ the screen. The bar fades when the mouse is still. Its ⌄ button, or **H**, hid
 <summary><b>📱 Sync to phone</b></summary>
 <br>
 
-Open *Sync to phone* in the sidebar. *Start sharing* shows a QR code and a link for the WreckBox Android app. Only phones
+Open *Sync to phone* (the phone button in the top bar). *Start sharing* shows a QR code and a link for the WreckBox Android app. Only phones
 that scanned the code can connect, and *Unpair all phones* revokes them all.
 
 Sign in to your WreckBox account to save your library to it. Turn on *Use from anywhere* to reach this computer away
@@ -295,7 +298,7 @@ pick it:
 - **Many songs:** select them (Ctrl / Shift + click) and use the bar at the bottom.
 - *Everything missing* on the Soulseek page brings back the old behaviour.
 
-**Seeing the queue.** The **Download queue** page (sidebar, under Tools) shows:
+**Seeing the queue.** The **Download queue** page (the list button in the top bar) shows:
 - **Now:** the songs being fetched, each with a progress bar, the percentage, the size and the speed. A song still
   being searched for says *Searching Soulseek…*, and one whose source hasn't started sending says *Waiting for…*.
 - **Up next:** the songs waiting, numbered in the order they'll download, with *Download first* and ✕ on each.
@@ -303,7 +306,7 @@ pick it:
   failed show here too, in peach, with *Try again*.
 - **Playlists to download**, in order, below that.
 
-*Start sync* / *Stop* is at the top, and the sidebar counts the songs waiting. The Soulseek page's **Wanted** tab has
+*Start sync* / *Stop* is at the top, and the queue button in the top bar counts the songs waiting. The Soulseek page's **Wanted** tab has
 the same queue in a shorter form, next to *Downloaded*, *Not found*, *Failed* and the log.
 
 **Saving space.**

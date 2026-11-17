@@ -93,7 +93,7 @@ void View::phone_page(const Rect& r) {
     float y = r.t - phone_scroll_;
 
     const std::wstring toggle = on ? L"Stop sharing" : L"Start sharing";
-    y += header(Rect{r.l, y, r.l + width, r.b}, L"Tools", L"Sync to phone", L"Send tracks from this computer to the WreckBox phone app over your Wi-Fi",
+    y += header(Rect{r.l, y, r.l + width, r.b}, L"Sync to phone", L"Send tracks from this computer to the WreckBox phone app over your Wi-Fi",
                 {{ui_.pill_width(toggle, on ? icon::close : icon::phone), [this, toggle, on](float x, float py) {
                       ui_.pill(x, py, toggle, on ? icon::close : icon::phone, on ? Ui::Pill::glass : Ui::Pill::smart, [this, on] {
                           if (on) sync_->stop();
@@ -175,7 +175,7 @@ void View::phone_page(const Rect& r) {
                             if (code.getModule(cx, cy)) g.fill(Rect::xywh(box.l + 10 + float(cx) * cell, box.t + 10 + float(cy) * cell, cell + 0.5f, cell + 0.5f), black);
                 });
             } else {
-                g_.paragraph(L"Start sharing to show the pairing code", box.inset(20, 90, 20, 0), {Font::ui, 13, 400, text3, Align::center});
+                g_.paragraph(L"Start sharing to show the pairing code", box.inset(20, 90, 20, 0), {Font::ui, 13, 400, text2, Align::center});
             }
         }
         x = left_x + qr + gap, w = left_w - qr - gap;
@@ -194,7 +194,7 @@ void View::phone_page(const Rect& r) {
         }
         if (on) {
             para(L"Camera won't read it? On the phone tap \"Enter pairing link\" and paste:", 12);
-            const TextStyle st{Font::ui, 11.5f, 400, text3};
+            const TextStyle st{Font::ui, 11.5f, 400, text2};
             const float tw = w - 56, h = g_.measure_height(widen(uri), tw, st);
             if (draw) {
                 g_.paragraph(widen(uri), Rect{x, y, x + tw, y + h}, st);
@@ -207,7 +207,7 @@ void View::phone_page(const Rect& r) {
             }
             y += h + 10;
         }
-        para(L"Only phones that scanned this code can connect. Windows may ask to allow WreckBox on private networks — allow it.", 12, text3);
+        para(L"Only phones that scanned this code can connect. Windows may ask to allow WreckBox on private networks: allow it.", 12);
         buttons({{L"Unpair all phones", icon::close, Ui::Pill::glass, [this] {
                       try {
                           sync_->reset_token();
@@ -258,7 +258,7 @@ void View::phone_page(const Rect& r) {
                     } catch (const std::exception& e) {
                         return std::string("Signed in, but the library didn't upload: ") + e.what();
                     }
-                    return std::string("Signed in — your library is saved to your account.");
+                    return std::string("Signed in. Your library is saved to your account.");
                 });
                 if (const auto it = edits_.find(kAccountPassword); it != edits_.end()) SetWindowTextW(it->second.hwnd, L"");
             };
@@ -273,7 +273,7 @@ void View::phone_page(const Rect& r) {
     // Use from anywhere.
     if (signed_in)
         section(L"Use from anywhere", tunnel_->running(), [&] {
-            para(L"Your phone (signed in to the same account) can stream and download from this computer away from home — while it's on and "
+            para(L"Your phone (signed in to the same account) can stream and download from this computer away from home, while it's on and "
                  L"WreckBox is open.",
                  12.5f);
             para(widen(tunnel_->status()), 12.5f, tunnel_->running() ? lilac : text2, 600);

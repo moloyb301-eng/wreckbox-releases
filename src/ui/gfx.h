@@ -93,6 +93,9 @@ public:
     // Fills r with a gradient running from `from` (first colour) to `to` (last), independent of r (spectrum bars).
     void fill_span(const Rect& r, D2D1_POINT_2F from, D2D1_POINT_2F to, std::initializer_list<D2D1_COLOR_F> colors);
     void fill_radial(const Rect& r, D2D1_POINT_2F center, float radius, D2D1_COLOR_F inner, D2D1_COLOR_F outer);
+    // A four-cornered shape (corners in order around it): a box's face or a plank seen in perspective. One colour fills it
+    // flat; more run as a gradient across its bounds, top to bottom (`vertical`) or left to right.
+    void fill_quad(const D2D1_POINT_2F corners[4], std::initializer_list<D2D1_COLOR_F> colors, bool vertical = true);
     void image(ID2D1Bitmap* bmp, const Rect& r, float radius, float opacity = 1);
     // A picture that changes every frame (MilkDrop): one BGRA bitmap, made again only when the size or the render target
     // changes, refilled with `upload`, drawn stretched over r (`flip`: the rows are bottom-up, as OpenGL reads them).
@@ -116,6 +119,10 @@ public:
 
     void push_clip(const Rect& r);
     void pop_clip();
+    // Everything drawn until pop_fade() is cut off outside r and fades out over its first `top` and last `bottom` DIPs:
+    // the edges of a scrolling area, where what's in it goes out of sight softly instead of being cut through.
+    void push_fade(const Rect& r, float top, float bottom);
+    void pop_fade();
 
     // MARK: Motion and depth
     // Everything drawn until pop_transform() is moved / scaled / turned by `m`, on top of any transform already pushed.
@@ -187,6 +194,7 @@ private:
     ComPtr<ID2D1Bitmap> stream_;
     ComPtr<ID2D1Layer> layer_;
     std::vector<D2D1_MATRIX_3X2_F> transforms_;
+    std::vector<int> fades_;  // push_fade(): how many layers each one pushed
     std::unordered_map<uint32_t, ComPtr<ID2D1RadialGradientBrush>> glows_;
     struct Rounded {  // image_3d: a cover already cut to its rounded shape
         ComPtr<ID2D1Bitmap> source, shaped;

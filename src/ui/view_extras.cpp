@@ -96,14 +96,19 @@ void View::check_updates() {
     jobs_.run([result] { *result = updates::check(); },
               [this, result] {
                   update_busy_ = false;
-                  if (!result->error.empty()) set_update_msg("Couldn't check: " + result->error);
-                  else if (result->newer) {
+                  // Settings shows the result; the palette can start a check from any page, so a toast says it too.
+                  if (!result->error.empty()) {
+                      set_update_msg("Couldn't check for updates: " + result->error);
+                      show_toast(L"Couldn't check for updates");
+                  } else if (result->newer) {
                       Settings::current().extra.erase("updateDismissed");
                       set_update(result->newer);
                       set_update_msg("WreckBox " + result->newer->version + " is available.");
+                      show_toast(L"WreckBox " + widen(result->newer->version) + L" is available");
                   } else {
                       set_update(std::nullopt);
                       set_update_msg(std::string("You're up to date (") + WB_VERSION + ").");
+                      show_toast(L"You're up to date");
                   }
               });
 }
@@ -194,7 +199,7 @@ void View::bug_send() {
     jobs_.run(
         [this, report = std::move(report)] {
             try {
-                set_bug_msg("Sent — thank you! (report #" + std::to_string(bugs::send(report, store_)) + ")");
+                set_bug_msg("Sent as report #" + std::to_string(bugs::send(report, store_)) + ". Thank you!");  // "Sent" first: bug_dialog() looks for it
             } catch (const std::exception& e) {
                 set_bug_msg(std::string("Couldn't send: ") + e.what());
             }
@@ -245,7 +250,7 @@ void View::bug_dialog() {
     y += 42;
     const std::wstring note = L"Also sent: app version, Windows version, your name from Settings" + std::wstring(Settings::current().reporter_name.empty() ? L" (not set)" : L"") +
                               L", and recent WreckBox activity. No music files or passwords.";
-    g_.paragraph(note, Rect{in.l, y, in.r, y + 34}, {Font::ui, 11.5f, 400, text3});
+    g_.paragraph(note, Rect{in.l, y, in.r, y + 34}, {Font::ui, 11.5f, 400, text2});
     if (!message.empty()) g_.text(widen(message), Rect{in.l, in.b - 56, in.r, in.b - 38}, {Font::ui, 13, 600, sent ? lilac : message.rfind("Sending", 0) == 0 ? text2 : peach});
 
     const std::wstring send_label = bug_sending_ ? L"Sending…" : L"Send report";

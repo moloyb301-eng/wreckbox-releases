@@ -4,7 +4,7 @@ cmake_minimum_required(VERSION 3.21)
 set(VCPKG_TARGET_TRIPLET x64-windows-static CACHE STRING "")
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
-project(wreckbox VERSION 0.7.7 LANGUAGES CXX)
+project(wreckbox VERSION 0.7.8 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -106,6 +106,9 @@ add_executable(wreckbox WIN32
   src/ui/ui.cpp
   src/ui/view.cpp
   src/ui/view_motion.cpp
+  src/ui/view_topbar.cpp
+  src/ui/view_shelf.cpp
+  src/ui/view_palette.cpp
   src/ui/view_tracks.cpp
   src/ui/view_settings.cpp
   src/ui/view_phone.cpp
@@ -180,3 +183,6 @@ add_executable(dasvis_tests tests/dasvis_tests.cpp)
 target_link_libraries(dasvis_tests PRIVATE wbdasvis psapi mfplat mfreadwrite mfuuid)
 target_compile_definitions(dasvis_tests PRIVATE WB_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures")
 add_test(NAME dasvis_tests COMMAND dasvis_tests)
+add_executable(ui_logic_tests tests/ui_logic_tests.cpp)
+target_include_directories(ui_logic_tests PRIVATE src)
+add_test(NAME ui_logic_tests COMMAND ui_logic_tests)

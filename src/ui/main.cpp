@@ -259,7 +259,7 @@ struct App {
                 if (ui->mouse_drag(ui->mx, ui->my)) return repaint(), 0;
                 // Repaint only when the thing under the pointer changes (hover highlight).
                 const int hit = ui->hit_index(ui->mx, ui->my);
-                if (hit != last_hit) last_hit = hit, ++why_input, repaint();
+                if (hit != last_hit || view->pointer_frames()) last_hit = hit, ++why_input, repaint();
                 return 0;
             }
             case WM_MOUSELEAVE:
@@ -295,8 +295,15 @@ struct App {
             case WM_KEYDOWN:
                 if (view->key(wp)) repaint();
                 return 0;
+            case WM_SYSKEYDOWN:  // Alt+Left: back, as in a browser
+                if (wp == VK_LEFT && view->back()) return repaint(), 0;
+                break;
+            case WM_XBUTTONDOWN:  // the mouse's back button
+                if (GET_XBUTTON_WPARAM(wp) == XBUTTON1 && view->back()) repaint();
+                return TRUE;
             case WM_COMMAND:
                 if (HIWORD(wp) == EN_CHANGE && LOWORD(wp) == kSearchBox) view->search_changed();
+                if (HIWORD(wp) == EN_CHANGE && LOWORD(wp) == kPaletteBox) view->palette_changed();
                 if (HIWORD(wp) == EN_SETFOCUS || HIWORD(wp) == EN_KILLFOCUS) repaint();  // focus ring on the search pill
                 return 0;
             case WM_APP_TAB:

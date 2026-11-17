@@ -34,6 +34,7 @@ void Ui::begin_frame() {
     tips_.clear();
     scrolls_.clear();
     clips_.clear();
+    inert_ = false;
     art.begin_frame();
     using clock = std::chrono::steady_clock;
     static const auto start = clock::now();
@@ -88,10 +89,11 @@ float Ui::enter(uint64_t k, float delay, float duration) {
 
 float Ui::press(const Rect& r) {
     if (!motion || !r.contains(press_x_, press_y_)) return 0;
-    const float k = 1 - float(now - press_at_) / 0.28f;
+    // Full at the moment of the click, then let go over 160 ms, quickly at first (eased out).
+    const float k = 1 - float(now - press_at_) / 0.16f;
     if (k <= 0) return 0;
     animating_ = true;
-    return k;
+    return k * k;
 }
 
 D2D1_POINT_2F Ui::lean(const Rect& r) const {
@@ -101,9 +103,10 @@ D2D1_POINT_2F Ui::lean(const Rect& r) const {
 
 Rect Ui::clip_or_all() const { return clips_.empty() ? Rect{-1e6f, -1e6f, 1e6f, 1e6f} : clips_.back(); }
 
-bool Ui::hover(const Rect& r) const { return r.contains(mx, my) && clip_or_all().contains(mx, my); }
+bool Ui::hover(const Rect& r) const { return !inert_ && r.contains(mx, my) && clip_or_all().contains(mx, my); }
 
 void Ui::click(const Rect& r, std::function<void()> on_click, std::function<void()> on_right) {
+    if (inert_) return;
     const Rect c = intersect(r, clip_or_all());
     if (c.w() > 0 && c.h() > 0) hits_.push_back({c, std::move(on_click), std::move(on_right)});
 }
@@ -122,7 +125,7 @@ void Ui::pop_clip() {
 void Ui::scroll_area(const Rect& r, float& offset, float content_height) {
     const float max = std::max(0.f, content_height - r.h());
     offset = std::clamp(offset, 0.f, max);
-    scrolls_.push_back({r, &offset, max});
+    if (!inert_) scrolls_.push_back({r, &offset, max});
     if (max <= 0) return;
     const float track = r.h() - 8;
     const float thumb = std::max(28.f, track * r.h() / content_height);
@@ -150,7 +153,7 @@ void Ui::slider(const Rect& r, float value, std::function<void(float, bool)> on_
         if (h > 0.01f) g.fill_glow(x, cy, 18, with_alpha(lilac, 0.35f * h));
         g.fill_circle(x, cy, thumb, white);
     }
-    if (!on_change) return;
+    if (!on_change || inert_) return;
     const Rect c = intersect(r, clip_or_all());
     if (c.w() <= 0 || c.h() <= 0) return;
     hits_.push_back({c, {}, {}, [r, vertical, fn = std::move(on_change)](float x, float y, bool done) {
@@ -159,6 +162,7 @@ void Ui::slider(const Rect& r, float value, std::function<void(float, bool)> on_
 }
 
 void Ui::tip(const Rect& r, std::wstring label) {
+    if (inert_) return;
     const Rect c = intersect(r, clip_or_all());
     if (c.w() > 0 && c.h() > 0) tips_.push_back({c, std::move(label)});
 }
@@ -171,14 +175,14 @@ unsigned Ui::draw_tooltip() {
         tip_at_ = {};
         return 0;
     }
-    const auto now = GetTickCount64();
+    const auto tick = GetTickCount64();
     if (over->r.l != tip_at_.l || over->r.t != tip_at_.t || over->r.r != tip_at_.r || over->r.b != tip_at_.b) {
         tip_at_ = over->r;  // a new thing under the pointer: start waiting (the text may change while resting, e.g. Play → Pause)
-        tip_since_ = now;
+        tip_since_ = tick;
         tip_dismissed_ = false;
     }
     if (tip_dismissed_) return 0;
-    if (now - tip_since_ < 500) return unsigned(500 - (now - tip_since_));
+    if (tick - tip_since_ < 500) return unsigned(500 - (tick - tip_since_));
     const TextStyle st{Font::ui, 12, 500, text};
     const float w = g.measure(over->text, st) + 20, h = 26, W = g.width(), H = g.height();
     const float x = std::clamp((over->r.l + over->r.r - w) / 2, 4.f, std::max(4.f, W - w - 4));
